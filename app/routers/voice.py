@@ -65,7 +65,32 @@ async def replay_body(body: bytes):
     yield body
 
 
-@router.post("/transcriptions", response_model=TranscriptionResponse)
+@router.post(
+    "/transcriptions",
+    response_model=TranscriptionResponse,
+    openapi_extra={
+        "parameters": [
+            {
+                "name": "X-PersonaLive-Request",
+                "in": "header",
+                "required": True,
+                "schema": {"type": "string", "enum": ["web"]},
+            }
+        ],
+        "requestBody": {
+            "required": True,
+            "content": {
+                "multipart/form-data": {
+                    "schema": {
+                        "type": "object",
+                        "required": ["file"],
+                        "properties": {"file": {"type": "string", "format": "binary"}},
+                    }
+                }
+            },
+        },
+    },
+)
 async def transcribe_audio(request: Request) -> TranscriptionResponse:
     require_local(request)
     if request.headers.get("x-personalive-request") != "web":

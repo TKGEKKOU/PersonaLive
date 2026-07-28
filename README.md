@@ -151,6 +151,8 @@ Attu：<http://127.0.0.1:18082>
 
 WebSocket 与 REST 共用同一个 LangGraph 会话和服务端角色作用域。ASR 只负责生成可编辑
 文字，用户发送后仍进入相同的 LangGraph 会话；TTS 和 Live2D 尚未接入。
+语音转写请求使用 `multipart/form-data` 的 `file` 字段，并必须携带
+`X-PersonaLive-Request: web` 请求头；该非简单请求头用于阻止第三方网页跨站消耗本机 ASR 配额。
 
 请求不能提交 `workspace_id` 或 `knowledge_space_id`。服务端始终从路径中的角色解析
 作用域，Milvus 写入、删除和查询都携带工作空间与知识空间过滤条件。
