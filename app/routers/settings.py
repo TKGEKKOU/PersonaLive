@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 
 from app.schemas import LocalSettingsResponse, LocalSettingsUpdate
-from settings import SUPPORTED_WEB_SEARCH_PROVIDERS, Settings
+from settings import SUPPORTED_ASR_PROVIDERS, SUPPORTED_WEB_SEARCH_PROVIDERS, Settings
 
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -37,6 +37,9 @@ def settings_response(path: Path, restart_required: bool = False) -> LocalSettin
     if web_search_provider not in SUPPORTED_WEB_SEARCH_PROVIDERS:
         web_search_provider = "off"
     web_search_api_key = str(values.get("web_search_api_key") or values.get("tavily_api_key") or "")
+    asr_provider = str(values.get("asr_provider") or "off")
+    if asr_provider not in SUPPORTED_ASR_PROVIDERS:
+        asr_provider = "off"
     return LocalSettingsResponse(
         openai_api_key_configured=bool(values.get("openai_api_key")),
         openai_base_url=str(values.get("openai_base_url") or ""),
@@ -50,6 +53,11 @@ def settings_response(path: Path, restart_required: bool = False) -> LocalSettin
         web_search_api_key_configured=bool(web_search_api_key),
         web_search_base_url=str(values.get("web_search_base_url") or ""),
         enable_web_fallback=web_search_provider != "off",
+        asr_provider=asr_provider,
+        asr_api_key_configured=bool(values.get("asr_api_key")),
+        asr_base_url=str(values.get("asr_base_url") or ""),
+        asr_model=str(values.get("asr_model") or ""),
+        asr_language=str(values.get("asr_language") or ""),
         restart_required=restart_required,
     )
 
@@ -85,6 +93,9 @@ def save_settings(payload: LocalSettingsUpdate, request: Request) -> LocalSettin
     provider = submitted.get("web_search_provider")
     if provider is not None and provider not in SUPPORTED_WEB_SEARCH_PROVIDERS:
         raise HTTPException(status_code=422, detail="Unsupported web search provider")
+    asr_provider = submitted.get("asr_provider")
+    if asr_provider is not None and asr_provider not in SUPPORTED_ASR_PROVIDERS:
+        raise HTTPException(status_code=422, detail="Unsupported ASR provider")
     if "web_search_api_key" not in submitted and submitted.get("tavily_api_key"):
         submitted["web_search_api_key"] = submitted["tavily_api_key"]
     if provider is None and submitted.get("tavily_api_key") and submitted.get("enable_web_fallback"):

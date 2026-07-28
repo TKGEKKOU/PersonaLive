@@ -16,10 +16,12 @@ from app.routers.personas import router as personas_router
 from app.routers.rag import router as rag_router
 from app.routers.realtime import router as realtime_router
 from app.routers.settings import router as settings_router
+from app.routers.voice import router as voice_router
 from settings import Settings
 from ingestion.status import get_system_status
 from persona.delete_service import PersonaDeletionService
 from realtime.execution import ConversationExecutionRegistry
+from voice.asr import build_asr_provider
 
 STATIC_DIR = Path(__file__).resolve().parents[1] / "static"
 
@@ -40,6 +42,7 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     app.state.session_factory = build_session_factory(engine)
     app.state.persona_delete_service = PersonaDeletionService(settings)
     app.state.realtime_executions = ConversationExecutionRegistry()
+    app.state.asr_provider_factory = build_asr_provider
     if initialize_database:
         Base.metadata.create_all(engine)
         upgrade_persona_schema(engine)
@@ -55,6 +58,7 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     app.include_router(rag_router)
     app.include_router(realtime_router)
     app.include_router(settings_router)
+    app.include_router(voice_router)
 
     @app.get("/api/health")
     def health() -> dict[str, str]:
