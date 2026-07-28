@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PersonaLive</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/vendor/lucide.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="/static/index.html"><span class="brand-symbol">P</span><span>PersonaLive</span></a>
+      <nav class="primary-nav" aria-label="主导航">
+        <button id="nav-upload" class="nav-item is-active" type="button" data-view="upload"><i data-lucide="library"></i>资料</button>
+        <button id="nav-chat" class="nav-item" type="button" data-view="chat"><i data-lucide="message-circle"></i>对话</button>
+        <button id="nav-settings" class="nav-item" type="button" data-view="settings"><i data-lucide="settings-2"></i>设置</button>
+      </nav>
+      <div class="header-actions"><div id="system-status" class="system-status"></div><a id="open-milvus" class="icon-link" href="http://127.0.0.1:18082" target="_blank" rel="noopener noreferrer"><i data-lucide="database"></i><span>Milvus</span></a></div>
+    </div>
+  </header>
+
+  <main class="page-shell">
+    <section id="upload-view" class="view">
+      <header class="view-header"><h1>资料</h1><button id="new-batch" class="button button-secondary" type="button"><i data-lucide="plus"></i>新建任务</button></header>
+
+      <fieldset id="material-action" class="view-switch">
+        <label><input type="radio" name="material-action" value="create" checked><span>新建</span></label>
+        <label><input type="radio" name="material-action" value="edit"><span>编辑已有角色</span></label>
+      </fieldset>
+
+      <div id="create-material-panel">
+        <form id="batch-form" class="panel upload-form">
+          <fieldset id="generation-mode" class="mode-switch">
+            <label><input type="radio" name="mode" value="character" checked><span><i data-lucide="user-round"></i><b>角色</b></span></label>
+            <label><input type="radio" name="mode" value="expert"><span><i data-lucide="search"></i><b>检索助手</b></span></label>
+          </fieldset>
+          <div class="source-grid">
+            <label class="file-drop" for="document-files"><i data-lucide="cloud-upload"></i><b>选择文件或图片</b><output id="file-summary">未选择文件</output><input id="document-files" type="file" multiple></label>
+            <label class="text-source"><span>补充文本</span><textarea id="direct-text" rows="7" placeholder="粘贴资料内容"></textarea></label>
+          </div>
+          <div class="form-footer"><p id="upload-error" class="inline-error" role="alert"></p><button id="upload-button" class="button button-primary" type="submit"><i data-lucide="sparkles"></i>生成草稿</button></div>
+        </form>
+
+        <section id="draft-editor" class="panel draft-panel is-hidden">
+          <div class="panel-heading"><h2>生成结果</h2><span id="draft-status" class="status-pill"></span></div>
+          <section id="candidate-picker" class="candidate-picker is-hidden"><b>候选人物</b><div id="candidate-list" class="candidate-list"></div></section>
+          <div class="draft-fields"><label class="field"><span>名称</span><input id="draft-name" maxlength="255"></label><label class="field field-wide"><span>人设</span><textarea id="draft-profile" rows="5"></textarea></label></div>
+          <div class="section-heading"><b>资料</b></div><div id="document-list" class="document-list"></div>
+          <div class="draft-actions"><button id="save-draft" class="button button-secondary" type="button">保存草稿</button><button id="confirm-draft" class="button button-primary" type="button">确认创建并入库</button></div>
+        </section>
+      </div>
+
+      <section id="edit-material-panel" class="is-hidden">
+        <div class="edit-selector"><label class="field"><span>选择角色</span><select id="edit-persona-select"><option value="">请选择</option></select></label></div>
+        <div id="edit-persona-workspace" class="is-hidden">
+          <form id="edit-persona-form" class="panel edit-profile-form">
+            <div class="panel-heading"><h2>角色信息</h2><button class="button button-primary" type="submit">保存修改</button></div>
+            <div class="draft-fields"><label class="field"><span>名称</span><input id="edit-persona-name" maxlength="255" required></label><label class="field field-wide"><span>人设</span><textarea id="edit-persona-profile" rows="5"></textarea></label></div>
+            <p id="edit-persona-status" class="inline-status"></p>
+          </form>
+          <section class="panel edit-documents">
+            <div class="panel-heading"><h2>已有资料</h2></div><div id="edit-document-list" class="document-list"></div>
+            <form id="edit-upload-form" class="edit-upload-form">
+              <label class="file-compact" for="edit-document-files"><i data-lucide="paperclip"></i><span id="edit-file-summary">添加文件或图片</span><input id="edit-document-files" type="file" multiple></label>
+              <textarea id="edit-direct-text" rows="3" placeholder="或输入补充资料"></textarea>
+              <button id="edit-upload-button" class="button button-primary" type="submit">追加并入库</button>
+            </form>
+            <p id="edit-upload-error" class="inline-error"></p>
+          </section>
+        </div>
+      </section>
+    </section>
+
+    <section id="chat-view" class="view is-hidden">
+      <div class="chat-layout">
+        <aside id="persona-sidebar" class="persona-sidebar"><div class="sidebar-title">角色</div><div id="persona-list" class="persona-list"></div></aside>
+        <section class="chat-panel">
+          <div class="chat-toolbar"><label class="mobile-persona-select"><select id="persona-select"><option value="">选择角色</option></select></label><strong id="chat-title">选择角色</strong></div>
+          <div id="chat-log" class="chat-log"><p class="empty-state">选择角色后开始聊天</p></div>
+          <section id="confirmation-panel" class="confirmation-panel is-hidden"><div><strong id="confirmation-title">确认操作</strong><p id="confirmation-detail"></p></div><div class="confirmation-actions"><button id="cancel-action" class="button button-secondary" type="button">取消</button><button id="confirm-action" class="button button-warning" type="button">确认</button></div></section>
+          <form id="question-form" class="composer"><textarea id="question" rows="3" maxlength="12000" placeholder="输入消息" required></textarea><button id="send-question" class="send-button" type="submit" title="发送" disabled><i data-lucide="send-horizontal"></i></button></form>
+          <p id="chat-error" class="inline-error chat-error"></p>
+        </section>
+      </div>
+    </section>
+
+    <section id="settings-view" class="view is-hidden">
+      <header class="view-header"><h1>设置</h1></header>
+      <form id="settings-form" class="settings-form">
+        <section class="panel settings-section"><div class="panel-heading"><h2>对话模型</h2></div><div class="settings-grid settings-grid-four"><label class="field"><span>供应商</span><select id="llm-provider"><option value="openai">OpenAI</option><option value="deepseek">DeepSeek</option><option value="qwen">通义千问</option><option value="custom">自定义</option></select></label><label class="field"><span>API Key</span><input id="openai-api-key" type="password" autocomplete="off"></label><label class="field"><span>Base URL</span><input id="openai-base-url"></label><label class="field"><span>模型</span><input id="openai-model"></label></div><details class="settings-help"><summary>获取 Key 与填写示例</summary><p>官方入口：<a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">OpenAI</a>、<a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">DeepSeek</a>、<a href="https://bailian.console.aliyun.com/" target="_blank" rel="noopener">通义千问百炼</a></p><p>Base URL：OpenAI <code>https://api.openai.com/v1</code>；DeepSeek <code>https://api.deepseek.com</code>；通义千问 <code>https://dashscope.aliyuncs.com/compatible-mode/v1</code></p><p>模型示例：<code>gpt-4o-mini</code>、<code>deepseek-chat</code>、<code>qwen-plus</code></p></details></section>
+        <section class="panel settings-section"><div class="panel-heading"><h2>Embedding</h2></div><div class="settings-grid settings-grid-four"><label class="field"><span>供应商</span><select id="embedding-provider"><option value="qwen">通义千问</option><option value="custom">自定义</option></select></label><label class="field"><span>API Key</span><input id="embedding-api-key" type="password" autocomplete="off"></label><label class="field"><span>Base URL</span><input id="embedding-base-url"></label><label class="field"><span>模型</span><input id="embedding-model"></label><label class="field"><span>向量维度</span><input id="embedding-dimensions" type="number" min="1" max="4096" step="1"></label><label class="checkbox-field"><input id="embedding-send-dimensions" type="checkbox"><span>发送 dimensions 参数</span></label></div><p id="embedding-dimension-warning" class="settings-warning is-hidden">修改向量维度后，现有 Milvus Collection 维度可能不匹配，需要新建 Collection 或重新入库。</p><details class="settings-help"><summary>获取 Key 与填写示例</summary><p>官方入口：<a href="https://bailian.console.aliyun.com/" target="_blank" rel="noopener">阿里云百炼</a></p><p>Base URL：<code>https://dashscope.aliyuncs.com/compatible-mode/v1</code></p><p>模型示例：<code>text-embedding-v4</code>；常用维度示例：<code>512</code>、<code>1024</code></p></details></section>
+        <section class="panel settings-section"><div class="panel-heading"><h2>联网搜索</h2></div><div class="settings-grid one-column"><label class="field"><span>服务</span><select id="web-search-provider"><option value="off">关闭</option><option value="tavily">Tavily</option><option value="bocha">博查</option><option value="custom">自定义</option></select></label><label class="field"><span>Web Search API Key</span><input id="web-search-api-key" type="password" autocomplete="off"></label><label id="web-search-base-url-field" class="field is-hidden"><span>Base URL</span><input id="web-search-base-url" type="url" placeholder="https://example.com/v1/web-search"></label></div><details class="settings-help"><summary>服务说明与填写指南</summary><div id="web-search-guide"></div></details></section>
+        <div class="settings-actions"><p id="settings-status" class="inline-status"></p><button id="reset-settings" class="button button-secondary" type="button">重置配置</button><button id="save-settings" class="button button-primary" type="submit">保存配置</button></div>
+      </form>
+    </section>
+  </main>
+
+  <div id="preview-backdrop" class="backdrop"></div><aside id="preview-drawer" class="preview-drawer" aria-hidden="true"><header class="drawer-header"><strong id="preview-title">资料预览</strong><button id="close-preview" class="close-button" type="button"><i data-lucide="x"></i></button></header><pre id="preview-content"></pre></aside>
+  <dialog id="settings-confirm-dialog" class="settings-confirm-dialog" aria-labelledby="settings-confirm-title"><form method="dialog"><h2 id="settings-confirm-title">保存前确认</h2><p id="settings-confirm-detail" class="settings-confirm-detail"></p><div class="settings-confirm-actions"><button id="settings-confirm-cancel" class="button button-secondary" type="button">取消</button><button id="settings-confirm-submit" class="button button-primary" type="button">确认保存</button></div></form></dialog>
+</body>
+</html>

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "persona-live"
+version = "0.1.0"
+requires-python = ">=3.11,<3.12"
+
+[tool.setuptools]
+py-modules = ["settings"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*", "persona*", "ingestion*", "rag*", "agents*", "voice*", "live*"]
+exclude = ["tests*", "docs*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: requires external infrastructure and credentials"]

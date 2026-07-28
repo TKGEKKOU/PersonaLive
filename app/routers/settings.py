@@ -1,0 +1,114 @@
+import json
+import os
+import tempfile
+from pathlib import Path
+
+from fastapi import APIRouter, HTTPException, Request
+
+from app.schemas import LocalSettingsResponse, LocalSettingsUpdate
+from settings import SUPPORTED_WEB_SEARCH_PROVIDERS, Settings
+
+
+router = APIRouter(prefix="/api/settings", tags=["settings"])
+SETTINGS_PATH = Settings.load().project_root / "data" / "local_settings.json"
+LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
+
+
+def require_local(request: Request) -> None:
+    host = request.client.host if request.client else ""
+    if host not in LOCAL_HOSTS:
+        raise HTTPException(status_code=403, detail="Local settings are available on localhost only")
+
+
+def read_settings(path: Path) -> dict:
+    if not path.is_file():
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=500, detail="Local settings file is invalid") from exc
+    return value if isinstance(value, dict) else {}
+
+
+def settings_response(path: Path, restart_required: bool = False) -> LocalSettingsResponse:
+    values = read_settings(path)
+    legacy_enabled = bool(values.get("enable_web_fallback", False))
+    web_search_provider = str(values.get("web_search_provider") or "") or ("tavily" if legacy_enabled else "off")
+    if web_search_provider not in SUPPORTED_WEB_SEARCH_PROVIDERS:
+        web_search_provider = "off"
+    web_search_api_key = str(values.get("web_search_api_key") or values.get("tavily_api_key") or "")
+    return LocalSettingsResponse(
+        openai_api_key_configured=bool(values.get("openai_api_key")),
+        openai_base_url=str(values.get("openai_base_url") or ""),
+        openai_model=str(values.get("openai_model") or ""),
+        embedding_api_key_configured=bool(values.get("embedding_api_key")),
+        embedding_base_url=str(values.get("embedding_base_url") or ""),
+        embedding_model=str(values.get("embedding_model") or ""),
+        embedding_dimensions=int(values.get("embedding_dimensions") or 512),
+        embedding_send_dimensions=bool(values.get("embedding_send_dimensions", True)),
+        web_search_provider=web_search_provider,
+        web_search_api_key_configured=bool(web_search_api_key),
+        web_search_base_url=str(values.get("web_search_base_url") or ""),
+        enable_web_fallback=web_search_provider != "off",
+        restart_required=restart_required,
+    )
+
+
+def update_local_settings(path: Path, updates: dict) -> None:
+    values = read_settings(path)
+    values.update(updates)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=path.parent, prefix=".settings.", suffix=".tmp", delete=False
+    ) as temporary:
+        json.dump(values, temporary, ensure_ascii=False, indent=2)
+        temporary.write("\n")
+        temporary_path = Path(temporary.name)
+    os.replace(temporary_path, path)
+
+
+def delete_local_settings(path: Path) -> None:
+    if path.is_file():
+        path.unlink()
+
+
+@router.get("", response_model=LocalSettingsResponse)
+def get_settings(request: Request) -> LocalSettingsResponse:
+    require_local(request)
+    return settings_response(SETTINGS_PATH)
+
+
+@router.patch("", response_model=LocalSettingsResponse)
+def save_settings(payload: LocalSettingsUpdate, request: Request) -> LocalSettingsResponse:
+    require_local(request)
+    submitted = payload.model_dump(exclude_none=True)
+    provider = submitted.get("web_search_provider")
+    if provider is not None and provider not in SUPPORTED_WEB_SEARCH_PROVIDERS:
+        raise HTTPException(status_code=422, detail="Unsupported web search provider")
+    if "web_search_api_key" not in submitted and submitted.get("tavily_api_key"):
+        submitted["web_search_api_key"] = submitted["tavily_api_key"]
+    if provider is None and submitted.get("tavily_api_key") and submitted.get("enable_web_fallback"):
+        submitted["web_search_provider"] = "tavily"
+        provider = "tavily"
+    if provider is None and submitted.get("enable_web_fallback") is False:
+        submitted["web_search_provider"] = "off"
+        provider = "off"
+    updates = {}
+    for field, value in submitted.items():
+        if isinstance(value, bool) or isinstance(value, int):
+            updates[field] = value
+        elif value.strip():
+            updates[field] = value.strip()
+    updates.pop("tavily_api_key", None)
+    if provider is not None:
+        updates["enable_web_fallback"] = provider != "off"
+    if updates:
+        update_local_settings(SETTINGS_PATH, updates)
+    return settings_response(SETTINGS_PATH, restart_required=False)
+
+
+@router.delete("", response_model=LocalSettingsResponse)
+def reset_settings(request: Request) -> LocalSettingsResponse:
+    require_local(request)
+    delete_local_settings(SETTINGS_PATH)
+    return settings_response(SETTINGS_PATH, restart_required=False)
