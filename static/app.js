@@ -16,6 +16,9 @@ const state = {
   realtimeTurnId: null,
   realtimeAnswerNode: null,
   realtimeExecutionPending: false,
+  realtimeSubmissionPending: false,
+  realtimePendingQuestion: "",
+  realtimeAckTimer: null,
 };
 const $ = (id) => document.getElementById(id);
 const LLM_PRESETS = {
@@ -237,10 +240,14 @@ function selectPersona() {
 
 function closeRealtime() {
   const socket = state.realtimeSocket;
+  clearTimeout(state.realtimeAckTimer);
   state.realtimeSocket = null;
   state.realtimeTurnId = null;
   state.realtimeAnswerNode = null;
   state.realtimeExecutionPending = false;
+  state.realtimeSubmissionPending = false;
+  state.realtimePendingQuestion = "";
+  state.realtimeAckTimer = null;
   setRealtimeBusy(false);
   if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
 }
@@ -259,6 +266,7 @@ function connectRealtime() {
   socket.addEventListener("close", () => {
     if (socket !== state.realtimeSocket) return;
     state.realtimeSocket = null;
+    if (state.realtimeSubmissionPending) failRealtimeSubmission("实时连接在接收请求前中断，请重新操作");
     if (state.realtimeTurnId) {
       state.realtimeTurnId = null;
       state.realtimeAnswerNode = null;
@@ -277,7 +285,7 @@ function setRealtimeBusy(busy) {
   $("question-form").classList.toggle("is-generating", busy);
   $("cancel-generation").classList.toggle("is-hidden", !busy);
   $("cancel-generation").disabled = !busy;
-  $("send-question").disabled = busy || state.realtimeExecutionPending || Boolean(state.pendingAction) || !state.activePersona;
+  $("send-question").disabled = busy || state.realtimeSubmissionPending || state.realtimeExecutionPending || Boolean(state.pendingAction) || !state.activePersona;
   $("confirm-action").disabled = busy;
   $("cancel-action").disabled = busy;
 }
@@ -290,6 +298,7 @@ function handleRealtimeEvent(event) {
   }
   if (event.type === "session.pong" || event.type === "agent.status") return;
   if (event.type === "turn.started") {
+    clearRealtimeSubmission();
     state.realtimeTurnId = event.turn_id;
     state.realtimeAnswerNode = null;
     setRealtimeBusy(true);
@@ -319,6 +328,7 @@ function handleRealtimeEvent(event) {
     state.realtimeExecutionPending = true;
     setRealtimeBusy(false);
   } else if (event.type === "error") {
+    if (state.realtimeSubmissionPending) failRealtimeSubmission(event.message || "实时会话未接收消息，请重新发送");
     setText("chat-error", event.message || "实时会话发生错误");
     state.realtimeTurnId = null;
     state.realtimeAnswerNode = null;
@@ -331,6 +341,32 @@ function sendRealtime(payload) {
   if (state.realtimeSocket?.readyState !== WebSocket.OPEN) return false;
   try { state.realtimeSocket.send(JSON.stringify(payload)); return true; }
   catch { return false; }
+}
+
+function clearRealtimeSubmission() {
+  clearTimeout(state.realtimeAckTimer);
+  state.realtimeAckTimer = null;
+  state.realtimeSubmissionPending = false;
+  state.realtimePendingQuestion = "";
+}
+
+function failRealtimeSubmission(message) {
+  const question = state.realtimePendingQuestion;
+  clearRealtimeSubmission();
+  if (question) $("question").value = question;
+  setText("chat-error", message);
+  setRealtimeBusy(false);
+}
+
+function awaitRealtimeAcknowledgement(question) {
+  state.realtimeSubmissionPending = true;
+  state.realtimePendingQuestion = question;
+  clearTimeout(state.realtimeAckTimer);
+  state.realtimeAckTimer = setTimeout(() => {
+    if (!state.realtimeSubmissionPending) return;
+    failRealtimeSubmission("实时会话响应超时，请重新发送");
+    state.realtimeSocket?.close();
+  }, 5000);
 }
 
 function cancelRealtimeTurn() {
@@ -416,6 +452,7 @@ async function submitQuestion(event) {
   const question = $("question").value.trim(); if (!question) return;
   appendMessage("user", question); $("send-question").disabled = true; setText("chat-error");
   if (sendRealtime({ type: "text.submit", question })) {
+    awaitRealtimeAcknowledgement(question);
     $("question-form").reset();
     return;
   }
@@ -445,6 +482,7 @@ async function resumeAgent(approved) {
   if (!state.pendingAction || !state.activePersona) return;
   $("confirm-action").disabled = true; $("cancel-action").disabled = true;
   if (sendRealtime({ type: "confirmation.respond", specialist: state.pendingAction.specialist, approved })) {
+    awaitRealtimeAcknowledgement("");
     return;
   }
   try { const result = await api(fetch(`/api/personas/${state.activePersona.id}/agent/resume`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversation_id: state.conversationId, specialist: state.pendingAction.specialist, approved }) })); handleAgentResult(result); }
