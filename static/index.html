@@ -56,7 +56,7 @@
         <div class="edit-selector"><label class="field"><span>选择角色</span><select id="edit-persona-select"><option value="">请选择</option></select></label></div>
         <div id="edit-persona-workspace" class="is-hidden">
           <form id="edit-persona-form" class="panel edit-profile-form">
-            <div class="panel-heading"><h2>角色信息</h2><button class="button button-primary" type="submit">保存修改</button></div>
+            <div class="panel-heading"><h2>角色信息</h2><div class="panel-actions"><button id="delete-persona" class="icon-button icon-button-danger" type="button" title="永久删除当前角色" disabled><i data-lucide="trash-2"></i></button><button class="button button-primary" type="submit">保存修改</button></div></div>
             <div class="draft-fields"><label class="field"><span>名称</span><input id="edit-persona-name" maxlength="255" required></label><label class="field field-wide"><span>人设</span><textarea id="edit-persona-profile" rows="5"></textarea></label></div>
             <p id="edit-persona-status" class="inline-status"></p>
           </form>
@@ -99,5 +99,6 @@
 
   <div id="preview-backdrop" class="backdrop"></div><aside id="preview-drawer" class="preview-drawer" aria-hidden="true"><header class="drawer-header"><strong id="preview-title">资料预览</strong><button id="close-preview" class="close-button" type="button"><i data-lucide="x"></i></button></header><pre id="preview-content"></pre></aside>
   <dialog id="settings-confirm-dialog" class="settings-confirm-dialog" aria-labelledby="settings-confirm-title"><form method="dialog"><h2 id="settings-confirm-title">保存前确认</h2><p id="settings-confirm-detail" class="settings-confirm-detail"></p><div class="settings-confirm-actions"><button id="settings-confirm-cancel" class="button button-secondary" type="button">取消</button><button id="settings-confirm-submit" class="button button-primary" type="button">确认保存</button></div></form></dialog>
+  <dialog id="delete-persona-dialog" class="settings-confirm-dialog" aria-labelledby="delete-persona-title"><form method="dialog"><h2 id="delete-persona-title">永久删除角色</h2><p id="delete-persona-detail" class="settings-confirm-detail">角色及其所有数据将永久删除，无法恢复。</p><p id="delete-persona-error" class="inline-error" role="alert"></p><div class="settings-confirm-actions"><button id="delete-persona-cancel" class="button button-secondary" type="button">取消</button><button id="delete-persona-confirm" class="button button-danger" type="button">永久删除</button></div></form></dialog>
 </body>
 </html>

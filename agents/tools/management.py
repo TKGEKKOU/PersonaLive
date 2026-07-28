@@ -19,6 +19,8 @@ Indexer = Callable[[str, Any], None]
 
 
 def request_confirmation(action: dict[str, Any]) -> bool:
+    """暂停 LangGraph，将待执行写操作交给 API/UI 确认后再从检查点恢复。"""
+
     decision = interrupt(action)
     if isinstance(decision, dict):
         return bool(decision.get("approved", False))
@@ -36,6 +38,7 @@ def list_documents_for_context(context: PersonaAgentContext) -> list[dict]:
         return []
     session = _session(context)
     try:
+        # workspace + knowledge_space 双重过滤是权限边界，不能依赖模型传入作用域。
         statement = (
             select(DocumentJob)
             .where(
@@ -72,6 +75,7 @@ def rename_persona_for_context(
         "target": context.persona_name,
         "arguments": {"name": name},
     }
+    # 先确认、后开启写会话，避免暂停期间持有数据库事务或锁。
     if not confirmer(action):
         return {"status": "cancelled"}
     session = _session(context)

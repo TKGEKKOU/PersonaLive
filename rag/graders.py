@@ -1,3 +1,9 @@
+"""RAG 质量门使用的结构化评分器。
+
+评分器只提出相关片段、置信度和纠错建议；是否重试、联网或终止仍由
+adaptive_graph.py 中的确定性路由与计数器决定。
+"""
+
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 

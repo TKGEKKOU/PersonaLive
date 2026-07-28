@@ -1,5 +1,6 @@
 import json
 from collections.abc import Iterable
+from dataclasses import dataclass
 
 from langchain_core.documents import Document
 from langchain_milvus import BM25BuiltInFunction, Milvus
@@ -9,6 +10,12 @@ from pymilvus.client.types import DataType, FunctionType, MetricType
 from settings import Settings
 from ingestion.embeddings import get_embedding_model
 from ingestion.markdown_parser import DocumentScope
+
+
+@dataclass(frozen=True)
+class KnowledgeSpaceScope:
+    workspace_id: str
+    knowledge_space_id: str
 
 
 def quote_filter_value(value: str) -> str:
@@ -21,6 +28,15 @@ def document_filter(scope: DocumentScope, document_id: str) -> str:
             f"workspace_id == {quote_filter_value(scope.workspace_id)}",
             f"knowledge_space_id == {quote_filter_value(scope.knowledge_space_id)}",
             f"document_id == {quote_filter_value(document_id)}",
+        ]
+    )
+
+
+def knowledge_space_filter(scope: KnowledgeSpaceScope) -> str:
+    return " and ".join(
+        [
+            f"workspace_id == {quote_filter_value(scope.workspace_id)}",
+            f"knowledge_space_id == {quote_filter_value(scope.knowledge_space_id)}",
         ]
     )
 
@@ -167,4 +183,12 @@ class MilvusRagStore:
         self.client().delete(
             collection_name=self.settings.collection_name,
             filter=document_filter(scope, document_id),
+        )
+
+    def delete_knowledge_space(self, scope: KnowledgeSpaceScope) -> None:
+        if not self.collection_exists():
+            return
+        self.client().delete(
+            collection_name=self.settings.collection_name,
+            filter=knowledge_space_filter(scope),
         )

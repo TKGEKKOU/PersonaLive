@@ -46,6 +46,8 @@ class AgentTurnResult:
 
 
 class PersonaAgentService:
+    """LangGraph 的应用层入口，负责线程隔离、暂停确认和结果归一化。"""
+
     def __init__(
         self,
         checkpointer: BaseCheckpointSaver,
@@ -57,6 +59,8 @@ class PersonaAgentService:
 
     @staticmethod
     def thread_id(context: PersonaAgentContext, specialist: Specialist) -> str:
+        # 所有 Worker 共享同一条角色会话线程，确保 handoff、interrupt 和 resume
+        # 都能恢复到同一份父图检查点。specialist 参数仅为兼容旧接口保留。
         del specialist
         return f"{context.persona_id}:{context.conversation_id}"
 
@@ -73,6 +77,7 @@ class PersonaAgentService:
 
     def query(self, question: str, context: PersonaAgentContext) -> AgentTurnResult:
         graph = self._graph()
+        # 已暂停的写操作必须先由用户处理；不能用新问题绕过上一次确认。
         pending = self._find_pending(graph, context)
         if pending is not None:
             return pending
@@ -113,6 +118,8 @@ class PersonaAgentService:
         snapshot = graph.get_state(config)
         if not snapshot.interrupts:
             return self._result(snapshot.values or {})
+        # Command(resume=...) 从 checkpointer 中恢复 interrupt 所在节点，不会重跑
+        # 用户消息之前已经完成的 Worker 步骤。
         result = graph.invoke(
             Command(resume={"approved": approved}),
             config,
@@ -133,6 +140,8 @@ class PersonaAgentService:
 
     @staticmethod
     def _result(state: dict) -> AgentTurnResult:
+        """只暴露注册工具的结果，过滤内部 handoff ToolMessage。"""
+
         interrupts = state.get("__interrupt__") or ()
         if interrupts:
             return AgentTurnResult(

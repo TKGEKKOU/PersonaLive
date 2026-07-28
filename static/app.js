@@ -10,6 +10,7 @@ const state = {
   editPoller: null,
   pendingAction: null,
   settingsAction: null,
+  deletePersona: null,
   savedEmbeddingDimensions: 512,
 };
 const $ = (id) => document.getElementById(id);
@@ -64,6 +65,9 @@ function bindEvents() {
   $("reset-settings").addEventListener("click", requestSettingsReset);
   $("settings-confirm-cancel").addEventListener("click", () => $("settings-confirm-dialog").close());
   $("settings-confirm-submit").addEventListener("click", confirmSettingsAction);
+  $("delete-persona").addEventListener("click", requestPersonaDeletion);
+  $("delete-persona-cancel").addEventListener("click", () => $("delete-persona-dialog").close());
+  $("delete-persona-confirm").addEventListener("click", confirmPersonaDeletion);
   $("llm-provider").addEventListener("change", applyLlmPreset);
   $("embedding-provider").addEventListener("change", applyEmbeddingPreset);
   $("embedding-dimensions").addEventListener("input", renderEmbeddingWarning);
@@ -229,10 +233,44 @@ async function loadEditPersona() {
   const id = $("edit-persona-select").value;
   state.editPersona = id ? await api(fetch(`/api/personas/${id}`)) : null;
   $("edit-persona-workspace").classList.toggle("is-hidden", !state.editPersona);
+  $("delete-persona").disabled = !state.editPersona;
   if (!state.editPersona) return;
   $("edit-persona-name").value = state.editPersona.name;
   $("edit-persona-profile").value = state.editPersona.profile?.description || "";
   await loadEditDocuments();
+}
+function requestPersonaDeletion() {
+  if (!state.editPersona) return;
+  state.deletePersona = state.editPersona;
+  setText("delete-persona-error");
+  $("delete-persona-detail").textContent = `将永久删除“${state.deletePersona.name}”及其资料、记忆、向量和对话。此操作无法恢复。`;
+  $("delete-persona-dialog").showModal();
+}
+async function confirmPersonaDeletion() {
+  const persona = state.deletePersona;
+  if (!persona) return;
+  $("delete-persona-confirm").disabled = true;
+  $("delete-persona-cancel").disabled = true;
+  try {
+    await api(fetch(`/api/personas/${persona.id}`, { method: "DELETE" }));
+    $("delete-persona-dialog").close();
+    state.deletePersona = null;
+    state.editPersona = null;
+    $("edit-persona-workspace").classList.add("is-hidden");
+    $("delete-persona").disabled = true;
+    const nextPersona = state.personas.find((item) => item.id !== persona.id) || null;
+    state.activePersona = null;
+    await loadPersonas(nextPersona?.id || "");
+    if (!nextPersona) {
+      $("persona-select").value = "";
+      $("edit-persona-select").value = "";
+      selectPersona();
+    }
+  } catch (reason) { setText("delete-persona-error", reason); }
+  finally {
+    $("delete-persona-confirm").disabled = false;
+    $("delete-persona-cancel").disabled = false;
+  }
 }
 async function loadEditDocuments() {
   if (!state.editPersona) return;

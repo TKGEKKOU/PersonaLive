@@ -41,7 +41,8 @@ svg { width: 17px; height: 17px; stroke-width: 1.8; flex: none; }
 .view-header h1 { margin: 0; font-size: 23px; font-weight: 650; }
 .panel, .chat-panel, .persona-sidebar { border: 1px solid var(--line); border-radius: 7px; background: var(--surface); }
 .panel { padding: 20px; }
-.panel-heading { min-height: 36px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.panel-heading, .panel-actions { display: flex; align-items: center; gap: 8px; }
+.panel-heading { min-height: 36px; margin-bottom: 14px; justify-content: space-between; gap: 12px; }
 .panel-heading h2 { margin: 0; font-size: 16px; }
 .section-heading { margin-top: 20px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
 
@@ -71,6 +72,11 @@ input:focus, textarea:focus, select:focus { border-color: var(--primary); box-sh
 .button-primary:hover { border-color: var(--primary-dark); background: var(--primary-dark); }
 .button-secondary { border-color: var(--line); background: #fff; color: var(--muted); }
 .button-warning { background: #f59e0b; color: #fff; }
+.button-danger { border-color: #d9363e; background: var(--danger); color: #fff; }
+.button-danger:hover { background: #c82f36; }
+.icon-button { width: 37px; height: 37px; padding: 0; border: 1px solid var(--line); border-radius: 5px; display: grid; place-items: center; background: #fff; color: var(--muted); }
+.icon-button-danger { border-color: #f1c7c9; color: var(--danger); }
+.icon-button-danger:hover { border-color: var(--danger); background: #fff5f5; }
 .form-footer, .draft-actions, .settings-actions { margin-top: 16px; display: flex; align-items: center; justify-content: flex-end; gap: 9px; }
 .form-footer p, .settings-actions p { margin-right: auto; }
 .inline-error, .inline-status { min-height: 18px; margin: 8px 0 0; font-size: 13px; }

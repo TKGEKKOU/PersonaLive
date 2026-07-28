@@ -42,16 +42,25 @@ class Settings:
 
     @classmethod
     def load(cls, root: Path | None = None) -> "Settings":
+        """合并基础设施配置与 UI 配置，并返回不可变的运行时快照。
+
+        `.env` 只负责 MySQL、Milvus、监听地址和 RAG 控制参数；模型、Embedding
+        与联网搜索凭据来自 `data/local_settings.json`，避免页面保存后仍被旧环境
+        变量覆盖。
+        """
+
         project_root = root or Path(__file__).resolve().parent
         values = dotenv_values(project_root / ".env")
         get = lambda name, default: str(values.get(name) or default)
         local_path = project_root / "data" / "local_settings.json"
+        # 本地设置文件损坏时回退为空配置，让设置页仍可启动并修正配置。
         try:
             local_values = json.loads(local_path.read_text(encoding="utf-8")) if local_path.is_file() else {}
         except (OSError, json.JSONDecodeError):
             local_values = {}
         local_get = lambda name, default: str(local_values.get(name) or default)
         local_bool = lambda name, default: str(local_values.get(name, default)).lower() in {"1", "true", "yes", "on"}
+        # 兼容旧版 Tavily 开关；保存新格式后统一以 provider 是否为 off 判断。
         legacy_web_enabled = local_bool("enable_web_fallback", False)
         web_search_provider = local_get("web_search_provider", "") or ("tavily" if legacy_web_enabled else "off")
         if web_search_provider not in SUPPORTED_WEB_SEARCH_PROVIDERS:

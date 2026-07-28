@@ -7,6 +7,8 @@ from rag.contracts import RagQueryContext
 
 @dataclass(frozen=True)
 class RagRequest:
+    """RAG 统一输入；context 必须由服务端从当前角色派生。"""
+
     question: str
     context: RagQueryContext
     allow_web_fallback: bool = False
@@ -18,6 +20,8 @@ class RagRequest:
 
 @dataclass(frozen=True)
 class RagResult:
+    """供 Agent/API 消费的稳定输出，不暴露 LangGraph 内部状态。"""
+
     answer_draft: str
     evidence: tuple[dict, ...]
     confidence: float
@@ -53,7 +57,10 @@ class RagService:
 
 
 def create_rag_service(settings: Settings | None = None) -> RagService:
+    """在应用启动时选择 Pipeline，调用方无需了解具体图实现。"""
+
     active_settings = settings or Settings.load()
+    # 延迟导入避免 simple 模式初始化 Adaptive 图及其模型依赖。
     if active_settings.rag_pipeline == "simple":
         from rag.simple_graph import run_simple
 

@@ -1,3 +1,9 @@
+"""Adaptive/Corrective RAG 状态机。
+
+主路径为路由 -> 检索 -> 批量证据评分 -> 生成 -> 质量门；证据不足时按上限执行
+查询改写、联网回退或答案纠错，超过边界后返回保守的无答案结果。
+"""
+
 from typing import Any
 
 from langgraph.constants import END, START
@@ -20,6 +26,8 @@ settings = Settings.load()
 
 
 class AdaptiveRagState(TypedDict, total=False):
+    """图节点共享状态；计数器限制循环，trace 仅记录可公开的运行摘要。"""
+
     question: str
     query: str
     context: RagQueryContext
@@ -54,6 +62,7 @@ def _complete(
     node_name: str,
     **updates: Any,
 ) -> AdaptiveRagState:
+    # 节点返回完整状态并追加运维 trace，不记录 prompt 或模型思维过程。
     completed = {**state, **updates}
     trace = list(state.get("trace", []))
     trace.append(
@@ -69,6 +78,8 @@ def _complete(
 
 
 def route_query_node(state: AdaptiveRagState) -> AdaptiveRagState:
+    # Agent 的 knowledge Worker 已经完成意图路由时可强制走知识链，避免在 RAG
+    # 内部再次把同一问题误分到闲聊分支。
     decision = (
         "knowledge"
         if state.get("force_knowledge", False)
@@ -134,6 +145,7 @@ def decide_after_batch_grade(
 ) -> str:
     rewrite_limit = settings.max_rewrite_count if max_rewrite_count is None else max_rewrite_count
     web_enabled = bool(state.get("allow_web_fallback", False)) if enable_web_fallback is None else enable_web_fallback
+    # 回退顺序固定为：有效本地证据 -> 有界改写 -> 一次联网 -> 保守拒答。
     if state.get("documents"):
         return "generate"
     if int(state.get("rewrite_count", 0)) < rewrite_limit:
@@ -218,6 +230,8 @@ def decide_quality(
     generation_limit = settings.max_generation_retry if max_generation_retry is None else max_generation_retry
     rewrite_limit = settings.max_rewrite_count if max_rewrite_count is None else max_rewrite_count
     web_enabled = bool(state.get("allow_web_fallback", False)) if enable_web_fallback is None else enable_web_fallback
+    # 只有“事实接地”和“解决问题”同时通过才能结束；评分器建议的纠错动作
+    # 仍受本地计数器和联网开关约束，模型不能制造无限循环。
     if state.get("grounded") is True and state.get("useful") is True:
         return "useful"
     action = state.get("correction_action", "regenerate")
@@ -233,6 +247,7 @@ def decide_quality(
 
 
 def prepare_correction_node(state: AdaptiveRagState) -> AdaptiveRagState:
+    # 只把可操作的缺失点和无证据结论反馈给下一轮生成，不传递隐藏推理。
     missing = "；".join(state.get("missing_points", [])) or "无"
     unsupported = "；".join(state.get("unsupported_claims", [])) or "无"
     return _complete(
@@ -263,6 +278,8 @@ def no_answer_node(state: AdaptiveRagState) -> AdaptiveRagState:
 
 
 def build_graph():
+    """声明节点和有界回边；所有循环最终都受 rewrite/retry 计数器终止。"""
+
     workflow = StateGraph(AdaptiveRagState)
     for name, node in (
         ("route_query", route_query_node),
@@ -321,6 +338,7 @@ def serialize_document(document: Any) -> dict:
 
 
 def run_adaptive(request: RagRequest) -> RagResult:
+    # 请求中的 context 已由服务端根据 persona 派生，浏览器和模型不能扩大知识范围。
     state = graph.invoke(
         {
             "question": request.question,

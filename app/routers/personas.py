@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_session
 from app.models import DocumentJob, Persona
 from app.schemas import DocumentJobResponse, PersonaCreate, PersonaResponse, PersonaUpdate
-from persona.service import LOCAL_WORKSPACE_ID, create_persona
+from persona.service import LOCAL_WORKSPACE_ID, PersonaNotFound, create_persona
 
 router = APIRouter(prefix="/api/personas", tags=["personas"])
 
@@ -54,6 +54,19 @@ def update_persona(
     session.commit()
     session.refresh(persona)
     return persona
+
+
+@router.delete("/{persona_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_persona(
+    persona_id: str,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> Response:
+    try:
+        request.app.state.persona_delete_service.delete(session, persona_id)
+    except PersonaNotFound as exc:
+        raise HTTPException(status_code=404, detail="Persona not found") from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/{persona_id}/documents", response_model=list[DocumentJobResponse])

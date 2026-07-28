@@ -1,3 +1,9 @@
+"""LangGraph 人设对话主流程。
+
+只有 persona_supervisor 对用户可见；四类 Worker 只执行受限工具并把事实结果交还
+主 Agent，最终措辞始终由主 Agent 结合完整人设统一生成。
+"""
+
 from __future__ import annotations
 
 import json
@@ -24,6 +30,8 @@ _WORKER_SPECIALISTS = {"knowledge": "conversation", "web": "web", "memory": "mem
 
 
 class PersonaWorkflowState(MessagesState):
+    """跨节点共享状态；messages 由 LangGraph 管理，Worker 结果采用追加合并。"""
+
     active_worker: Worker | None
     worker_results: Annotated[list[dict], operator.add]
 
@@ -37,10 +45,18 @@ def _handoff_name(worker: Worker) -> str:
 
 
 def _handoff_tool(worker: Worker):
-    @tool(_handoff_name(worker))
+    description = {
+        "knowledge": "Delegate uploaded persona knowledge retrieval to the knowledge specialist.",
+        "web": "Delegate current public information lookup to the web specialist.",
+        "memory": "Delegate durable user memory operations to the memory specialist.",
+        "management": "Delegate persona profile or document management to the management specialist.",
+    }[worker]
+
+    @tool(_handoff_name(worker), description=description)
     def handoff(request: str, runtime: ToolRuntime[PersonaAgentContext]) -> Command:
-        """Delegate a scoped task to a specialist and wait for its result."""
         del request, runtime
+        # create_agent 的工具运行在子图内；Command.PARENT 将控制权交回父图的
+        # Worker 节点，而不是让主 Agent 在当前节点里继续生成答案。
         return Command(
             graph=Command.PARENT,
             goto=f"{worker}_worker",
@@ -151,6 +167,8 @@ def _finalize_worker(worker: Worker):
             "worker_results": [{"worker": worker, "summary": str(result)}],
         }
         if call_id:
+            # 用 ToolMessage 回填原始 handoff tool_call_id，保持 LLM 工具调用协议闭合；
+            # 主 Agent 下一轮会把该消息当作证据，而不是直接展示 Worker 原文。
             updates["messages"] = [
                 ToolMessage(
                     content=f"{worker} specialist result:\n{result}",
@@ -164,10 +182,14 @@ def _finalize_worker(worker: Worker):
 
 
 def build_persona_workflow(model: BaseChatModel | None, checkpointer):
+    """构建 supervisor -> worker -> supervisor 的闭环，并启用会话级检查点。"""
+
     builder = StateGraph(PersonaWorkflowState, context_schema=PersonaAgentContext)
     builder.add_node("persona_supervisor", _supervisor_agent(model))
     builder.add_edge(START, "persona_supervisor")
     builder.add_edge("persona_supervisor", END)
+    # 每个 Worker 都经过 finalize 节点清理 active_worker 并封装交接结果，再回到
+    # persona_supervisor 生成最终答复；Worker 不存在直接通往 END 的边。
     for worker in WORKERS:
         worker_node = f"{worker}_worker"
         finalize_node = f"finalize_{worker}"

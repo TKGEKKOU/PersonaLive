@@ -17,6 +17,7 @@ from app.routers.rag import router as rag_router
 from app.routers.settings import router as settings_router
 from settings import Settings
 from ingestion.status import get_system_status
+from persona.delete_service import PersonaDeletionService
 
 STATIC_DIR = Path(__file__).resolve().parents[1] / "static"
 
@@ -35,6 +36,7 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     app = FastAPI(title="PersonaLive", lifespan=lifespan)
     engine = build_engine(settings)
     app.state.session_factory = build_session_factory(engine)
+    app.state.persona_delete_service = PersonaDeletionService(settings)
     if initialize_database:
         Base.metadata.create_all(engine)
         upgrade_persona_schema(engine)
