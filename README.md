@@ -27,16 +27,98 @@ Embedding 与 BM25 sparse 检索、RRF 融合完成问答。
 
 ## 本地启动
 
+以下命令均在项目根目录执行。项目需要 Python 3.11 和已启动的 Docker Desktop。
+
+### 首次启动
+
+1. 创建本地配置。不要将 `.env` 提交到 Git：
+
 ```powershell
 Copy-Item .env.example .env
+```
+
+首次创建 MySQL 数据卷之前，应修改 `.env` 中的 `MYSQL_PASSWORD` 和
+`MYSQL_ROOT_PASSWORD`。MySQL 只在空数据卷第一次初始化时读取这些账号和密码；
+以后修改 `.env` 不会自动修改已有数据库中的密码。
+
+2. 创建 Python 3.11 虚拟环境并安装依赖：
+
+```powershell
 py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e . -r requirements-dev.txt
+```
+
+3. 启动 MySQL、Milvus、etcd、MinIO 和 Attu，并检查状态：
+
+```powershell
+docker compose up -d
+docker compose ps
+```
+
+等待 `mysql`、`etcd` 和 `standalone` 显示为 `healthy` 后再启动应用。
+
+4. 启动 FastAPI：
+
+```powershell
+.\.venv\Scripts\python.exe -B main.py
+```
+
+### 日常启动
+
+已有 `.env`、`.venv` 和 Docker 数据时，不要重新复制 `.env.example`，直接执行：
+
+```powershell
 docker compose up -d
 .\.venv\Scripts\python.exe -B main.py
 ```
 
-编辑 `.env`，填写 Chat、Embedding 与 MySQL 配置。Embedding 输出维度必须与
-`EMBEDDING_DIMENSIONS` 一致；更换维度时应使用新的 `COLLECTION_NAME`。
+### 下载副本与 Docker 重名冲突
+
+当前 `docker-compose.yml` 使用固定容器名 `personalive-mysql`、`personalive-etcd`、
+`personalive-minio`、`personalive-milvus` 和 `personalive-attu`，MySQL 还使用固定的
+全局数据卷 `personalive_mysql_data`。因此，在同一台电脑上运行另一个下载副本时，
+它可能连接到原项目已经创建的 MySQL，而不是使用新副本 `.env` 中的账号重新初始化。
+
+如果启动时报以下错误：
+
+```text
+pymysql.err.OperationalError: (1045, "Access denied for user ...")
+```
+
+说明应用已经连接到 MySQL，但 `.env` 中的账号或密码与该数据卷首次初始化时保存的
+凭据不一致。这不是 Python 依赖缺失。启动时出现的 protobuf 版本信息只是警告，
+也不是该错误的原因。
+
+处理方式一，复用原项目的 Docker 基础设施：
+
+1. 将原项目 `.env` 中的 `MYSQL_HOST`、`MYSQL_PORT`、`MYSQL_DATABASE`、
+   `MYSQL_USER` 和 `MYSQL_PASSWORD` 填入下载副本的 `.env`。
+2. 不要尝试用下载副本重新初始化同名 MySQL 数据卷。
+3. 如果原 FastAPI 仍占用 `8001`，停止原进程，或把下载副本的 `APP_PORT` 改为
+   `8002` 等未占用端口。
+
+处理方式二，让下载副本拥有独立的 Docker 数据：
+
+1. 在下载副本的 `docker-compose.yml` 中为五个 `container_name` 添加唯一前缀。
+2. 将 MySQL 卷名 `personalive_mysql_data` 改为新的唯一名称。
+3. 修改宿主机端口，避免与原项目冲突，例如：
+   - MySQL：`23306:3306`
+   - Milvus：`29530:19530`
+   - Milvus 健康端口：`29091:9091`
+   - Attu：`28082:3000`
+4. 同步修改下载副本 `.env`：
+
+```env
+MYSQL_PORT=23306
+MILVUS_URI=http://127.0.0.1:29530
+APP_PORT=8002
+```
+
+完成隔离后再执行 `docker compose up -d`。不要为了修复账号错误直接删除
+`personalive_mysql_data`；删除该卷会永久丢失已有角色、对话和任务数据。
+
+LLM、Embedding 与联网搜索配置在应用的“设置”页填写。Embedding 输出维度必须与
+当前 Milvus collection 一致；更换维度时应使用新的 `COLLECTION_NAME`。
 
 API 文档：<http://127.0.0.1:8001/docs>
 
