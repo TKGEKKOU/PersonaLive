@@ -37,9 +37,12 @@ class OpenAICompatibleASR(ASRProvider):
         if not response.is_success:
             raise ASRUpstreamError(f"ASR service returned HTTP {response.status_code}")
         try:
-            text = str(response.json().get("text") or "").strip()
-        except (ValueError, AttributeError) as exc:
+            payload = response.json()
+        except ValueError as exc:
             raise ASRUpstreamError("ASR service returned an invalid response") from exc
+        if not isinstance(payload, dict) or not isinstance(payload.get("text"), str):
+            raise ASRUpstreamError("ASR service returned an invalid response")
+        text = payload["text"].strip()
         if not text:
             raise ASREmptyResultError("No speech was recognized")
         return text

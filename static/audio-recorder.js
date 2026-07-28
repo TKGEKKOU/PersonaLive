@@ -1,17 +1,27 @@
 "use strict";
 
 (() => {
-  const MIME_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/ogg"];
+  const MIME_TYPES = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4;codecs=mp4a.40.2",
+    "audio/mp4",
+    "audio/ogg;codecs=opus",
+    "audio/ogg",
+  ];
 
   class BrowserAudioRecorder {
-    constructor({ maxDurationMs = 120000, onLimit = null } = {}) {
+    constructor({ maxDurationMs = 120000, onLimit = null, onError = null, onUnexpectedStop = null } = {}) {
       this.maxDurationMs = maxDurationMs;
       this.onLimit = onLimit;
+      this.onError = onError;
+      this.onUnexpectedStop = onUnexpectedStop;
       this.mediaRecorder = null;
       this.stream = null;
       this.chunks = [];
       this.limitTimer = null;
       this.stopPromise = null;
+      this.unexpectedHandled = false;
     }
 
     static isSupported() {
@@ -30,9 +40,12 @@
         this.mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
         this.stream = stream;
         this.chunks = [];
+        this.unexpectedHandled = false;
         this.mediaRecorder.addEventListener("dataavailable", (event) => {
           if (event.data?.size) this.chunks.push(event.data);
         });
+        this.mediaRecorder.addEventListener("error", (event) => this.handleUnexpectedError(event));
+        this.mediaRecorder.addEventListener("stop", () => this.handleUnexpectedStop());
         this.mediaRecorder.start(250);
         this.limitTimer = setTimeout(() => this.onLimit?.(), this.maxDurationMs);
       } catch (error) {
@@ -40,6 +53,20 @@
         this.mediaRecorder = null;
         throw error;
       }
+    }
+
+    handleUnexpectedError(event) {
+      if (this.stopPromise || this.unexpectedHandled) return;
+      this.unexpectedHandled = true;
+      this.cleanup();
+      this.onError?.(event?.error || new Error("Audio recording failed"));
+    }
+
+    handleUnexpectedStop() {
+      if (this.stopPromise || this.unexpectedHandled) return;
+      this.unexpectedHandled = true;
+      this.cleanup();
+      this.onUnexpectedStop?.();
     }
 
     finish() {

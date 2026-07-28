@@ -20,6 +20,7 @@ const state = {
   realtimePendingQuestion: "",
   realtimeAckTimer: null,
   realtimeBusy: false,
+  agentRequestPending: false,
   asrConfigured: false,
   audioMode: "idle",
   audioStarting: false,
@@ -100,6 +101,7 @@ function bindEvents() {
 }
 
 function switchView(view) {
+  if (view !== "chat" && (state.audioStarting || state.audioMode !== "idle")) cancelAudioActivity();
   for (const name of ["upload", "chat", "settings"]) $(name + "-view").classList.toggle("is-hidden", name !== view);
   document.querySelectorAll("[data-view]").forEach((button) => button.classList.toggle("is-active", button.dataset.view === view));
 }
@@ -264,6 +266,7 @@ function closeRealtime() {
   state.realtimeAnswerNode = null;
   state.realtimeExecutionPending = false;
   state.realtimeSubmissionPending = false;
+  state.agentRequestPending = false;
   state.realtimePendingQuestion = "";
   state.realtimeAckTimer = null;
   setRealtimeBusy(false);
@@ -366,7 +369,9 @@ function clearRealtimeSubmission() {
   clearTimeout(state.realtimeAckTimer);
   state.realtimeAckTimer = null;
   state.realtimeSubmissionPending = false;
+  state.agentRequestPending = false;
   state.realtimePendingQuestion = "";
+  updateComposerControls();
 }
 
 function failRealtimeSubmission(message) {
@@ -379,6 +384,7 @@ function failRealtimeSubmission(message) {
 
 function awaitRealtimeAcknowledgement(question) {
   state.realtimeSubmissionPending = true;
+  state.agentRequestPending = true;
   state.realtimePendingQuestion = question;
   clearTimeout(state.realtimeAckTimer);
   state.realtimeAckTimer = setTimeout(() => {
@@ -386,6 +392,7 @@ function awaitRealtimeAcknowledgement(question) {
     failRealtimeSubmission("实时会话响应超时，请重新发送");
     state.realtimeSocket?.close();
   }, 5000);
+  updateComposerControls();
 }
 
 function cancelRealtimeTurn() {
@@ -393,7 +400,7 @@ function cancelRealtimeTurn() {
 }
 
 function updateComposerControls() {
-  const conversationBusy = state.realtimeBusy || state.realtimeSubmissionPending || state.realtimeExecutionPending || Boolean(state.pendingAction);
+  const conversationBusy = isConversationBusy();
   const audioActive = state.audioStarting || state.audioMode !== "idle";
   $("question-form").classList.toggle("is-audio-active", audioActive && !state.realtimeBusy);
   $("record-audio").classList.toggle("is-hidden", state.realtimeBusy);
@@ -402,6 +409,10 @@ function updateComposerControls() {
   $("send-question").disabled = conversationBusy || audioActive || !state.activePersona;
   $("confirm-action").disabled = state.realtimeBusy || audioActive;
   $("cancel-action").disabled = state.realtimeBusy || audioActive;
+}
+
+function isConversationBusy() {
+  return state.realtimeBusy || state.agentRequestPending || state.realtimeSubmissionPending || state.realtimeExecutionPending || Boolean(state.pendingAction);
 }
 
 function setAudioButton(iconName, title, className = "") {
@@ -451,13 +462,15 @@ function audioErrorMessage(error) {
 }
 
 async function startAudioRecording() {
-  if (!state.asrConfigured || !state.activePersona || state.audioMode !== "idle" || state.audioStarting) return;
+  if (!state.asrConfigured || !state.activePersona || isConversationBusy() || state.audioMode !== "idle" || state.audioStarting) return;
   const operationId = ++state.audioOperationId;
   state.audioStarting = true;
   setText("chat-error");
   const recorder = new window.BrowserAudioRecorder({
     maxDurationMs: 120000,
     onLimit: () => { if (state.audioRecorder === recorder && state.audioMode === "recording") void finishAudioRecording(); },
+    onError: (error) => handleUnexpectedAudioStop(recorder, error),
+    onUnexpectedStop: () => handleUnexpectedAudioStop(recorder, new Error("录音意外停止，请重试")),
   });
   state.audioRecorder = recorder;
   renderAudioState();
@@ -478,6 +491,16 @@ async function startAudioRecording() {
   }
 }
 
+function handleUnexpectedAudioStop(recorder, error) {
+  if (state.audioRecorder !== recorder) return;
+  state.audioOperationId += 1;
+  state.audioRecorder = null;
+  state.audioStarting = false;
+  state.audioMode = "idle";
+  setText("chat-error", audioErrorMessage(error));
+  renderAudioState();
+}
+
 async function finishAudioRecording() {
   if (state.audioMode !== "recording" || !state.audioRecorder) return;
   const operationId = state.audioOperationId;
@@ -488,12 +511,12 @@ async function finishAudioRecording() {
     const blob = await recorder.finish();
     state.audioRecorder = null;
     if (operationId !== state.audioOperationId || !blob) return;
-    const extension = blob.type.includes("ogg") ? "ogg" : "webm";
+    const extension = audioExtension(blob.type);
     const form = new FormData();
     form.append("file", blob, `recording-${Date.now()}.${extension}`);
     const controller = new AbortController();
     state.audioAbortController = controller;
-    const result = await api(fetch("/api/voice/transcriptions", { method: "POST", body: form, signal: controller.signal }));
+    const result = await api(fetch("/api/voice/transcriptions", { method: "POST", headers: { "X-PersonaLive-Request": "web" }, body: form, signal: controller.signal }));
     if (operationId !== state.audioOperationId) return;
     $("question").value = result.text;
     $("question").focus();
@@ -506,6 +529,14 @@ async function finishAudioRecording() {
       renderAudioState();
     }
   }
+}
+
+function audioExtension(contentType) {
+  if (contentType.includes("ogg")) return "ogg";
+  if (contentType.includes("mp4") || contentType.includes("m4a")) return "m4a";
+  if (contentType.includes("mpeg")) return "mp3";
+  if (contentType.includes("wav")) return "wav";
+  return "webm";
 }
 
 function cancelAudioActivity() {
@@ -599,7 +630,8 @@ async function submitQuestion(event) {
   event.preventDefault(); if (!state.activePersona) return;
   if (state.realtimeTurnId || state.realtimeExecutionPending || state.audioStarting || state.audioMode !== "idle") return;
   const question = $("question").value.trim(); if (!question) return;
-  appendMessage("user", question); $("send-question").disabled = true; setText("chat-error");
+  state.agentRequestPending = true;
+  appendMessage("user", question); setText("chat-error"); updateComposerControls();
   if (sendRealtime({ type: "text.submit", question })) {
     awaitRealtimeAcknowledgement(question);
     $("question-form").reset();
@@ -609,7 +641,7 @@ async function submitQuestion(event) {
     const result = await api(fetch(`/api/personas/${state.activePersona.id}/agent/query`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question, conversation_id: state.conversationId }) }));
     handleAgentResult(result); $("question-form").reset();
   } catch (reason) { setText("chat-error", reason); }
-  finally { $("send-question").disabled = Boolean(state.pendingAction); }
+  finally { state.agentRequestPending = false; updateComposerControls(); }
 }
 function appendMessage(type, text) {
   if ($("chat-log").querySelector(".empty-state")) $("chat-log").replaceChildren();
@@ -715,8 +747,8 @@ function openSettingsConfirmation(action) {
   const isSave = action === "save";
   $("settings-confirm-title").textContent = isSave ? "保存前确认" : "确认重置配置";
   $("settings-confirm-detail").textContent = isSave
-    ? `对话：${$("llm-provider").selectedOptions[0].textContent} · ${$("openai-model").value.trim() || "未填写模型"}\nEmbedding：${$("embedding-provider").selectedOptions[0].textContent} · ${$("embedding-model").value.trim() || "未填写模型"} · ${$("embedding-dimensions").value || "未填写维度"} 维\n联网搜索：${$("web-search-provider").selectedOptions[0].textContent}\n将更新：${["openai-api-key", "embedding-api-key", "web-search-api-key"].filter((id) => $(id).value.trim()).length || "模型与连接配置"}`
-    : "将清除本机前端保存的 LLM、Embedding、联网搜索配置和 Key。不会影响 .env 中的 MySQL、Milvus 或端口配置。";
+    ? `对话：${$("llm-provider").selectedOptions[0].textContent} · ${$("openai-model").value.trim() || "未填写模型"}\nEmbedding：${$("embedding-provider").selectedOptions[0].textContent} · ${$("embedding-model").value.trim() || "未填写模型"} · ${$("embedding-dimensions").value || "未填写维度"} 维\n联网搜索：${$("web-search-provider").selectedOptions[0].textContent}\n语音识别：${$("asr-provider").selectedOptions[0].textContent} · ${$("asr-model").value.trim() || "未填写模型"}\n将更新：${["openai-api-key", "embedding-api-key", "web-search-api-key", "asr-api-key"].filter((id) => $(id).value.trim()).length || "模型与连接配置"}`
+    : "将清除本机前端保存的 LLM、Embedding、联网搜索、语音识别配置和 Key。不会影响 .env 中的 MySQL、Milvus 或端口配置。";
   $("settings-confirm-submit").textContent = isSave ? "确认保存" : "确认重置";
   $("settings-confirm-dialog").showModal();
 }
