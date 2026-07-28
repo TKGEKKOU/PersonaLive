@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+from starlette.requests import HTTPConnection
 
 from agents.context import PersonaAgentContext
 from app.database import get_session
@@ -12,7 +13,7 @@ router = APIRouter(prefix="/api/personas", tags=["agents"])
 
 
 def context_for(
-    request: Request,
+    connection: HTTPConnection,
     session: Session,
     persona_id: str,
     conversation_id: str,
@@ -30,7 +31,7 @@ def context_for(
         persona_name=persona.name,
         persona_type=persona.persona_type,
         persona_profile=persona.profile_json,
-        session_factory=request.app.state.session_factory,
+        session_factory=connection.app.state.session_factory,
     )
 
 

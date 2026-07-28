@@ -12,6 +12,9 @@ const state = {
   settingsAction: null,
   deletePersona: null,
   savedEmbeddingDimensions: 512,
+  realtimeSocket: null,
+  realtimeTurnId: null,
+  realtimeAnswerNode: null,
 };
 const $ = (id) => document.getElementById(id);
 const LLM_PRESETS = {
@@ -58,6 +61,7 @@ function bindEvents() {
   $("edit-upload-form").addEventListener("submit", uploadEditDocuments);
   $("persona-select").addEventListener("change", selectPersona);
   $("question-form").addEventListener("submit", submitQuestion);
+  $("cancel-generation").addEventListener("click", cancelRealtimeTurn);
   $("confirm-action").addEventListener("click", () => resumeAgent(true));
   $("cancel-action").addEventListener("click", () => resumeAgent(false));
   $("question").addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); $("question-form").requestSubmit(); } });
@@ -221,11 +225,101 @@ function renderPersonaList() {
   }
 }
 function selectPersona() {
+  closeRealtime();
   state.activePersona = state.personas.find((item) => item.id === $("persona-select").value) || null;
   state.conversationId = crypto.randomUUID(); state.pendingAction = null; renderConfirmation(); renderPersonaList();
   $("chat-title").textContent = state.activePersona?.name || "选择角色";
   $("send-question").disabled = !state.activePersona;
   $("chat-log").replaceChildren(empty(state.activePersona ? "开始对话" : "选择角色后开始聊天"));
+  if (state.activePersona) connectRealtime();
+}
+
+function closeRealtime() {
+  const socket = state.realtimeSocket;
+  state.realtimeSocket = null;
+  state.realtimeTurnId = null;
+  state.realtimeAnswerNode = null;
+  setRealtimeBusy(false);
+  if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
+}
+
+function connectRealtime() {
+  if (!state.activePersona) return;
+  const scheme = location.protocol === "https:" ? "wss" : "ws";
+  const url = `${scheme}://${location.host}/ws/personas/${state.activePersona.id}/conversations/${state.conversationId}`;
+  const socket = new WebSocket(url);
+  state.realtimeSocket = socket;
+  socket.addEventListener("message", (message) => {
+    if (socket !== state.realtimeSocket) return;
+    try { handleRealtimeEvent(JSON.parse(message.data)); }
+    catch { setText("chat-error", "实时会话返回了无效数据"); }
+  });
+  socket.addEventListener("close", () => {
+    if (socket !== state.realtimeSocket) return;
+    state.realtimeSocket = null;
+    if (state.realtimeTurnId) {
+      state.realtimeTurnId = null;
+      state.realtimeAnswerNode = null;
+      setRealtimeBusy(false);
+      setText("chat-error", "实时连接已中断，请重新发送消息");
+    }
+  });
+  socket.addEventListener("error", () => {
+    if (socket === state.realtimeSocket) setText("chat-error", "实时连接不可用，将使用普通对话");
+  });
+}
+
+function setRealtimeBusy(busy) {
+  $("question-form").classList.toggle("is-generating", busy);
+  $("cancel-generation").classList.toggle("is-hidden", !busy);
+  $("cancel-generation").disabled = !busy;
+  $("send-question").disabled = busy || Boolean(state.pendingAction) || !state.activePersona;
+  $("confirm-action").disabled = busy;
+  $("cancel-action").disabled = busy;
+}
+
+function handleRealtimeEvent(event) {
+  if (event.type === "session.ready" || event.type === "session.pong" || event.type === "agent.status") return;
+  if (event.type === "turn.started") {
+    state.realtimeTurnId = event.turn_id;
+    state.realtimeAnswerNode = null;
+    setRealtimeBusy(true);
+    return;
+  }
+  if (event.turn_id && event.turn_id !== state.realtimeTurnId) return;
+  if (event.type === "text.delta") {
+    if (!state.realtimeAnswerNode) state.realtimeAnswerNode = appendMessage("assistant", "");
+    state.realtimeAnswerNode.querySelector("p").textContent += event.text;
+  } else if (event.type === "text.final") {
+    if (!state.realtimeAnswerNode && event.answer) state.realtimeAnswerNode = appendMessage("assistant", event.answer);
+    if (state.realtimeAnswerNode) appendResultDetails(state.realtimeAnswerNode, event);
+    state.pendingAction = null;
+    renderConfirmation();
+    state.realtimeTurnId = null;
+    state.realtimeAnswerNode = null;
+    setRealtimeBusy(false);
+  } else if (event.type === "confirmation.required") {
+    state.pendingAction = { action: event.pending_action, specialist: event.specialist };
+    state.realtimeTurnId = null;
+    state.realtimeAnswerNode = null;
+    renderConfirmation();
+    setRealtimeBusy(false);
+  } else if (event.type === "turn.cancelled") {
+    state.realtimeTurnId = null;
+    state.realtimeAnswerNode = null;
+    setRealtimeBusy(false);
+  } else if (event.type === "error") {
+    setText("chat-error", event.message || "实时会话发生错误");
+    state.realtimeTurnId = null;
+    state.realtimeAnswerNode = null;
+    setRealtimeBusy(false);
+  }
+}
+
+function cancelRealtimeTurn() {
+  if (state.realtimeSocket?.readyState === WebSocket.OPEN && state.realtimeTurnId) {
+    state.realtimeSocket.send(JSON.stringify({ type: "generation.cancel" }));
+  }
 }
 
 async function loadEditPersona() {
@@ -305,6 +399,11 @@ async function submitQuestion(event) {
   event.preventDefault(); if (!state.activePersona) return;
   const question = $("question").value.trim(); if (!question) return;
   appendMessage("user", question); $("send-question").disabled = true; setText("chat-error");
+  if (state.realtimeSocket?.readyState === WebSocket.OPEN) {
+    state.realtimeSocket.send(JSON.stringify({ type: "text.submit", question }));
+    $("question-form").reset();
+    return;
+  }
   try {
     const result = await api(fetch(`/api/personas/${state.activePersona.id}/agent/query`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question, conversation_id: state.conversationId }) }));
     handleAgentResult(result); $("question-form").reset();
@@ -321,7 +420,8 @@ function handleAgentResult(result) {
   state.pendingAction = result.status === "pending_confirmation" ? { action: result.pending_action, specialist: result.specialist } : null;
   renderConfirmation(); $("send-question").disabled = Boolean(state.pendingAction) || !state.activePersona; if (result.answer) appendAnswer(result);
 }
-function appendAnswer(result) { const node = appendMessage("assistant", result.answer); if (result.evidence?.length) node.append(details("引用", result.evidence)); if (result.tool_calls?.length) node.append(details("工具", result.tool_calls)); if (result.trace?.length) node.append(details("检索", result.trace)); }
+function appendAnswer(result) { const node = appendMessage("assistant", result.answer); appendResultDetails(node, result); }
+function appendResultDetails(node, result) { if (result.evidence?.length) node.append(details("引用", result.evidence)); if (result.tool_calls?.length) node.append(details("工具", result.tool_calls)); if (result.trace?.length) node.append(details("检索", result.trace)); }
 function renderConfirmation() {
   $("confirmation-panel").classList.toggle("is-hidden", !state.pendingAction); if (!state.pendingAction) return;
   const action = state.pendingAction.action || {}; $("confirmation-title").textContent = action.title || "确认操作"; $("confirmation-detail").textContent = `${action.target || "当前角色"} · ${JSON.stringify(action.arguments || {})}`;
@@ -329,6 +429,10 @@ function renderConfirmation() {
 async function resumeAgent(approved) {
   if (!state.pendingAction || !state.activePersona) return;
   $("confirm-action").disabled = true; $("cancel-action").disabled = true;
+  if (state.realtimeSocket?.readyState === WebSocket.OPEN) {
+    state.realtimeSocket.send(JSON.stringify({ type: "confirmation.respond", specialist: state.pendingAction.specialist, approved }));
+    return;
+  }
   try { const result = await api(fetch(`/api/personas/${state.activePersona.id}/agent/resume`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversation_id: state.conversationId, specialist: state.pendingAction.specialist, approved }) })); handleAgentResult(result); }
   catch (reason) { setText("chat-error", reason); }
   finally { $("confirm-action").disabled = false; $("cancel-action").disabled = false; }

@@ -14,6 +14,7 @@ from app.routers.documents import router as documents_router
 from app.routers.persona_drafts import router as persona_drafts_router
 from app.routers.personas import router as personas_router
 from app.routers.rag import router as rag_router
+from app.routers.realtime import router as realtime_router
 from app.routers.settings import router as settings_router
 from settings import Settings
 from ingestion.status import get_system_status
@@ -50,6 +51,7 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     app.include_router(documents_router)
     app.include_router(persona_drafts_router)
     app.include_router(rag_router)
+    app.include_router(realtime_router)
     app.include_router(settings_router)
 
     @app.get("/api/health")

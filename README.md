@@ -139,6 +139,12 @@ Attu：<http://127.0.0.1:18082>
 - `POST /api/documents/{job_id}/retry-index`：重试失败的入库任务。
 - `GET /api/documents/{job_id}`：查询任务状态。
 - `POST /api/personas/{persona_id}/rag/query`：执行角色隔离的完整 RAG 查询。
+- `POST /api/personas/{persona_id}/agent/query`：通过人设主 Agent 执行对话与 Worker 委派。
+- `POST /api/personas/{persona_id}/agent/resume`：确认或拒绝已暂停的管理操作。
+- `WS /ws/personas/{persona_id}/conversations/{conversation_id}`：建立带轮次 ID、确认事件和取消能力的实时对话。
+
+WebSocket 与 REST 共用同一个 LangGraph 会话和服务端角色作用域。当前实时通道输出
+结构化文字事件；ASR、TTS 和 Live2D 将在后续阶段接入，不属于当前协议基础。
 
 请求不能提交 `workspace_id` 或 `knowledge_space_id`。服务端始终从路径中的角色解析
 作用域，Milvus 写入、删除和查询都携带工作空间与知识空间过滤条件。

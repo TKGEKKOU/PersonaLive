@@ -124,8 +124,10 @@ input:focus, textarea:focus, select:focus { border-color: var(--primary); box-sh
 .confirmation-panel { margin: 10px 14px 0; padding: 11px; border: 1px solid #f3c969; border-radius: 5px; display: flex; align-items: center; justify-content: space-between; gap: 14px; background: #fffbeb; }
 .confirmation-panel p { margin: 3px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .confirmation-actions { display: flex; gap: 7px; flex: none; }
-.composer { margin: 10px 14px 0; display: grid; grid-template-columns: 1fr 48px; gap: 8px; }
+.composer { margin: 10px 14px 0; display: grid; grid-template-columns: minmax(0,1fr) 48px; gap: 8px; }
+.composer.is-generating { grid-template-columns: minmax(0,1fr) 40px 48px; }
 .composer textarea { min-height: 76px; max-height: 160px; resize: none; }
+.composer .icon-button { width: 40px; height: auto; }
 .send-button { border: 0; border-radius: 5px; display: grid; place-items: center; background: var(--primary); color: #fff; }
 .chat-error { margin: 5px 14px 10px; }
 
