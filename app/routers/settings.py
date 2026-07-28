@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -11,12 +12,43 @@ from settings import SUPPORTED_ASR_PROVIDERS, SUPPORTED_WEB_SEARCH_PROVIDERS, Se
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 SETTINGS_PATH = Settings.load().project_root / "data" / "local_settings.json"
-LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
+LOCAL_CLIENT_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
+LOCAL_REQUEST_HOSTS = {"127.0.0.1", "::1", "localhost"}
+
+
+def effective_port(scheme: str, port: int | None) -> int | None:
+    if port is not None:
+        return port
+    return {"http": 80, "https": 443}.get(scheme.lower())
 
 
 def require_local(request: Request) -> None:
-    host = request.client.host if request.client else ""
-    if host not in LOCAL_HOSTS:
+    client_host = request.client.host if request.client else ""
+    if client_host not in LOCAL_CLIENT_HOSTS:
+        raise HTTPException(status_code=403, detail="Local settings are available on localhost only")
+    try:
+        request_host = urlsplit(f"//{request.headers.get('host', '')}")
+        request_hostname = (request_host.hostname or "").lower()
+        request_port = effective_port(request.url.scheme, request_host.port)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="Local settings are available on localhost only") from exc
+    if request_hostname not in LOCAL_REQUEST_HOSTS:
+        raise HTTPException(status_code=403, detail="Local settings are available on localhost only")
+
+    origin = request.headers.get("origin")
+    if not origin:
+        return
+    try:
+        parsed_origin = urlsplit(origin)
+        origin_hostname = (parsed_origin.hostname or "").lower()
+        origin_port = effective_port(parsed_origin.scheme, parsed_origin.port)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="Local settings are available on localhost only") from exc
+    if (
+        parsed_origin.scheme.lower() != request.url.scheme.lower()
+        or origin_hostname not in LOCAL_REQUEST_HOSTS
+        or origin_port != request_port
+    ):
         raise HTTPException(status_code=403, detail="Local settings are available on localhost only")
 
 

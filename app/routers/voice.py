@@ -1,7 +1,7 @@
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from starlette.datastructures import UploadFile
-from starlette.formparsers import MultiPartException, MultiPartParser
+from starlette.formparsers import MultiPartException, MultiPartParser, parse_options_header
 
 from app.routers.settings import require_local
 from app.schemas import TranscriptionResponse
@@ -95,6 +95,10 @@ async def transcribe_audio(request: Request) -> TranscriptionResponse:
     require_local(request)
     if request.headers.get("x-personalive-request") != "web":
         raise HTTPException(status_code=403, detail="Missing same-origin request header")
+    raw_content_type = request.headers.get("content-type", "")
+    media_type, parameters = parse_options_header(raw_content_type)
+    if media_type != b"multipart/form-data" or not parameters.get(b"boundary"):
+        raise HTTPException(status_code=415, detail="Audio upload must use multipart/form-data")
     body = await read_bounded_body(request)
     try:
         form = await MultiPartParser(
