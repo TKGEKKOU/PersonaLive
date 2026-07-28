@@ -1,6 +1,5 @@
 import asyncio
 
-from anyio import to_thread
 from fastapi import APIRouter, HTTPException, Path, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
@@ -13,7 +12,7 @@ from realtime.protocol import (
     parse_client_event,
     server_event,
 )
-from realtime.session import RealtimeSession
+from realtime.session import RealtimeSession, TurnInProgressError
 
 
 router = APIRouter(tags=["realtime"])
@@ -27,11 +26,12 @@ async def persona_realtime(
 ) -> None:
     await websocket.accept()
     realtime = RealtimeSession()
-    db = websocket.app.state.session_factory()
+    send_lock = asyncio.Lock()
 
     try:
         try:
-            context = context_for(websocket, db, persona_id, conversation_id)
+            with websocket.app.state.session_factory() as db:
+                context = context_for(websocket, db, persona_id, conversation_id)
         except HTTPException as exc:
             code = "persona_not_found" if exc.status_code == 404 else "invalid_context"
             await websocket.send_json(
@@ -44,25 +44,30 @@ async def persona_realtime(
             server_event("session.ready", conversation_id=conversation_id)
         )
 
+        async def send(event_type: str, *, turn_id: str | None = None, **payload) -> None:
+            async with send_lock:
+                await websocket.send_json(
+                    server_event(event_type, turn_id=turn_id, **payload)
+                )
+
         async def send_if_current(
             turn_id: str,
             event_type: str,
             **payload,
         ) -> None:
-            if realtime.is_current(turn_id):
-                await websocket.send_json(
-                    server_event(event_type, turn_id=turn_id, **payload)
-                )
+            async with send_lock:
+                if realtime.is_current(turn_id):
+                    await websocket.send_json(
+                        server_event(event_type, turn_id=turn_id, **payload)
+                    )
 
         async def run_query(turn_id: str, question: str) -> None:
             try:
                 await send_if_current(turn_id, "turn.started")
                 await send_if_current(turn_id, "agent.status", status="thinking")
-                result = await to_thread.run_sync(
-                    websocket.app.state.agent_service.query,
-                    question,
-                    context,
-                    abandon_on_cancel=True,
+                result = await websocket.app.state.realtime_executions.run(
+                    f"{persona_id}:{conversation_id}",
+                    lambda: websocket.app.state.agent_service.query(question, context),
                 )
                 if not realtime.is_current(turn_id):
                     return
@@ -91,7 +96,13 @@ async def persona_realtime(
                     message=str(exc),
                 )
             finally:
+                was_cancelled = not realtime.is_current(turn_id)
                 await realtime.finish(turn_id)
+                if was_cancelled:
+                    try:
+                        await send("session.ready", conversation_id=conversation_id)
+                    except RuntimeError:
+                        pass
 
         async def run_resume(
             turn_id: str,
@@ -99,12 +110,13 @@ async def persona_realtime(
         ) -> None:
             try:
                 await send_if_current(turn_id, "turn.started")
-                result = await to_thread.run_sync(
-                    websocket.app.state.agent_service.resume,
-                    context,
-                    event.specialist,
-                    event.approved,
-                    abandon_on_cancel=True,
+                result = await websocket.app.state.realtime_executions.run(
+                    f"{persona_id}:{conversation_id}",
+                    lambda: websocket.app.state.agent_service.resume(
+                        context,
+                        event.specialist,
+                        event.approved,
+                    ),
                 )
                 if not realtime.is_current(turn_id):
                     return
@@ -126,39 +138,46 @@ async def persona_realtime(
                     message=str(exc),
                 )
             finally:
+                was_cancelled = not realtime.is_current(turn_id)
                 await realtime.finish(turn_id)
+                if was_cancelled:
+                    try:
+                        await send("session.ready", conversation_id=conversation_id)
+                    except RuntimeError:
+                        pass
 
         while True:
             try:
                 event = parse_client_event(await websocket.receive_json())
             except (ValidationError, ValueError) as exc:
-                await websocket.send_json(
-                    server_event(
-                        "error",
-                        code="invalid_event",
-                        message=str(exc),
-                    )
+                await send(
+                    "error",
+                    code="invalid_event",
+                    message=str(exc),
                 )
                 continue
 
             if isinstance(event, PingEvent):
-                await websocket.send_json(server_event("session.pong"))
+                await send("session.pong")
             elif isinstance(event, CancelEvent):
                 cancelled = await realtime.cancel()
                 if cancelled:
-                    await websocket.send_json(
-                        server_event("turn.cancelled", turn_id=cancelled)
-                    )
+                    await send("turn.cancelled", turn_id=cancelled)
             elif isinstance(event, TextSubmitEvent):
-                await realtime.start(
-                    lambda turn_id: run_query(turn_id, event.question)
-                )
+                try:
+                    await realtime.start(
+                        lambda turn_id: run_query(turn_id, event.question)
+                    )
+                except TurnInProgressError as exc:
+                    await send("error", code="turn_in_progress", message=str(exc))
             elif isinstance(event, ConfirmationEvent):
-                await realtime.start(
-                    lambda turn_id: run_resume(turn_id, event)
-                )
+                try:
+                    await realtime.start(
+                        lambda turn_id: run_resume(turn_id, event)
+                    )
+                except TurnInProgressError as exc:
+                    await send("error", code="turn_in_progress", message=str(exc))
     except WebSocketDisconnect:
         pass
     finally:
         await realtime.close()
-        db.close()

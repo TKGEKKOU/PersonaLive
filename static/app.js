@@ -15,6 +15,7 @@ const state = {
   realtimeSocket: null,
   realtimeTurnId: null,
   realtimeAnswerNode: null,
+  realtimeExecutionPending: false,
 };
 const $ = (id) => document.getElementById(id);
 const LLM_PRESETS = {
@@ -64,7 +65,7 @@ function bindEvents() {
   $("cancel-generation").addEventListener("click", cancelRealtimeTurn);
   $("confirm-action").addEventListener("click", () => resumeAgent(true));
   $("cancel-action").addEventListener("click", () => resumeAgent(false));
-  $("question").addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); $("question-form").requestSubmit(); } });
+  $("question").addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); if (!$("send-question").disabled) $("question-form").requestSubmit(); } });
   $("settings-form").addEventListener("submit", requestSettingsSave);
   $("reset-settings").addEventListener("click", requestSettingsReset);
   $("settings-confirm-cancel").addEventListener("click", () => $("settings-confirm-dialog").close());
@@ -239,6 +240,7 @@ function closeRealtime() {
   state.realtimeSocket = null;
   state.realtimeTurnId = null;
   state.realtimeAnswerNode = null;
+  state.realtimeExecutionPending = false;
   setRealtimeBusy(false);
   if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
 }
@@ -263,6 +265,8 @@ function connectRealtime() {
       setRealtimeBusy(false);
       setText("chat-error", "实时连接已中断，请重新发送消息");
     }
+    state.realtimeExecutionPending = false;
+    setRealtimeBusy(false);
   });
   socket.addEventListener("error", () => {
     if (socket === state.realtimeSocket) setText("chat-error", "实时连接不可用，将使用普通对话");
@@ -273,13 +277,18 @@ function setRealtimeBusy(busy) {
   $("question-form").classList.toggle("is-generating", busy);
   $("cancel-generation").classList.toggle("is-hidden", !busy);
   $("cancel-generation").disabled = !busy;
-  $("send-question").disabled = busy || Boolean(state.pendingAction) || !state.activePersona;
+  $("send-question").disabled = busy || state.realtimeExecutionPending || Boolean(state.pendingAction) || !state.activePersona;
   $("confirm-action").disabled = busy;
   $("cancel-action").disabled = busy;
 }
 
 function handleRealtimeEvent(event) {
-  if (event.type === "session.ready" || event.type === "session.pong" || event.type === "agent.status") return;
+  if (event.type === "session.ready") {
+    state.realtimeExecutionPending = false;
+    setRealtimeBusy(false);
+    return;
+  }
+  if (event.type === "session.pong" || event.type === "agent.status") return;
   if (event.type === "turn.started") {
     state.realtimeTurnId = event.turn_id;
     state.realtimeAnswerNode = null;
@@ -307,19 +316,25 @@ function handleRealtimeEvent(event) {
   } else if (event.type === "turn.cancelled") {
     state.realtimeTurnId = null;
     state.realtimeAnswerNode = null;
+    state.realtimeExecutionPending = true;
     setRealtimeBusy(false);
   } else if (event.type === "error") {
     setText("chat-error", event.message || "实时会话发生错误");
     state.realtimeTurnId = null;
     state.realtimeAnswerNode = null;
+    if (event.code !== "turn_in_progress") state.realtimeExecutionPending = false;
     setRealtimeBusy(false);
   }
 }
 
+function sendRealtime(payload) {
+  if (state.realtimeSocket?.readyState !== WebSocket.OPEN) return false;
+  try { state.realtimeSocket.send(JSON.stringify(payload)); return true; }
+  catch { return false; }
+}
+
 function cancelRealtimeTurn() {
-  if (state.realtimeSocket?.readyState === WebSocket.OPEN && state.realtimeTurnId) {
-    state.realtimeSocket.send(JSON.stringify({ type: "generation.cancel" }));
-  }
+  if (state.realtimeTurnId) sendRealtime({ type: "generation.cancel" });
 }
 
 async function loadEditPersona() {
@@ -397,10 +412,10 @@ async function uploadEditDocuments(event) {
 
 async function submitQuestion(event) {
   event.preventDefault(); if (!state.activePersona) return;
+  if (state.realtimeTurnId || state.realtimeExecutionPending) return;
   const question = $("question").value.trim(); if (!question) return;
   appendMessage("user", question); $("send-question").disabled = true; setText("chat-error");
-  if (state.realtimeSocket?.readyState === WebSocket.OPEN) {
-    state.realtimeSocket.send(JSON.stringify({ type: "text.submit", question }));
+  if (sendRealtime({ type: "text.submit", question })) {
     $("question-form").reset();
     return;
   }
@@ -429,8 +444,7 @@ function renderConfirmation() {
 async function resumeAgent(approved) {
   if (!state.pendingAction || !state.activePersona) return;
   $("confirm-action").disabled = true; $("cancel-action").disabled = true;
-  if (state.realtimeSocket?.readyState === WebSocket.OPEN) {
-    state.realtimeSocket.send(JSON.stringify({ type: "confirmation.respond", specialist: state.pendingAction.specialist, approved }));
+  if (sendRealtime({ type: "confirmation.respond", specialist: state.pendingAction.specialist, approved })) {
     return;
   }
   try { const result = await api(fetch(`/api/personas/${state.activePersona.id}/agent/resume`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversation_id: state.conversationId, specialist: state.pendingAction.specialist, approved }) })); handleAgentResult(result); }

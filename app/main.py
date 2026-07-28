@@ -19,6 +19,7 @@ from app.routers.settings import router as settings_router
 from settings import Settings
 from ingestion.status import get_system_status
 from persona.delete_service import PersonaDeletionService
+from realtime.execution import ConversationExecutionRegistry
 
 STATIC_DIR = Path(__file__).resolve().parents[1] / "static"
 
@@ -38,6 +39,7 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     engine = build_engine(settings)
     app.state.session_factory = build_session_factory(engine)
     app.state.persona_delete_service = PersonaDeletionService(settings)
+    app.state.realtime_executions = ConversationExecutionRegistry()
     if initialize_database:
         Base.metadata.create_all(engine)
         upgrade_persona_schema(engine)

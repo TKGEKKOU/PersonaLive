@@ -3,6 +3,10 @@ from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
 
+class TurnInProgressError(RuntimeError):
+    pass
+
+
 class RealtimeSession:
     """Own the active turn for one WebSocket connection."""
 
@@ -15,8 +19,9 @@ class RealtimeSession:
         self,
         factory: Callable[[str], Awaitable[None]],
     ) -> str:
-        await self.cancel()
         async with self._lock:
+            if self._task and not self._task.done():
+                raise TurnInProgressError("The previous turn is still finishing")
             turn_id = str(uuid4())
             self._turn_id = turn_id
             self._task = asyncio.create_task(factory(turn_id))
@@ -25,15 +30,7 @@ class RealtimeSession:
     async def cancel(self) -> str | None:
         async with self._lock:
             turn_id = self._turn_id
-            task = self._task
             self._turn_id = None
-            self._task = None
-        if task and not task.done():
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
         return turn_id
 
     def is_current(self, turn_id: str) -> bool:
@@ -41,9 +38,8 @@ class RealtimeSession:
 
     async def finish(self, turn_id: str) -> None:
         async with self._lock:
-            if self._turn_id != turn_id:
-                return
-            self._turn_id = None
+            if self._turn_id == turn_id:
+                self._turn_id = None
             self._task = None
 
     async def close(self) -> None:
