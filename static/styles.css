@@ -159,6 +159,11 @@ input:focus, textarea:focus, select:focus { border-color: var(--primary); box-sh
 .settings-confirm-dialog h2 { margin: 0; font-size: 17px; }
 .settings-confirm-detail { margin: 14px 0 0; color: var(--muted); font-size: 13px; line-height: 1.7; white-space: pre-line; overflow-wrap: anywhere; }
 .settings-confirm-actions { margin-top: 18px; display: flex; justify-content: flex-end; gap: 8px; }
+.toggle-field { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; }
+.toggle-field input { width: 16px; height: 16px; }
+.asr-resource-bar { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.asr-resource-bar p { margin: 4px 0 0; overflow-wrap: anywhere; }
+.asr-actions { display: flex; gap: 8px; flex: none; }
 
 .backdrop { position: fixed; inset: 0; z-index: 30; background: rgba(24,25,28,.4); opacity: 0; pointer-events: none; }
 .preview-drawer { position: fixed; z-index: 31; top: 0; right: 0; width: min(680px,92vw); height: 100vh; border-left: 1px solid var(--line); background: #fff; transform: translateX(100%); transition: transform .16s; display: grid; grid-template-rows: 62px 1fr; }
@@ -189,6 +194,8 @@ input:focus, textarea:focus, select:focus { border-color: var(--primary); box-sh
   .form-footer, .draft-actions, .settings-actions { align-items: stretch; flex-direction: column; }
   .form-footer p, .settings-actions p { margin-right: 0; }
   .checkbox-field { padding-top: 0; }
+  .asr-resource-bar { align-items: stretch; flex-direction: column; }
+  .asr-actions { flex-direction: column; }
   .chat-layout { height: calc(100vh - 128px); min-height: 520px; display: block; }
   .persona-sidebar { display: none; }
   .chat-panel { height: 100%; }

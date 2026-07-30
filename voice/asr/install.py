@@ -85,9 +85,9 @@ class ASRResourceManager:
     def resolve(self) -> ASRResources:
         values = self.config()
         return ASRResources(
-            python=self._file(values["python_path"], self.runtime_python, BUNDLE_PYTHON),
-            model=self._model(values["model_path"], self.managed_model, BUNDLE_MODEL),
-            ffmpeg=self._file(values["ffmpeg_path"], Path("__missing__"), BUNDLE_FFMPEG, "ffmpeg"),
+            python=self._file(values["python_path"] or os.getenv("PERSONALIVE_ASR_PYTHON", ""), self.runtime_python, BUNDLE_PYTHON),
+            model=self._model(values["model_path"] or os.getenv("PERSONALIVE_ASR_MODEL", ""), self.managed_model, BUNDLE_MODEL),
+            ffmpeg=self._file(values["ffmpeg_path"] or os.getenv("PERSONALIVE_ASR_FFMPEG", ""), Path("__missing__"), BUNDLE_FFMPEG, "ffmpeg"),
         )
 
     def status(self) -> dict:
@@ -96,6 +96,7 @@ class ASRResourceManager:
         return {
             **values,
             "installed": resources.ready,
+            "managed_installed": self.runtime_dir.is_dir() or self.managed_model.is_dir(),
             "ready": bool(values["enabled"] and resources.ready),
             "installing": self._installing,
             "error": self._error,

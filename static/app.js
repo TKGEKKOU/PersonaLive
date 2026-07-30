@@ -21,7 +21,7 @@ const state = {
   realtimeAckTimer: null,
   realtimeBusy: false,
   agentRequestPending: false,
-  asrConfigured: true,
+  asrConfigured: false,
   audioMode: "idle",
   audioStarting: false,
   audioRecorder: null,
@@ -48,7 +48,7 @@ const WEB_SEARCH_GUIDES = {
 
 document.addEventListener("DOMContentLoaded", async () => {
   bindEvents();
-  await Promise.all([loadStatus(), loadPersonas(), loadSettings()]);
+  await Promise.all([loadStatus(), loadPersonas(), loadSettings(), loadAsrStatus()]);
   icons();
 });
 
@@ -93,6 +93,9 @@ function bindEvents() {
   $("embedding-dimensions").addEventListener("input", renderEmbeddingWarning);
   $("web-search-provider").addEventListener("change", renderWebSearchSettings);
   $("clear-conversation").addEventListener("click", clearConversation);
+  $("save-asr").addEventListener("click", saveAsrConfig);
+  $("install-asr").addEventListener("click", installAsr);
+  $("remove-asr").addEventListener("click", removeAsr);
   $("close-preview").addEventListener("click", closePreview);
   $("preview-backdrop").addEventListener("click", closePreview);
 }
@@ -743,6 +746,49 @@ async function loadSettings() {
     state.savedEmbeddingDimensions = config.embedding_dimensions;
     renderEmbeddingWarning(); renderWebSearchSettings(); renderAudioState();
   } catch (reason) { setText("settings-status", reason); }
+}
+async function loadAsrStatus() {
+  try {
+    const config = await api(fetch("/api/asr/status"));
+    $("asr-enabled").checked = config.enabled;
+    $("asr-python-path").value = config.python_path || "";
+    $("asr-model-path").value = config.model_path || "";
+    $("asr-ffmpeg-path").value = config.ffmpeg_path || "";
+    state.asrConfigured = config.ready;
+    $("asr-state").textContent = config.installing ? "正在安装" : config.ready ? "已就绪" : config.enabled ? "尚未安装" : "已关闭";
+    setText("asr-status", config.error || (config.ready ? `Qwen3-ASR-0.6B · ${config.resolved_model}` : config.download_size));
+    $("install-asr").disabled = config.installing || config.ready;
+    $("remove-asr").disabled = config.installing || !config.managed_installed;
+    updateComposerControls();
+    if (config.installing) setTimeout(loadAsrStatus, 2000);
+  } catch (reason) {
+    state.asrConfigured = false; setText("asr-status", reason); updateComposerControls();
+  }
+}
+async function saveAsrConfig() {
+  $("save-asr").disabled = true;
+  try {
+    await api(fetch("/api/asr/config", { method: "PATCH", headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" }, body: JSON.stringify({ enabled: $("asr-enabled").checked, python_path: $("asr-python-path").value.trim(), model_path: $("asr-model-path").value.trim(), ffmpeg_path: $("asr-ffmpeg-path").value.trim() }) }));
+    await loadAsrStatus();
+  } catch (reason) { setText("asr-status", reason); }
+  finally { $("save-asr").disabled = false; }
+}
+async function installAsr() {
+  if (!confirm("将下载约 5-10 GB 的 CUDA 运行环境和 Qwen3-ASR 模型，是否继续？")) return;
+  $("install-asr").disabled = true;
+  try {
+    await saveAsrConfig();
+    await api(fetch("/api/asr/install", { method: "POST", headers: { "X-PersonaLive-Request": "web" } }));
+    await loadAsrStatus();
+  } catch (reason) { setText("asr-status", reason); $("install-asr").disabled = false; }
+}
+async function removeAsr() {
+  if (!confirm("删除项目自动下载的 ASR 环境和模型？外部目录不会被删除。")) return;
+  $("remove-asr").disabled = true;
+  try {
+    await api(fetch("/api/asr/install", { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
+    await loadAsrStatus();
+  } catch (reason) { setText("asr-status", reason); $("remove-asr").disabled = false; }
 }
 function normalizedUrl(value) { return value.trim().replace(/\/+$/, "").toLowerCase(); }
 function inferProvider(presets, baseUrl) {
