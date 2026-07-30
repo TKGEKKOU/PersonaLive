@@ -526,7 +526,10 @@ async function finishAudioRecording() {
     updateAudioMessage(result.message);
     handleAgentResult(result.turn);
   } catch (error) {
-    if (operationId === state.audioOperationId && error?.name !== "AbortError") setText("chat-error", audioErrorMessage(error));
+    if (operationId === state.audioOperationId && error?.name !== "AbortError") {
+      setText("chat-error", audioErrorMessage(error));
+      await loadConversationMessages();
+    }
   } finally {
     if (operationId === state.audioOperationId) {
       state.audioAbortController = null;

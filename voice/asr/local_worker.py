@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 WORKER_URL = "http://127.0.0.1:8765"
 QWEN_BUNDLE_PYTHON = Path(r"D:\Qwen3_ASR\WPy64-312101\python\python.exe")
+QWEN_BUNDLE_BIN = Path(r"D:\Qwen3_ASR\bin")
 _managers: dict[Path, "LocalASRManager"] = {}
 
 
@@ -49,6 +50,8 @@ class LocalASRManager:
             await asyncio.to_thread(self._ensure_runtime)
             env = os.environ.copy()
             env["HF_HOME"] = str(self.project_root / "data" / "models")
+            if QWEN_BUNDLE_BIN.is_dir():
+                env["PATH"] = f"{QWEN_BUNDLE_BIN}{os.pathsep}{env.get('PATH', '')}"
             self.process = subprocess.Popen(
                 [str(self.python), "-B", "-m", "voice.asr.worker_server"],
                 cwd=self.project_root,
