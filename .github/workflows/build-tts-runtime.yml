@@ -1,0 +1,63 @@
+name: Build TTS runtime
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/build-tts-runtime.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  windows-cpu:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout qwen3-tts.cpp
+        shell: pwsh
+        run: git clone --recursive https://github.com/predict-woo/qwen3-tts.cpp.git tts-src
+
+      - name: Pin reviewed revision
+        working-directory: tts-src
+        shell: pwsh
+        run: |
+          git checkout b3ba14077cf1b3e11b86e5f84aa9184605c89b28
+          git submodule update --init --recursive
+
+      - name: Build static GGML
+        shell: pwsh
+        run: |
+          cmake -S tts-src/ggml -B tts-src/ggml/build -A x64 -DGGML_NATIVE=OFF -DGGML_VULKAN=OFF -DBUILD_SHARED_LIBS=OFF -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+          cmake --build tts-src/ggml/build --config Release --parallel
+
+      - name: Build TTS CLI
+        shell: pwsh
+        run: |
+          cmake -S tts-src -B tts-src/build -A x64 -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+          cmake --build tts-src/build --config Release --target qwen3-tts-cli --parallel
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path package | Out-Null
+          Copy-Item tts-src/build/Release/qwen3-tts-cli.exe package/
+          Copy-Item tts-src/LICENSE package/LICENSE-qwen3-tts.cpp.txt
+          Compress-Archive -Path package/* -DestinationPath personalive-tts-runtime-windows-x64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: personalive-tts-runtime-windows-x64
+          path: personalive-tts-runtime-windows-x64.zip
+          if-no-files-found: error
+
+      - name: Publish reusable runtime asset
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view tts-runtime-latest 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create tts-runtime-latest --title "PersonaLive TTS Runtime" --notes "Pinned Windows x64 CPU runtime built from qwen3-tts.cpp."
+          }
+          gh release upload tts-runtime-latest personalive-tts-runtime-windows-x64.zip --clobber

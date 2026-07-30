@@ -34,3 +34,16 @@ governed by separate licenses.
 
 Files that directly incorporate upstream code must retain their applicable
 copyright and license notices.
+
+## qwen3-tts.cpp
+
+PersonaLive can download a Windows runtime built from the MIT-licensed
+qwen3-tts.cpp project:
+
+- Project: qwen3-tts.cpp
+- Repository: <https://github.com/predict-woo/qwen3-tts.cpp>
+- Reviewed commit: `b3ba14077cf1b3e11b86e5f84aa9184605c89b28`
+- License: MIT
+
+The runtime archive includes the upstream license. GGUF model files are
+downloaded separately from ModelScope and are not committed to this repository.

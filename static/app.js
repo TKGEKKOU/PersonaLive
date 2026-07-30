@@ -22,6 +22,7 @@ const state = {
   realtimeBusy: false,
   agentRequestPending: false,
   asrConfigured: false,
+  ttsConfigured: false,
   audioMode: "idle",
   audioStarting: false,
   audioRecorder: null,
@@ -48,7 +49,7 @@ const WEB_SEARCH_GUIDES = {
 
 document.addEventListener("DOMContentLoaded", async () => {
   bindEvents();
-  await Promise.all([loadStatus(), loadPersonas(), loadSettings(), loadAsrStatus()]);
+  await Promise.all([loadStatus(), loadPersonas(), loadSettings(), loadAsrStatus(), loadTtsStatus()]);
   icons();
 });
 
@@ -96,6 +97,9 @@ function bindEvents() {
   $("save-asr").addEventListener("click", saveAsrConfig);
   $("install-asr").addEventListener("click", installAsr);
   $("remove-asr").addEventListener("click", removeAsr);
+  $("tts-enabled").addEventListener("change", saveTtsConfig);
+  $("install-tts").addEventListener("click", installTts);
+  $("remove-tts").addEventListener("click", removeTts);
   $("close-preview").addEventListener("click", closePreview);
   $("preview-backdrop").addEventListener("click", closePreview);
 }
@@ -573,6 +577,9 @@ async function loadEditPersona() {
   if (!state.editPersona) return;
   $("edit-persona-name").value = state.editPersona.name;
   $("edit-persona-profile").value = state.editPersona.profile?.description || "";
+  $("edit-tts-enabled").checked = Boolean(state.editPersona.profile?.tts?.enabled);
+  $("edit-tts-auto-play").checked = state.editPersona.profile?.tts?.auto_play !== false;
+  $("edit-tts-reference").value = "";
   await loadEditDocuments();
 }
 function requestPersonaDeletion() {
@@ -618,7 +625,13 @@ async function saveEditPersona(event) {
   event.preventDefault(); if (!state.editPersona) return;
   setText("edit-persona-status");
   try {
-    state.editPersona = await api(fetch(`/api/personas/${state.editPersona.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: $("edit-persona-name").value.trim(), profile: { description: $("edit-persona-profile").value.trim() } }) }));
+    const profile = { ...(state.editPersona.profile || {}), description: $("edit-persona-profile").value.trim(), tts: { ...(state.editPersona.profile?.tts || {}), enabled: $("edit-tts-enabled").checked, auto_play: $("edit-tts-auto-play").checked } };
+    state.editPersona = await api(fetch(`/api/personas/${state.editPersona.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: $("edit-persona-name").value.trim(), profile }) }));
+    const reference = $("edit-tts-reference").files[0];
+    if (reference) {
+      const form = new FormData(); form.append("file", reference);
+      state.editPersona = await api(fetch(`/api/tts/personas/${state.editPersona.id}/reference`, { method: "POST", headers: { "X-PersonaLive-Request": "web" }, body: form }));
+    }
     setText("edit-persona-status", "已保存"); await loadPersonas(); $("edit-persona-select").value = state.editPersona.id;
   } catch (reason) { setText("edit-persona-status", reason); }
 }
@@ -663,9 +676,13 @@ function appendMessage(type, text) {
 function appendAudioMessage(message) {
   if ($("chat-log").querySelector(".empty-state")) $("chat-log").replaceChildren();
   const node = document.createElement("article");
-  node.className = "message message-user message-audio"; node.dataset.messageId = message.id;
-  const label = document.createElement("strong"); label.textContent = "你";
+  node.className = `message message-${message.role} message-audio`; node.dataset.messageId = message.id;
+  const label = document.createElement("strong"); label.textContent = message.role === "assistant" ? state.activePersona.name : "你";
   const audio = document.createElement("audio"); audio.controls = true; audio.preload = "metadata"; audio.src = message.audio_url;
+  if (message.role === "assistant") {
+    const body = document.createElement("p"); body.textContent = message.content; node.append(label, body, audio);
+    $("chat-log").append(node); node.scrollIntoView({ block: "nearest" }); return node;
+  }
   const transcript = document.createElement("details"); transcript.className = "voice-transcript";
   const summary = document.createElement("summary"); summary.textContent = message.status === "failed" ? "识别失败" : "查看转写";
   const text = document.createElement("p"); text.textContent = message.transcript || (message.status === "failed" ? message.error_message : "正在识别…");
@@ -710,7 +727,16 @@ function handleAgentResult(result) {
   state.pendingAction = result.status === "pending_confirmation" ? { action: result.pending_action, specialist: result.specialist } : null;
   renderConfirmation(); $("send-question").disabled = Boolean(state.pendingAction) || !state.activePersona; if (result.answer) appendAnswer(result);
 }
-function appendAnswer(result) { const node = appendMessage("assistant", result.answer); appendResultDetails(node, result); }
+function appendAnswer(result) { const node = appendMessage("assistant", result.answer); appendResultDetails(node, result); synthesizeAnswer(result.answer, node); }
+async function synthesizeAnswer(text, node) {
+  const voice = state.activePersona?.profile?.tts;
+  if (!state.ttsConfigured || !voice?.enabled || !text) return;
+  try {
+    const message = await api(fetch(`/api/tts/personas/${state.activePersona.id}/conversations/${state.conversationId}/synthesize`, { method: "POST", headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" }, body: JSON.stringify({ text }) }));
+    const audio = document.createElement("audio"); audio.controls = true; audio.preload = "metadata"; audio.src = message.audio_url; node.append(audio);
+    if (voice.auto_play !== false) audio.play().catch(() => {});
+  } catch (reason) { setText("chat-error", `文字回复正常，语音生成失败：${reason.message || reason}`); }
+}
 function appendResultDetails(node, result) { if (result.evidence?.length) node.append(details("引用", result.evidence)); if (result.tool_calls?.length) node.append(details("工具", result.tool_calls)); if (result.trace?.length) node.append(details("检索", result.trace)); }
 function renderConfirmation() {
   $("confirmation-panel").classList.toggle("is-hidden", !state.pendingAction); if (!state.pendingAction) return;
@@ -789,6 +815,45 @@ async function removeAsr() {
     await api(fetch("/api/asr/install", { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
     await loadAsrStatus();
   } catch (reason) { setText("asr-status", reason); $("remove-asr").disabled = false; }
+}
+async function loadTtsStatus() {
+  try {
+    const config = await api(fetch("/api/tts/status"));
+    state.ttsConfigured = config.ready;
+    $("tts-enabled").checked = config.enabled;
+    const phaseNames = { preparing: "准备下载", runtime: "下载 C++ 运行库", extracting: "解压运行库", model: "下载语音模型", complete: "安装完成", error: "安装失败" };
+    $("tts-state").textContent = config.installing ? (phaseNames[config.phase] || "正在安装") : config.ready ? "已就绪" : config.enabled ? "尚未安装" : "已关闭";
+    setText("tts-status", config.error || (!config.runtime_bundled ? "当前开发目录缺少内置 C++ 运行库；完整 Windows 发布包将自带该文件" : config.ready ? `Qwen3-TTS-0.6B · ${config.model_dir}` : config.download_size));
+    const progress = $("tts-progress"); progress.classList.toggle("is-hidden", !config.installing);
+    if (config.progress_percent == null) progress.removeAttribute("value"); else progress.value = config.progress_percent;
+    const size = (bytes) => bytes ? `${(bytes / 1024 / 1024).toFixed(bytes > 1024 * 1024 * 100 ? 0 : 1)} MB` : "";
+    setText("tts-progress-detail", config.installing ? [config.current_file, size(config.downloaded_bytes), config.total_bytes ? `/ ${size(config.total_bytes)}` : ""].filter(Boolean).join(" ") : "");
+    $("install-tts").disabled = config.installing || config.ready || !config.runtime_bundled;
+    $("remove-tts").disabled = config.installing || !config.managed_installed;
+    if (config.installing) setTimeout(loadTtsStatus, 2000);
+  } catch (reason) { state.ttsConfigured = false; setText("tts-status", reason); }
+}
+async function saveTtsConfig() {
+  try {
+    await api(fetch("/api/tts/config", { method: "PATCH", headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" }, body: JSON.stringify({ enabled: $("tts-enabled").checked }) }));
+    await loadTtsStatus();
+  } catch (reason) { setText("tts-status", reason); }
+}
+async function installTts() {
+  if (!confirm("将下载约 3 GB 的 Qwen3-TTS GGUF 模型，C++ 运行库已随应用内置。是否继续？")) return;
+  $("install-tts").disabled = true;
+  try {
+    await api(fetch("/api/tts/install", { method: "POST", headers: { "X-PersonaLive-Request": "web" } }));
+    await loadTtsStatus();
+  } catch (reason) { setText("tts-status", reason); $("install-tts").disabled = false; }
+}
+async function removeTts() {
+  if (!confirm("删除项目自动下载的 TTS 模型和运行库？角色参考声音不会删除。")) return;
+  $("remove-tts").disabled = true;
+  try {
+    await api(fetch("/api/tts/install", { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
+    await loadTtsStatus();
+  } catch (reason) { setText("tts-status", reason); $("remove-tts").disabled = false; }
 }
 function normalizedUrl(value) { return value.trim().replace(/\/+$/, "").toLowerCase(); }
 function inferProvider(presets, baseUrl) {

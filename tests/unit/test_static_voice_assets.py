@@ -29,3 +29,17 @@ def test_local_asr_install_controls_are_present():
         assert f'id="{control}"' in html
     assert 'fetch("/api/asr/status")' in script
     assert 'fetch("/api/asr/install"' in script
+
+
+def test_local_tts_install_controls_are_present():
+    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+    script = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+    for control in ["tts-enabled", "tts-state", "install-tts", "remove-tts"]:
+        assert f'id="{control}"' in html
+    for control in ["tts-progress", "tts-progress-detail"]:
+        assert f'id="{control}"' in html
+    assert 'fetch("/api/tts/status")' in script
+    assert 'fetch("/api/tts/install"' in script
+    for control in ["edit-tts-enabled", "edit-tts-auto-play", "edit-tts-reference"]:
+        assert f'id="{control}"' in html
+    assert "/reference`" in script

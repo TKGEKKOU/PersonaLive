@@ -173,6 +173,12 @@ $env:PERSONALIVE_PYPI_INDEX = "https://your-mirror.example/simple/"
 $env:PERSONALIVE_PYTORCH_INDEX = "https://your-mirror.example/pytorch/cu128/"
 ```
 
+本地语音合成使用 Qwen3-TTS GGUF 模型和内置的 C++ CPU 运行库。Windows 发布包自带
+`runtime/tts/qwen3-tts-cli.exe`，用户只需在“设置 → 本地语音合成”中下载约 3 GB 模型；模型保存于
+`models/Qwen3-TTS`，完成后可离线使用。每个角色可启用语音、自动播放并上传独立 WAV 参考声音，
+生成的助手音频随对话历史保存，并随清空对话删除。源码开发目录若缺少内置 CLI，将明确禁用模型安装；
+维护者可通过 GitHub Actions 的 `Build TTS runtime` 工作流生成固定版本的 Windows 运行库。
+
 API 文档：<http://127.0.0.1:8001/docs>
 
 Web 工作台：<http://127.0.0.1:8001/static/index.html>
