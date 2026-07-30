@@ -125,22 +125,32 @@ class ASRResourceManager:
                 "PERSONALIVE_PYTORCH_INDEX",
                 "https://mirrors.aliyun.com/pytorch-wheels/cu128/",
             )
-            subprocess.run(
-                [
-                    str(self.runtime_python),
-                    "-m",
-                    "pip",
-                    "install",
-                    "--index-url",
-                    pypi_index,
-                    "--extra-index-url",
-                    pytorch_index,
-                    "-r",
-                    str(self.requirements),
-                ],
-                cwd=self.project_root,
-                check=True,
-            )
+            pip_command = [
+                str(self.runtime_python),
+                "-m",
+                "pip",
+                "install",
+                "--timeout",
+                "30",
+                "--retries",
+                "1",
+                "--index-url",
+                pypi_index,
+                "--extra-index-url",
+                pytorch_index,
+                "-r",
+                str(self.requirements),
+            ]
+            try:
+                subprocess.run(pip_command, cwd=self.project_root, check=True, capture_output=True, text=True)
+            except subprocess.CalledProcessError as domestic_error:
+                # Domestic mirrors do not always carry every CUDA Wheel release.
+                pip_command[pip_command.index(pytorch_index)] = "https://download.pytorch.org/whl/cu128"
+                try:
+                    subprocess.run(pip_command, cwd=self.project_root, check=True, capture_output=True, text=True)
+                except subprocess.CalledProcessError as fallback_error:
+                    detail = fallback_error.stderr or domestic_error.stderr or "pip install failed"
+                    raise RuntimeError(detail[-2000:]) from fallback_error
             model_id = os.getenv("PERSONALIVE_ASR_MODEL_ID", "Qwen/Qwen3-ASR-0.6B")
             script = (
                 "from modelscope import snapshot_download; "
@@ -160,7 +170,7 @@ class ASRResourceManager:
                 f"shutil.copy2(get_ffmpeg_exe(), {str(self.managed_ffmpeg)!r})"
             )
             subprocess.run([str(self.runtime_python), "-c", ffmpeg_script], cwd=self.project_root, check=True)
-        except (OSError, subprocess.CalledProcessError) as exc:
+        except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
             self._error = str(exc)
         finally:
             self._installing = False

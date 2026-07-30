@@ -10,7 +10,8 @@
     "target": "runtime/asr",
     "requirements": "voice/asr/requirements-local.txt",
     "pypi_index": "https://mirrors.aliyun.com/pypi/simple/",
-    "pytorch_index": "https://mirrors.aliyun.com/pytorch-wheels/cu128/"
+    "pytorch_index": "https://mirrors.aliyun.com/pytorch-wheels/cu128/",
+    "pytorch_fallback_index": "https://download.pytorch.org/whl/cu128"
   },
   "ffmpeg": {
     "target": "runtime/ffmpeg/ffmpeg.exe",
