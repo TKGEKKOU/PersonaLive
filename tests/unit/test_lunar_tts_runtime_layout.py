@@ -10,7 +10,7 @@ def test_lunar_tts_build_workflow_packages_license_and_service():
     assert "libgomp-1.dll" in workflow
     assert "libstdc++-6.dll" in workflow
     assert "libwinpthread-1.dll" in workflow
-    assert "third_party/lunar_tts/LICENSE" in workflow
+    assert "LICENSE-Lunar-Astral-Agents.txt" in workflow
     assert "Compress-Archive" not in workflow
 
 
