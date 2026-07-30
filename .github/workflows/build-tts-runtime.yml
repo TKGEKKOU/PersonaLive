@@ -25,16 +25,25 @@ jobs:
           git checkout b3ba14077cf1b3e11b86e5f84aa9184605c89b28
           git submodule update --init --recursive
 
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+
       - name: Build static GGML
-        shell: pwsh
+        shell: msys2 {0}
         run: |
-          cmake -S tts-src/ggml -B tts-src/ggml/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_VULKAN=OFF -DBUILD_SHARED_LIBS=OFF -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+          cmake -S tts-src/ggml -B tts-src/ggml/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_VULKAN=OFF -DBUILD_SHARED_LIBS=OFF
           cmake --build tts-src/ggml/build --parallel
 
       - name: Build TTS CLI
-        shell: pwsh
+        shell: msys2 {0}
         run: |
-          cmake -S tts-src -B tts-src/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+          cmake -S tts-src -B tts-src/build -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build tts-src/build --target qwen3-tts-cli --parallel
 
       - name: Package
