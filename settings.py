@@ -5,7 +5,6 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 SUPPORTED_WEB_SEARCH_PROVIDERS = frozenset({"off", "tavily", "bocha", "custom"})
-SUPPORTED_ASR_PROVIDERS = frozenset({"off", "openai", "custom"})
 
 
 @dataclass(frozen=True)
@@ -40,11 +39,6 @@ class Settings:
     embedding_api_key: str
     embedding_base_url: str
     embedding_model: str
-    asr_provider: str
-    asr_api_key: str
-    asr_base_url: str
-    asr_model: str
-    asr_language: str
 
     @classmethod
     def load(cls, root: Path | None = None) -> "Settings":
@@ -73,9 +67,6 @@ class Settings:
             web_search_provider = "off"
         web_search_api_key = local_get("web_search_api_key", local_get("tavily_api_key", ""))
         web_search_base_url = local_get("web_search_base_url", "")
-        asr_provider = local_get("asr_provider", "off")
-        if asr_provider not in SUPPORTED_ASR_PROVIDERS:
-            asr_provider = "off"
         return cls(
             project_root=project_root,
             app_host=get("APP_HOST", "127.0.0.1"),
@@ -107,9 +98,4 @@ class Settings:
             embedding_api_key=local_get("embedding_api_key", ""),
             embedding_base_url=local_get("embedding_base_url", ""),
             embedding_model=local_get("embedding_model", ""),
-            asr_provider=asr_provider,
-            asr_api_key=local_get("asr_api_key", ""),
-            asr_base_url=local_get("asr_base_url", ""),
-            asr_model=local_get("asr_model", ""),
-            asr_language=local_get("asr_language", ""),
         )

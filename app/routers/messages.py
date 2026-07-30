@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -111,6 +112,37 @@ def list_messages(persona_id: str, conversation_id: str, session: Session = Depe
         .order_by(ConversationMessage.created_at, ConversationMessage.id)
     )
     return [message_response(message) for message in session.scalars(statement)]
+
+
+@router.delete(
+    "/api/personas/{persona_id}/conversations/{conversation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def clear_conversation(
+    persona_id: str,
+    conversation_id: str,
+    request: Request,
+    x_personalive_request: str = Header(default=""),
+    session: Session = Depends(get_session),
+):
+    if x_personalive_request != "web":
+        raise HTTPException(status_code=403, detail="Missing same-origin request header")
+    local_persona_or_404(session, persona_id)
+    statement = select(ConversationMessage).where(
+        ConversationMessage.workspace_id == LOCAL_WORKSPACE_ID,
+        ConversationMessage.persona_id == persona_id,
+        ConversationMessage.conversation_id == conversation_id,
+    )
+    messages = list(session.scalars(statement))
+    thread_id = f"{persona_id}:{conversation_id}"
+    request.app.state.agent_service.checkpointer.delete_thread(thread_id)
+    directory = AUDIO_ROOT / hashlib.sha256(conversation_id.encode("utf-8")).hexdigest()[:32]
+    if directory.exists():
+        shutil.rmtree(directory)
+    for message in messages:
+        session.delete(message)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/api/voice-messages/{message_id}/audio")

@@ -169,11 +169,6 @@ class LocalSettingsUpdate(BaseModel):
     web_search_base_url: str | None = None
     tavily_api_key: str | None = None
     enable_web_fallback: bool | None = None
-    asr_provider: str | None = None
-    asr_api_key: str | None = None
-    asr_base_url: str | None = None
-    asr_model: str | None = None
-    asr_language: str | None = None
 
 
 class LocalSettingsResponse(BaseModel):
@@ -189,11 +184,6 @@ class LocalSettingsResponse(BaseModel):
     web_search_api_key_configured: bool
     web_search_base_url: str
     enable_web_fallback: bool
-    asr_provider: str
-    asr_api_key_configured: bool
-    asr_base_url: str
-    asr_model: str
-    asr_language: str
     restart_required: bool = False
 
 

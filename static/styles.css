@@ -117,6 +117,12 @@ input:focus, textarea:focus, select:focus { border-color: var(--primary); box-sh
 .message-user { align-self: flex-end; }
 .message-user > strong { text-align: right; }
 .message-user > p { border-color: #c5eaf7; background: var(--primary-soft); }
+.message-audio { width: min(420px, 85%); }
+.message-audio audio { display: block; width: 100%; margin-top: 6px; }
+.voice-transcript { margin-top: 8px; font-size: 13px; color: var(--muted); }
+.voice-transcript summary { cursor: pointer; }
+.voice-transcript p { margin: 6px 0 0; white-space: pre-wrap; }
+.voice-retry { margin-top: 8px; align-self: flex-end; }
 .message details { margin-top: 6px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--muted); font-size: 12px; }
 .message summary { padding: 7px 9px; cursor: pointer; }
 .message pre { max-height: 260px; margin: 0; padding: 9px; border-top: 1px solid var(--line); overflow: auto; white-space: pre-wrap; }

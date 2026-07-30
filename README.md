@@ -14,8 +14,8 @@ Embedding 与 BM25 sparse 检索、RRF 融合完成问答。
   负责检索或执行工具，人设主 Agent 结合完整角色资料统一生成最终答复。
 - 天气、新闻等事实查询先给结论，再给符合人设的简短建议；Web Worker 会向主
   Agent 交接关键事实、来源及不确定性。
-- 设置页在本地保存 LLM、Embedding、联网搜索与语音识别配置，不依赖 `.env` 中的模型或
-  Key，并会随供应商变化显示对应填写指南。
+- 设置页在本地保存 LLM、Embedding 与联网搜索配置；语音识别使用本地 Qwen3-ASR，
+  不需要 ASR API Key。
 - 联网搜索支持关闭、Tavily、博查和自定义来源；自定义来源采用博查/Bing 兼容协议，
   RAG 与 Agent 统一消费标准化的 `Document`。
 
@@ -117,13 +117,13 @@ APP_PORT=8002
 完成隔离后再执行 `docker compose up -d`。不要为了修复账号错误直接删除
 `personalive_mysql_data`；删除该卷会永久丢失已有角色、对话和任务数据。
 
-LLM、Embedding、联网搜索与语音识别配置在应用的“设置”页填写。Embedding 输出维度必须与
+LLM、Embedding 与联网搜索配置在应用的“设置”页填写。Embedding 输出维度必须与
 当前 Milvus collection 一致；更换维度时应使用新的 `COLLECTION_NAME`。
 
-语音识别支持 OpenAI 和自定义 OpenAI 兼容接口。配置 ASR API Key、Base URL、模型及
-可选语言后，在对话页选择角色即可使用麦克风按钮。录音最长 120 秒，单次音频最大
-10 MiB，支持 WAV、WebM、Ogg、MP3、MP4 与 M4A。识别结果只会填入输入框，检查后由
-用户手动发送，不会自动触发 Agent 或管理操作。
+语音识别使用本地 Qwen3-ASR-0.6B，自动识别中文、英文和日文。首次使用会自动创建独立的
+`.asr-venv` 并下载依赖与模型，之后可离线运行。在对话页录音后，音频会作为可播放消息长期
+保存，转写默认折叠，并仅将转写文字交给 Agent 生成文字回复。录音最长 120 秒，单次音频最大
+10 MiB，支持 WAV、WebM、Ogg、MP3、MP4 与 M4A；清空对话会永久删除音频、转写和对话记录。
 
 API 文档：<http://127.0.0.1:8001/docs>
 
@@ -146,13 +146,15 @@ Attu：<http://127.0.0.1:18082>
 - `POST /api/personas/{persona_id}/rag/query`：执行角色隔离的完整 RAG 查询。
 - `POST /api/personas/{persona_id}/agent/query`：通过人设主 Agent 执行对话与 Worker 委派。
 - `POST /api/personas/{persona_id}/agent/resume`：确认或拒绝已暂停的管理操作。
-- `POST /api/voice/transcriptions`：将本地录音发送到已配置的 OpenAI 兼容 ASR，并返回可编辑文字。
+- `POST /api/personas/{persona_id}/conversations/{conversation_id}/voice-messages`：保存语音消息。
+- `POST /api/voice-messages/{message_id}/transcribe`：本地转写语音并将文字交给 Agent。
+- `DELETE /api/personas/{persona_id}/conversations/{conversation_id}`：永久清空对话及其音频。
 - `WS /ws/personas/{persona_id}/conversations/{conversation_id}`：建立带轮次 ID、确认事件和停止旧轮次输出能力的实时对话。
 
-WebSocket 与 REST 共用同一个 LangGraph 会话和服务端角色作用域。ASR 只负责生成可编辑
-文字，用户发送后仍进入相同的 LangGraph 会话；TTS 和 Live2D 尚未接入。
+WebSocket 与 REST 共用同一个 LangGraph 会话和服务端角色作用域。ASR 在本机生成文字，
+Agent 只接收转写结果；TTS 和 Live2D 尚未接入。
 语音转写请求使用 `multipart/form-data` 的 `file` 字段，并必须携带
-`X-PersonaLive-Request: web` 请求头；该非简单请求头用于阻止第三方网页跨站消耗本机 ASR 配额。
+`X-PersonaLive-Request: web` 请求头；该非简单请求头用于阻止第三方网页跨站调用本机 ASR。
 
 请求不能提交 `workspace_id` 或 `knowledge_space_id`。服务端始终从路径中的角色解析
 作用域，Milvus 写入、删除和查询都携带工作空间与知识空间过滤条件。

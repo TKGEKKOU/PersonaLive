@@ -21,7 +21,7 @@ const state = {
   realtimeAckTimer: null,
   realtimeBusy: false,
   agentRequestPending: false,
-  asrConfigured: false,
+  asrConfigured: true,
   audioMode: "idle",
   audioStarting: false,
   audioRecorder: null,
@@ -38,9 +38,6 @@ const LLM_PRESETS = {
 };
 const EMBEDDING_PRESETS = {
   qwen: { baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "text-embedding-v4", dimensions: 512, sendDimensions: true },
-};
-const ASR_PRESETS = {
-  openai: { baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini-transcribe" },
 };
 const WEB_SEARCH_GUIDES = {
   off: { text: "选择服务并填写 API Key 后，联网搜索才会启用。" },
@@ -95,7 +92,7 @@ function bindEvents() {
   $("embedding-provider").addEventListener("change", applyEmbeddingPreset);
   $("embedding-dimensions").addEventListener("input", renderEmbeddingWarning);
   $("web-search-provider").addEventListener("change", renderWebSearchSettings);
-  $("asr-provider").addEventListener("change", applyAsrPreset);
+  $("clear-conversation").addEventListener("click", clearConversation);
   $("close-preview").addEventListener("click", closePreview);
   $("preview-backdrop").addEventListener("click", closePreview);
 }
@@ -245,16 +242,22 @@ function renderPersonaList() {
     $("persona-list").append(button);
   }
 }
-function selectPersona() {
+async function selectPersona() {
   cancelAudioActivity();
   setText("audio-status");
   closeRealtime();
   state.activePersona = state.personas.find((item) => item.id === $("persona-select").value) || null;
-  state.conversationId = crypto.randomUUID(); state.pendingAction = null; renderConfirmation(); renderPersonaList();
+  if (state.activePersona) {
+    const key = `personalive:conversation:${state.activePersona.id}`;
+    state.conversationId = localStorage.getItem(key) || crypto.randomUUID();
+    localStorage.setItem(key, state.conversationId);
+  } else state.conversationId = crypto.randomUUID();
+  state.pendingAction = null; renderConfirmation(); renderPersonaList();
   $("chat-title").textContent = state.activePersona?.name || "选择角色";
   $("send-question").disabled = !state.activePersona;
   $("chat-log").replaceChildren(empty(state.activePersona ? "开始对话" : "选择角色后开始聊天"));
-  if (state.activePersona) connectRealtime();
+  $("clear-conversation").disabled = !state.activePersona;
+  if (state.activePersona) { await loadConversationMessages(); connectRealtime(); }
   updateComposerControls();
 }
 
@@ -516,10 +519,12 @@ async function finishAudioRecording() {
     form.append("file", blob, `recording-${Date.now()}.${extension}`);
     const controller = new AbortController();
     state.audioAbortController = controller;
-    const result = await api(fetch("/api/voice/transcriptions", { method: "POST", headers: { "X-PersonaLive-Request": "web" }, body: form, signal: controller.signal }));
+    const message = await api(fetch(`/api/personas/${state.activePersona.id}/conversations/${state.conversationId}/voice-messages`, { method: "POST", headers: { "X-PersonaLive-Request": "web" }, body: form, signal: controller.signal }));
     if (operationId !== state.audioOperationId) return;
-    $("question").value = result.text;
-    $("question").focus();
+    appendAudioMessage(message);
+    const result = await api(fetch(`/api/voice-messages/${message.id}/transcribe`, { method: "POST", headers: { "X-PersonaLive-Request": "web" }, signal: controller.signal }));
+    updateAudioMessage(result.message);
+    handleAgentResult(result.turn);
   } catch (error) {
     if (operationId === state.audioOperationId && error?.name !== "AbortError") setText("chat-error", audioErrorMessage(error));
   } finally {
@@ -649,6 +654,52 @@ function appendMessage(type, text) {
   const label = document.createElement("strong"); label.textContent = type === "user" ? "你" : state.activePersona.name;
   const body = document.createElement("p"); body.textContent = text; node.append(label, body); $("chat-log").append(node); node.scrollIntoView({ block: "nearest" }); return node;
 }
+function appendAudioMessage(message) {
+  if ($("chat-log").querySelector(".empty-state")) $("chat-log").replaceChildren();
+  const node = document.createElement("article");
+  node.className = "message message-user message-audio"; node.dataset.messageId = message.id;
+  const label = document.createElement("strong"); label.textContent = "你";
+  const audio = document.createElement("audio"); audio.controls = true; audio.preload = "metadata"; audio.src = message.audio_url;
+  const transcript = document.createElement("details"); transcript.className = "voice-transcript";
+  const summary = document.createElement("summary"); summary.textContent = message.status === "failed" ? "识别失败" : "查看转写";
+  const text = document.createElement("p"); text.textContent = message.transcript || (message.status === "failed" ? message.error_message : "正在识别…");
+  transcript.append(summary, text); node.append(label, audio, transcript);
+  if (message.status === "failed") {
+    const retry = document.createElement("button"); retry.type = "button"; retry.className = "voice-retry"; retry.textContent = "重试";
+    retry.addEventListener("click", () => retryVoiceMessage(message.id)); node.append(retry);
+  }
+  $("chat-log").append(node); node.scrollIntoView({ block: "nearest" }); return node;
+}
+function updateAudioMessage(message) {
+  const current = $("chat-log").querySelector(`[data-message-id="${message.id}"]`);
+  if (current) current.remove();
+  appendAudioMessage(message);
+}
+async function retryVoiceMessage(messageId) {
+  try {
+    const result = await api(fetch(`/api/voice-messages/${messageId}/transcribe`, { method: "POST", headers: { "X-PersonaLive-Request": "web" } }));
+    updateAudioMessage(result.message); handleAgentResult(result.turn);
+  } catch (reason) { setText("chat-error", reason); await loadConversationMessages(); }
+}
+async function loadConversationMessages() {
+  if (!state.activePersona) return;
+  try {
+    const messages = await api(fetch(`/api/personas/${state.activePersona.id}/conversations/${state.conversationId}/messages`));
+    $("chat-log").replaceChildren();
+    if (!messages.length) return $("chat-log").append(empty("开始对话"));
+    for (const message of messages) message.kind === "audio" ? appendAudioMessage(message) : appendMessage(message.role, message.content);
+  } catch (reason) { setText("chat-error", reason); }
+}
+async function clearConversation() {
+  if (!state.activePersona || !confirm("永久删除当前对话、转写和音频？")) return;
+  try {
+    await api(fetch(`/api/personas/${state.activePersona.id}/conversations/${state.conversationId}`, { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
+    closeRealtime();
+    state.conversationId = crypto.randomUUID();
+    localStorage.setItem(`personalive:conversation:${state.activePersona.id}`, state.conversationId);
+    $("chat-log").replaceChildren(empty("开始对话")); connectRealtime();
+  } catch (reason) { setText("chat-error", reason); }
+}
 function handleAgentResult(result) {
   state.pendingAction = result.status === "pending_confirmation" ? { action: result.pending_action, specialist: result.specialist } : null;
   renderConfirmation(); $("send-question").disabled = Boolean(state.pendingAction) || !state.activePersona; if (result.answer) appendAnswer(result);
@@ -678,20 +729,16 @@ async function loadSettings() {
     $("openai-api-key").placeholder = keyPlaceholder(config.openai_api_key_configured);
     $("embedding-api-key").placeholder = keyPlaceholder(config.embedding_api_key_configured);
     $("web-search-api-key").placeholder = keyPlaceholder(config.web_search_api_key_configured);
-    $("asr-api-key").placeholder = keyPlaceholder(config.asr_api_key_configured);
     $("openai-base-url").value = config.openai_base_url; $("openai-model").value = config.openai_model;
     $("embedding-base-url").value = config.embedding_base_url; $("embedding-model").value = config.embedding_model;
     $("web-search-base-url").value = config.web_search_base_url;
-    $("asr-base-url").value = config.asr_base_url; $("asr-model").value = config.asr_model; $("asr-language").value = config.asr_language;
     $("llm-provider").value = inferProvider(LLM_PRESETS, config.openai_base_url);
     $("embedding-provider").value = inferProvider(EMBEDDING_PRESETS, config.embedding_base_url);
     $("embedding-dimensions").value = config.embedding_dimensions;
     $("embedding-send-dimensions").checked = config.embedding_send_dimensions;
     $("web-search-provider").value = config.web_search_provider;
-    $("asr-provider").value = config.asr_provider;
-    state.asrConfigured = config.asr_provider !== "off" && config.asr_api_key_configured && Boolean(config.asr_base_url && config.asr_model);
     state.savedEmbeddingDimensions = config.embedding_dimensions;
-    renderEmbeddingWarning(); renderWebSearchSettings(); renderAsrSettings(); renderAudioState();
+    renderEmbeddingWarning(); renderWebSearchSettings(); renderAudioState();
   } catch (reason) { setText("settings-status", reason); }
 }
 function normalizedUrl(value) { return value.trim().replace(/\/+$/, "").toLowerCase(); }
@@ -727,19 +774,6 @@ function renderWebSearchSettings() {
     const source = document.createElement("p"); source.textContent = `${guide.label}：`; source.append(link); $("web-search-guide").append(source);
   }
 }
-function applyAsrPreset() {
-  const preset = ASR_PRESETS[$("asr-provider").value];
-  if (preset) {
-    $("asr-base-url").value = preset.baseUrl;
-    $("asr-model").value = preset.model;
-    if (!$("asr-language").value) $("asr-language").value = "zh";
-  }
-  renderAsrSettings();
-}
-function renderAsrSettings() {
-  const disabled = $("asr-provider").value === "off";
-  for (const id of ["asr-api-key", "asr-base-url", "asr-model", "asr-language"]) $(id).disabled = disabled;
-}
 function requestSettingsSave(event) { event.preventDefault(); openSettingsConfirmation("save"); }
 function requestSettingsReset() { openSettingsConfirmation("reset"); }
 function openSettingsConfirmation(action) {
@@ -747,8 +781,8 @@ function openSettingsConfirmation(action) {
   const isSave = action === "save";
   $("settings-confirm-title").textContent = isSave ? "保存前确认" : "确认重置配置";
   $("settings-confirm-detail").textContent = isSave
-    ? `对话：${$("llm-provider").selectedOptions[0].textContent} · ${$("openai-model").value.trim() || "未填写模型"}\nEmbedding：${$("embedding-provider").selectedOptions[0].textContent} · ${$("embedding-model").value.trim() || "未填写模型"} · ${$("embedding-dimensions").value || "未填写维度"} 维\n联网搜索：${$("web-search-provider").selectedOptions[0].textContent}\n语音识别：${$("asr-provider").selectedOptions[0].textContent} · ${$("asr-model").value.trim() || "未填写模型"}\n将更新：${["openai-api-key", "embedding-api-key", "web-search-api-key", "asr-api-key"].filter((id) => $(id).value.trim()).length || "模型与连接配置"}`
-    : "将清除本机前端保存的 LLM、Embedding、联网搜索、语音识别配置和 Key。不会影响 .env 中的 MySQL、Milvus 或端口配置。";
+    ? `对话：${$("llm-provider").selectedOptions[0].textContent} · ${$("openai-model").value.trim() || "未填写模型"}\nEmbedding：${$("embedding-provider").selectedOptions[0].textContent} · ${$("embedding-model").value.trim() || "未填写模型"} · ${$("embedding-dimensions").value || "未填写维度"} 维\n联网搜索：${$("web-search-provider").selectedOptions[0].textContent}\n将更新：${["openai-api-key", "embedding-api-key", "web-search-api-key"].filter((id) => $(id).value.trim()).length || "模型与连接配置"}`
+    : "将清除本机前端保存的 LLM、Embedding、联网搜索配置和 Key。不会影响 .env 中的 MySQL、Milvus 或端口配置。";
   $("settings-confirm-submit").textContent = isSave ? "确认保存" : "确认重置";
   $("settings-confirm-dialog").showModal();
 }
@@ -761,8 +795,8 @@ async function saveSettings() {
   $("save-settings").disabled = true; setText("settings-status");
   const value = (id) => $(id).value.trim();
   try {
-    const result = await api(fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ openai_api_key: value("openai-api-key"), openai_base_url: value("openai-base-url"), openai_model: value("openai-model"), embedding_api_key: value("embedding-api-key"), embedding_base_url: value("embedding-base-url"), embedding_model: value("embedding-model"), embedding_dimensions: Number(value("embedding-dimensions")), embedding_send_dimensions: $("embedding-send-dimensions").checked, web_search_provider: $("web-search-provider").value, web_search_api_key: value("web-search-api-key"), web_search_base_url: value("web-search-base-url"), enable_web_fallback: $("web-search-provider").value !== "off", asr_provider: $("asr-provider").value, asr_api_key: value("asr-api-key"), asr_base_url: value("asr-base-url"), asr_model: value("asr-model"), asr_language: value("asr-language") }) }));
-    $("openai-api-key").value = ""; $("embedding-api-key").value = ""; $("web-search-api-key").value = ""; $("web-search-base-url").value = ""; $("asr-api-key").value = "";
+    const result = await api(fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ openai_api_key: value("openai-api-key"), openai_base_url: value("openai-base-url"), openai_model: value("openai-model"), embedding_api_key: value("embedding-api-key"), embedding_base_url: value("embedding-base-url"), embedding_model: value("embedding-model"), embedding_dimensions: Number(value("embedding-dimensions")), embedding_send_dimensions: $("embedding-send-dimensions").checked, web_search_provider: $("web-search-provider").value, web_search_api_key: value("web-search-api-key"), web_search_base_url: value("web-search-base-url"), enable_web_fallback: $("web-search-provider").value !== "off" }) }));
+    $("openai-api-key").value = ""; $("embedding-api-key").value = ""; $("web-search-api-key").value = ""; $("web-search-base-url").value = "";
     setText("settings-status", "已保存，可立即使用"); await loadSettings();
   } catch (reason) { setText("settings-status", reason); }
   finally { $("save-settings").disabled = false; }
@@ -771,7 +805,7 @@ async function resetSettings() {
   $("reset-settings").disabled = true; setText("settings-status");
   try {
     await api(fetch("/api/settings", { method: "DELETE" }));
-    $("openai-api-key").value = ""; $("embedding-api-key").value = ""; $("web-search-api-key").value = ""; $("web-search-base-url").value = ""; $("asr-api-key").value = ""; $("asr-base-url").value = ""; $("asr-model").value = ""; $("asr-language").value = "";
+    $("openai-api-key").value = ""; $("embedding-api-key").value = ""; $("web-search-api-key").value = ""; $("web-search-base-url").value = "";
     setText("settings-status", "配置已重置"); await loadSettings();
   } catch (reason) { setText("settings-status", reason); }
   finally { $("reset-settings").disabled = false; }
