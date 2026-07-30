@@ -21,3 +21,19 @@ def test_tts_config_requires_same_origin_header(client, tmp_path):
     assert denied.status_code == 403
     assert accepted.status_code == 200
     assert accepted.json()["enabled"] is False
+
+
+def test_tts_install_accepts_request_when_lunar_runtime_is_bundled(client, tmp_path, monkeypatch):
+    manager = TTSResourceManager(tmp_path)
+    manager.runtime_dir.mkdir(parents=True)
+    manager.runtime_path.write_bytes(b"exe")
+    manager.runtime_dll_path.write_bytes(b"dll")
+    client.app.state.tts_resources = manager
+    started = []
+    monkeypatch.setattr(manager, "start_install", lambda: started.append(True) or True)
+
+    response = client.post("/api/tts/install", headers={"X-PersonaLive-Request": "web"})
+
+    assert response.status_code == 202
+    assert started == [True]
+    assert response.json()["runtime_bundled"] is True

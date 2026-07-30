@@ -821,9 +821,9 @@ async function loadTtsStatus() {
     const config = await api(fetch("/api/tts/status"));
     state.ttsConfigured = config.ready;
     $("tts-enabled").checked = config.enabled;
-    const phaseNames = { preparing: "准备下载", runtime: "下载 C++ 运行库", extracting: "解压运行库", model: "下载语音模型", complete: "安装完成", error: "安装失败" };
+    const phaseNames = { preparing: "准备下载", model: "下载语音模型", complete: "安装完成", error: "安装失败" };
     $("tts-state").textContent = config.installing ? (phaseNames[config.phase] || "正在安装") : config.ready ? "已就绪" : config.enabled ? "尚未安装" : "已关闭";
-    setText("tts-status", config.error || (!config.runtime_bundled ? "当前开发目录缺少内置 C++ 运行库；完整 Windows 发布包将自带该文件" : config.ready ? `Qwen3-TTS-0.6B · ${config.model_dir}` : config.download_size));
+    setText("tts-status", config.error || (!config.runtime_bundled ? "当前开发目录缺少内置 Lunar TTS 运行库；完整 Windows 发布包将自带该文件" : config.ready ? `Qwen3-TTS-0.6B · ${config.model_dir}` : config.download_size));
     const progress = $("tts-progress"); progress.classList.toggle("is-hidden", !config.installing);
     if (config.progress_percent == null) progress.removeAttribute("value"); else progress.value = config.progress_percent;
     const size = (bytes) => bytes ? `${(bytes / 1024 / 1024).toFixed(bytes > 1024 * 1024 * 100 ? 0 : 1)} MB` : "";
@@ -840,7 +840,7 @@ async function saveTtsConfig() {
   } catch (reason) { setText("tts-status", reason); }
 }
 async function installTts() {
-  if (!confirm("将下载约 3 GB 的 Qwen3-TTS GGUF 模型，C++ 运行库已随应用内置。是否继续？")) return;
+  if (!confirm("将下载约 3 GB 的 Qwen3-TTS GGUF 模型，Lunar TTS 运行库已随应用内置。是否继续？")) return;
   $("install-tts").disabled = true;
   try {
     await api(fetch("/api/tts/install", { method: "POST", headers: { "X-PersonaLive-Request": "web" } }));
