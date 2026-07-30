@@ -37,34 +37,11 @@ jobs:
           cd third_party/lunar_tts
           go build -o Qwen3_TTS_Lunar.exe .
 
-      - name: Package bundled runtime
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Path package | Out-Null
-          $service = Get-ChildItem third_party/lunar_tts -Filter Qwen3_TTS_Lunar.exe -Recurse | Select-Object -First 1
-          $engine = Get-ChildItem third_party/lunar_tts/cpp/build -Filter qwen3tts.dll -Recurse | Select-Object -First 1
-          if (-not $service -or -not $engine) { throw "Lunar TTS build artifacts were not found" }
-          Copy-Item $service.FullName package/
-          Copy-Item $engine.FullName package/
-          Copy-Item third_party/lunar_tts/LICENSE package/LICENSE-Lunar-Astral-Agents.txt
-          Copy-Item C:\msys64\ucrt64\bin\libgcc_s_seh-1.dll package/
-          Copy-Item C:\msys64\ucrt64\bin\libgomp-1.dll package/
-          Copy-Item C:\msys64\ucrt64\bin\libstdc++-6.dll package/
-          Compress-Archive -Path package/* -DestinationPath personalive-lunar-tts-runtime-windows-x64.zip
-
       - uses: actions/upload-artifact@v4
         with:
-          name: personalive-lunar-tts-runtime-windows-x64
-          path: personalive-lunar-tts-runtime-windows-x64.zip
+          name: personalive-lunar-tts-runtime-windows-x64-direct
+          path: |
+            third_party/lunar_tts/Qwen3_TTS_Lunar.exe
+            third_party/lunar_tts/cpp/build/**/qwen3tts.dll
+            third_party/lunar_tts/LICENSE
           if-no-files-found: error
-
-      - name: Publish reusable runtime asset
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release view lunar-tts-runtime-latest 2>$null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create lunar-tts-runtime-latest --title "PersonaLive Lunar TTS Runtime" --notes "Windows x64 runtime built from Lunar Astral Agents. Non-commercial license applies."
-          }
-          gh release upload lunar-tts-runtime-latest personalive-lunar-tts-runtime-windows-x64.zip --clobber
