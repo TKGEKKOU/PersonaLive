@@ -41,8 +41,11 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path package | Out-Null
-          Copy-Item third_party/lunar_tts/Qwen3_TTS_Lunar.exe package/
-          Copy-Item third_party/lunar_tts/cpp/build/qwen3tts.dll package/
+          $service = Get-ChildItem third_party/lunar_tts -Filter Qwen3_TTS_Lunar.exe -Recurse | Select-Object -First 1
+          $engine = Get-ChildItem third_party/lunar_tts/cpp/build -Filter qwen3tts.dll -Recurse | Select-Object -First 1
+          if (-not $service -or -not $engine) { throw "Lunar TTS build artifacts were not found" }
+          Copy-Item $service.FullName package/
+          Copy-Item $engine.FullName package/
           Copy-Item third_party/lunar_tts/LICENSE package/LICENSE-Lunar-Astral-Agents.txt
           Copy-Item C:\msys64\ucrt64\bin\libgcc_s_seh-1.dll package/
           Copy-Item C:\msys64\ucrt64\bin\libgomp-1.dll package/
