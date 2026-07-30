@@ -267,6 +267,10 @@ if ($conn) {
 docker compose down
 ```
 
+## 本地 TTS 许可证
+
+本地语音合成功能基于 [Lunar Astral Agents](https://gitee.com/TayunStarry/Lunar-Astral-Agents) 的 Qwen3-TTS 子系统构建。该组件受其 **Non-Commercial License** 约束，仅可用于非商业用途；完整许可证位于 `third_party/lunar_tts/LICENSE`，Windows 发行包也会附带该文件。TTS 模型文件不随项目分发，首次启用时从 ModelScope 下载。
+
 ## 后续计划
 
 GPT-SoVITS/在线 TTS、数字人事件、OBS 与直播平台适配器。
