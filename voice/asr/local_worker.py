@@ -1,16 +1,22 @@
+from __future__ import annotations
+
 import asyncio
 import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import httpx
 
 from voice.asr.base import ASREmptyResultError, ASRProvider, ASRUpstreamError
-from settings import Settings
+
+if TYPE_CHECKING:
+    from settings import Settings
 
 
 WORKER_URL = "http://127.0.0.1:8765"
+QWEN_BUNDLE_PYTHON = Path(r"D:\Qwen3_ASR\WPy64-312101\python\python.exe")
 _managers: dict[Path, "LocalASRManager"] = {}
 
 
@@ -25,6 +31,15 @@ class LocalASRManager:
 
     @property
     def python(self) -> Path:
+        configured = os.getenv("PERSONALIVE_ASR_PYTHON", "").strip()
+        if configured and Path(configured).is_file():
+            return Path(configured)
+        if QWEN_BUNDLE_PYTHON.is_file():
+            return QWEN_BUNDLE_PYTHON
+        return self.runtime_python
+
+    @property
+    def runtime_python(self) -> Path:
         return self.runtime_dir / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
 
     async def ensure_ready(self) -> None:
@@ -54,13 +69,15 @@ class LocalASRManager:
             return False
 
     def _ensure_runtime(self) -> None:
-        marker = self.runtime_dir / ".ready"
-        if marker.is_file() and self.python.is_file():
+        if self.python != self.runtime_python:
             return
-        if not self.python.is_file():
+        marker = self.runtime_dir / ".ready"
+        if marker.is_file() and self.runtime_python.is_file():
+            return
+        if not self.runtime_python.is_file():
             subprocess.run([sys.executable, "-m", "venv", str(self.runtime_dir)], check=True)
         subprocess.run(
-            [str(self.python), "-m", "pip", "install", "-r", str(self.requirements)],
+            [str(self.runtime_python), "-m", "pip", "install", "-r", str(self.requirements)],
             cwd=self.project_root,
             check=True,
         )

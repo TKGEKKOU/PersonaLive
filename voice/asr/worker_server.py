@@ -8,7 +8,10 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from qwen_asr import Qwen3ASRModel
 
 
-MODEL_ID = "Qwen/Qwen3-ASR-0.6B"
+bundled_model = Path(r"D:\Qwen3_ASR\models\Qwen\Qwen3-ASR-0.6B")
+MODEL_ID = os.getenv("PERSONALIVE_ASR_MODEL") or (
+    str(bundled_model) if bundled_model.is_dir() else "Qwen/Qwen3-ASR-0.6B"
+)
 app = FastAPI(title="PersonaLive Local ASR")
 model = None
 

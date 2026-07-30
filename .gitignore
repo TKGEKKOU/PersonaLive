@@ -19,3 +19,4 @@ docs/superpowers/
 data/
 milvus_data/
 
+.asr-venv/
