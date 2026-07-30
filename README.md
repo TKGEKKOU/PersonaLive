@@ -120,10 +120,20 @@ APP_PORT=8002
 LLM、Embedding 与联网搜索配置在应用的“设置”页填写。Embedding 输出维度必须与
 当前 Milvus collection 一致；更换维度时应使用新的 `COLLECTION_NAME`。
 
-语音识别使用本地 Qwen3-ASR-0.6B，自动识别中文、英文和日文。首次使用会自动创建独立的
-`.asr-venv` 并下载依赖与模型，之后可离线运行。在对话页录音后，音频会作为可播放消息长期
+语音识别使用本地 Qwen3-ASR-0.6B，自动识别中文、英文和日文。在“设置 → 本地语音识别”中，
+用户可以主动选择自动下载安装（约 5–10 GB），也可以填写已有 Python、模型目录和 FFmpeg 路径。
+自动安装的独立环境位于 `.asr-venv`，模型位于 `data/models/Qwen3-ASR-0.6B`；仓库不包含这些
+大文件。安装完成后可离线运行。在对话页录音后，音频会作为可播放消息长期
 保存，转写默认折叠，并仅将转写文字交给 Agent 生成文字回复。录音最长 120 秒，单次音频最大
 10 MiB，支持 WAV、WebM、Ogg、MP3、MP4 与 M4A；清空对话会永久删除音频、转写和对话记录。
+
+无界面部署也可以在启动 PersonaLive 前设置已有资源路径：
+
+```powershell
+$env:PERSONALIVE_ASR_PYTHON = "D:\Qwen3_ASR\WPy64-312101\python\python.exe"
+$env:PERSONALIVE_ASR_MODEL = "D:\Qwen3_ASR\models\Qwen\Qwen3-ASR-0.6B"
+$env:PERSONALIVE_ASR_FFMPEG = "D:\Qwen3_ASR\bin\ffmpeg.exe"
+```
 
 API 文档：<http://127.0.0.1:8001/docs>
 
