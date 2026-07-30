@@ -13,6 +13,7 @@ def test_lunar_tts_build_workflow_packages_license_and_service():
     assert "LICENSE-Lunar-Astral-Agents.txt" in workflow
     assert "GGML_VULKAN=ON" in workflow
     assert "mingw-w64-ucrt-x86_64-vulkan-headers" in workflow
+    assert "mingw-w64-ucrt-x86_64-shaderc" in workflow
     assert "Compress-Archive" not in workflow
 
 
