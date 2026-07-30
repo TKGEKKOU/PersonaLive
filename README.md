@@ -72,6 +72,25 @@ docker compose up -d
 .\.venv\Scripts\python.exe -B main.py
 ```
 
+### Windows 桌面开发模式
+
+桌面模式使用 PyWebView 打开应用窗口，并自动检查 Docker、启动 Compose 与 FastAPI：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-desktop.txt
+.\.venv\Scripts\python.exe -B desktop_main.py
+```
+
+桌面窗口关闭时会停止 FastAPI 和本应用启动的 ASR Worker，Docker 容器默认继续运行。开发版仍可
+回退复用 `D:\Qwen3_ASR`；发行版优先使用项目内的 `runtime/asr`、`runtime/ffmpeg` 和
+`models/Qwen3-ASR-0.6B`。
+
+生成 Windows onedir 包：
+
+```powershell
+.\scripts\build_windows.ps1
+```
+
 ### 下载副本与 Docker 重名冲突
 
 当前 `docker-compose.yml` 使用固定容器名 `personalive-mysql`、`personalive-etcd`、

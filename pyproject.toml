@@ -12,7 +12,7 @@ py-modules = ["settings"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["app*", "persona*", "ingestion*", "rag*", "agents*", "realtime*", "voice*", "live*"]
+include = ["app*", "persona*", "ingestion*", "rag*", "agents*", "realtime*", "voice*", "live*", "desktop*"]
 exclude = ["tests*", "docs*"]
 
 [tool.pytest.ini_options]

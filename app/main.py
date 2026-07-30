@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+import sys
 
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
@@ -26,7 +27,7 @@ from realtime.execution import ConversationExecutionRegistry
 from voice.asr import build_asr_provider
 from voice.asr.install import ASRResourceManager
 
-STATIC_DIR = Path(__file__).resolve().parents[1] / "static"
+STATIC_DIR = (Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[1]) / "static"
 
 
 def create_app(initialize_database: bool = True) -> FastAPI:

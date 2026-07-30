@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import json
 from pathlib import Path
+import sys
 
 from dotenv import dotenv_values
 
@@ -49,7 +50,8 @@ class Settings:
         变量覆盖。
         """
 
-        project_root = root or Path(__file__).resolve().parent
+        default_root = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+        project_root = root or default_root
         values = dotenv_values(project_root / ".env")
         get = lambda name, default: str(values.get(name) or default)
         local_path = project_root / "data" / "local_settings.json"
