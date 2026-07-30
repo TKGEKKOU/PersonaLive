@@ -1,0 +1,67 @@
+name: Build Lunar TTS runtime
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "third_party/lunar_tts/**"
+      - ".github/workflows/build-lunar-tts-runtime.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  windows-x64:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-go
+
+      - name: Build TTS engine and service
+        shell: msys2 {0}
+        run: |
+          cmake -S third_party/lunar_tts/cpp/ggml -B third_party/lunar_tts/cpp/ggml/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_STATIC=ON -DGGML_BUILD_TESTS=OFF -DGGML_BUILD_EXAMPLES=OFF -DGGML_NATIVE=ON -DGGML_OPENMP=ON -DGGML_VULKAN=OFF -DGGML_CUDA=OFF
+          cmake --build third_party/lunar_tts/cpp/ggml/build --parallel
+          cmake -S third_party/lunar_tts/cpp -B third_party/lunar_tts/cpp/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build third_party/lunar_tts/cpp/build --target qwen3tts_shared --parallel
+          cd third_party/lunar_tts
+          go build -o Qwen3_TTS_Lunar.exe .
+
+      - name: Package bundled runtime
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path package | Out-Null
+          Copy-Item third_party/lunar_tts/Qwen3_TTS_Lunar.exe package/
+          Copy-Item third_party/lunar_tts/cpp/build/qwen3tts.dll package/
+          Copy-Item third_party/lunar_tts/LICENSE package/LICENSE-Lunar-Astral-Agents.txt
+          Copy-Item C:\msys64\ucrt64\bin\libgcc_s_seh-1.dll package/
+          Copy-Item C:\msys64\ucrt64\bin\libgomp-1.dll package/
+          Copy-Item C:\msys64\ucrt64\bin\libstdc++-6.dll package/
+          Compress-Archive -Path package/* -DestinationPath personalive-lunar-tts-runtime-windows-x64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: personalive-lunar-tts-runtime-windows-x64
+          path: personalive-lunar-tts-runtime-windows-x64.zip
+          if-no-files-found: error
+
+      - name: Publish reusable runtime asset
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view lunar-tts-runtime-latest 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create lunar-tts-runtime-latest --title "PersonaLive Lunar TTS Runtime" --notes "Windows x64 runtime built from Lunar Astral Agents. Non-commercial license applies."
+          }
+          gh release upload lunar-tts-runtime-latest personalive-lunar-tts-runtime-windows-x64.zip --clobber
