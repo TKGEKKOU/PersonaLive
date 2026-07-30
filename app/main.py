@@ -10,6 +10,7 @@ from agents.checkpoint import create_mysql_checkpointer
 from agents.service import PersonaAgentService
 from app.database import Base, build_engine, build_session_factory, upgrade_persona_schema
 from app.routers.agents import router as agents_router
+from app.routers.asr import router as asr_router
 from app.routers.documents import router as documents_router
 from app.routers.persona_drafts import router as persona_drafts_router
 from app.routers.messages import router as messages_router
@@ -23,6 +24,7 @@ from ingestion.status import get_system_status
 from persona.delete_service import PersonaDeletionService
 from realtime.execution import ConversationExecutionRegistry
 from voice.asr import build_asr_provider
+from voice.asr.install import ASRResourceManager
 
 STATIC_DIR = Path(__file__).resolve().parents[1] / "static"
 
@@ -44,6 +46,7 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     app.state.persona_delete_service = PersonaDeletionService(settings)
     app.state.realtime_executions = ConversationExecutionRegistry()
     app.state.asr_provider_factory = build_asr_provider
+    app.state.asr_resources = ASRResourceManager(settings.project_root)
     if initialize_database:
         Base.metadata.create_all(engine)
         upgrade_persona_schema(engine)
@@ -53,6 +56,7 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     else:
         app.state.agent_service = PersonaAgentService(MemorySaver())
     app.include_router(agents_router)
+    app.include_router(asr_router)
     app.include_router(messages_router)
     app.include_router(personas_router)
     app.include_router(documents_router)

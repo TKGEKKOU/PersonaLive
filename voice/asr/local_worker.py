@@ -9,15 +9,14 @@ from typing import TYPE_CHECKING
 
 import httpx
 
-from voice.asr.base import ASREmptyResultError, ASRProvider, ASRUpstreamError
+from voice.asr.base import ASRConfigurationError, ASREmptyResultError, ASRProvider, ASRUpstreamError
+from voice.asr.install import ASRResourceManager
 
 if TYPE_CHECKING:
     from settings import Settings
 
 
 WORKER_URL = "http://127.0.0.1:8765"
-QWEN_BUNDLE_PYTHON = Path(r"D:\Qwen3_ASR\WPy64-312101\python\python.exe")
-QWEN_BUNDLE_BIN = Path(r"D:\Qwen3_ASR\bin")
 _managers: dict[Path, "LocalASRManager"] = {}
 
 
@@ -27,17 +26,13 @@ class LocalASRManager:
         self.worker_url = worker_url
         self.runtime_dir = project_root / ".asr-venv"
         self.requirements = project_root / "voice" / "asr" / "requirements-local.txt"
+        self.resources = ASRResourceManager(project_root)
         self.process: subprocess.Popen | None = None
         self._lock = asyncio.Lock()
 
     @property
     def python(self) -> Path:
-        configured = os.getenv("PERSONALIVE_ASR_PYTHON", "").strip()
-        if configured and Path(configured).is_file():
-            return Path(configured)
-        if QWEN_BUNDLE_PYTHON.is_file():
-            return QWEN_BUNDLE_PYTHON
-        return self.runtime_python
+        return self.resources.resolve().python or self.runtime_python
 
     @property
     def runtime_python(self) -> Path:
@@ -48,10 +43,12 @@ class LocalASRManager:
             if await self._healthy():
                 return
             await asyncio.to_thread(self._ensure_runtime)
+            resolved = self.resources.resolve()
             env = os.environ.copy()
             env["HF_HOME"] = str(self.project_root / "data" / "models")
-            if QWEN_BUNDLE_BIN.is_dir():
-                env["PATH"] = f"{QWEN_BUNDLE_BIN}{os.pathsep}{env.get('PATH', '')}"
+            env["PERSONALIVE_ASR_MODEL"] = str(resolved.model)
+            if resolved.ffmpeg:
+                env["PATH"] = f"{resolved.ffmpeg.parent}{os.pathsep}{env.get('PATH', '')}"
             self.process = subprocess.Popen(
                 [str(self.python), "-B", "-m", "voice.asr.worker_server"],
                 cwd=self.project_root,
@@ -72,19 +69,11 @@ class LocalASRManager:
             return False
 
     def _ensure_runtime(self) -> None:
-        if self.python != self.runtime_python:
-            return
-        marker = self.runtime_dir / ".ready"
-        if marker.is_file() and self.runtime_python.is_file():
-            return
-        if not self.runtime_python.is_file():
-            subprocess.run([sys.executable, "-m", "venv", str(self.runtime_dir)], check=True)
-        subprocess.run(
-            [str(self.runtime_python), "-m", "pip", "install", "-r", str(self.requirements)],
-            cwd=self.project_root,
-            check=True,
-        )
-        marker.write_text("ready\n", encoding="ascii")
+        status = self.resources.status()
+        if not status["enabled"]:
+            raise ASRConfigurationError("Local ASR is disabled")
+        if not status["ready"]:
+            raise ASRConfigurationError("Local ASR is not installed")
 
 
 class LocalQwenASR(ASRProvider):

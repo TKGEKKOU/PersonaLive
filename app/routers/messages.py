@@ -17,7 +17,7 @@ from app.routers.settings import require_local
 from app.schemas import ConversationMessageResponse, VoiceMessageTurnResponse
 from persona.service import LOCAL_WORKSPACE_ID
 from settings import Settings
-from voice.asr.base import ASREmptyResultError, ASRUpstreamError
+from voice.asr.base import ASRConfigurationError, ASREmptyResultError, ASRUpstreamError
 
 
 router = APIRouter(tags=["messages"])
@@ -200,6 +200,11 @@ async def transcribe_message(
     try:
         provider = request.app.state.asr_provider_factory(Settings.load())
         transcript = await provider.transcribe(path.name, message.audio_content_type or "audio/webm", path.read_bytes())
+    except ASRConfigurationError as exc:
+        message.status = "failed"
+        message.error_message = str(exc)
+        session.commit()
+        raise HTTPException(status_code=503, detail=message.error_message) from exc
     except ASREmptyResultError as exc:
         message.status = "failed"
         message.error_message = "No speech was recognized"
