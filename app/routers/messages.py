@@ -1,19 +1,22 @@
+import asyncio
 import hashlib
 import os
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, Response, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_session
 from app.models import ConversationMessage
+from app.routers.agents import context_for, response_for
 from app.routers.personas import local_persona_or_404
 from app.routers.settings import require_local
-from app.schemas import ConversationMessageResponse
+from app.schemas import ConversationMessageResponse, VoiceMessageTurnResponse
 from persona.service import LOCAL_WORKSPACE_ID
 from settings import Settings
+from voice.asr.base import ASREmptyResultError, ASRUpstreamError
 
 
 router = APIRouter(tags=["messages"])
@@ -138,3 +141,59 @@ def get_audio(message_id: str, range: str | None = Header(default=None), session
             headers=headers,
         )
     return Response(content, media_type=message.audio_content_type, headers=headers)
+
+
+@router.post(
+    "/api/voice-messages/{message_id}/transcribe",
+    response_model=VoiceMessageTurnResponse,
+)
+async def transcribe_message(
+    message_id: str,
+    request: Request,
+    x_personalive_request: str = Header(default=""),
+    session: Session = Depends(get_session),
+):
+    if x_personalive_request != "web":
+        raise HTTPException(status_code=403, detail="Missing same-origin request header")
+    message = session.get(ConversationMessage, message_id)
+    if message is None or message.kind != "audio" or not message.audio_path:
+        raise HTTPException(status_code=404, detail="Audio message not found")
+    path = (AUDIO_ROOT / message.audio_path).resolve()
+    if AUDIO_ROOT.resolve() not in path.parents or not path.is_file():
+        raise HTTPException(status_code=404, detail="Audio file not found")
+
+    message.status = "transcribing"
+    message.error_message = None
+    session.commit()
+    try:
+        provider = request.app.state.asr_provider_factory(Settings.load())
+        transcript = await provider.transcribe(path.name, message.audio_content_type or "audio/webm", path.read_bytes())
+    except ASREmptyResultError as exc:
+        message.status = "failed"
+        message.error_message = "No speech was recognized"
+        session.commit()
+        raise HTTPException(status_code=422, detail=message.error_message) from exc
+    except ASRUpstreamError as exc:
+        message.status = "failed"
+        message.error_message = "Local speech transcription failed"
+        session.commit()
+        raise HTTPException(status_code=502, detail=message.error_message) from exc
+
+    message.transcript = transcript
+    message.content = transcript
+    message.status = "completed"
+    context = context_for(request, session, message.persona_id, message.conversation_id)
+    result = await asyncio.to_thread(request.app.state.agent_service.query, transcript, context)
+    assistant = ConversationMessage(
+        workspace_id=message.workspace_id,
+        persona_id=message.persona_id,
+        conversation_id=message.conversation_id,
+        role="assistant",
+        kind="text",
+        content=result.answer,
+        status="completed",
+    )
+    session.add(assistant)
+    session.commit()
+    session.refresh(message)
+    return {"message": message_response(message), "turn": response_for(result)}

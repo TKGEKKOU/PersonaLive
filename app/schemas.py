@@ -211,3 +211,8 @@ class ConversationMessageResponse(BaseModel):
     status: Literal["pending", "transcribing", "completed", "failed"]
     error_message: str | None = None
     created_at: datetime
+
+
+class VoiceMessageTurnResponse(BaseModel):
+    message: ConversationMessageResponse
+    turn: AgentTurnResponse
