@@ -6,6 +6,10 @@ def test_lunar_tts_build_workflow_packages_license_and_service():
 
     assert "Qwen3_TTS_Lunar.exe" in workflow
     assert "qwen3tts.dll" in workflow
+    assert "libgcc_s_seh-1.dll" in workflow
+    assert "libgomp-1.dll" in workflow
+    assert "libstdc++-6.dll" in workflow
+    assert "libwinpthread-1.dll" in workflow
     assert "third_party/lunar_tts/LICENSE" in workflow
     assert "Compress-Archive" not in workflow
 
