@@ -50,19 +50,23 @@ jobs:
           cp /ucrt64/bin/libwinpthread-1.dll ../../runtime-artifact/
           cp /ucrt64/bin/libvulkan-1.dll ../../runtime-artifact/ || true
 
-      - name: Commit bundled runtime
-        shell: msys2 {0}
-        working-directory: ${{ github.workspace }}
-        run: |
-          cp runtime-artifact/* runtime/tts/
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add runtime/tts
-          git diff --cached --quiet || git commit -m "build: update Vulkan TTS runtime"
-          git push
-
       - uses: actions/upload-artifact@v4
         with:
           name: personalive-lunar-tts-runtime-windows-x64-direct
           path: runtime-artifact
           if-no-files-found: error
+
+      - name: Commit bundled runtime
+        shell: msys2 {0}
+        run: |
+          set -euxo pipefail
+          cd "$(cygpath "$GITHUB_WORKSPACE")"
+          test -d runtime-artifact
+          test -d runtime/tts
+          cp runtime-artifact/* runtime/tts/
+          git config --global --add safe.directory "$PWD"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/tts
+          git diff --cached --quiet || git commit -m "build: update Vulkan TTS runtime"
+          git push origin HEAD:main
