@@ -114,3 +114,14 @@ def build_asr_provider(settings: Settings) -> LocalQwenASR:
     root = settings.project_root.resolve()
     manager = _managers.setdefault(root, LocalASRManager(root))
     return LocalQwenASR(manager=manager)
+
+
+def shutdown_asr_workers() -> None:
+    for manager in _managers.values():
+        process = manager.process
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()

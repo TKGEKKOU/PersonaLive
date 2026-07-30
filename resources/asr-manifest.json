@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "model": {
+    "id": "Qwen/Qwen3-ASR-0.6B",
+    "target": "models/Qwen3-ASR-0.6B",
+    "estimated_size_bytes": 1900000000
+  },
+  "runtime": {
+    "target": "runtime/asr",
+    "requirements": "voice/asr/requirements-local.txt"
+  },
+  "ffmpeg": {
+    "target": "runtime/ffmpeg/ffmpeg.exe",
+    "source": "imageio-ffmpeg"
+  }
+}

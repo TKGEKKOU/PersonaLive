@@ -29,7 +29,7 @@ def test_remove_managed_never_deletes_external_resources(tmp_path):
     external_model.mkdir()
     manager = ASRResourceManager(tmp_path)
     manager.configure(enabled=True, model_path=str(external_model))
-    manager.runtime_dir.mkdir()
+    manager.runtime_dir.mkdir(parents=True)
     manager.managed_model.mkdir(parents=True)
 
     manager.remove_managed()
@@ -37,3 +37,18 @@ def test_remove_managed_never_deletes_external_resources(tmp_path):
     assert external_model.is_dir()
     assert not manager.runtime_dir.exists()
     assert not manager.managed_model.exists()
+
+
+def test_project_release_resources_are_resolved(tmp_path):
+    manager = ASRResourceManager(tmp_path)
+    python = make_file(manager.runtime_python)
+    model = manager.managed_model
+    model.mkdir(parents=True)
+    make_file(model / "config.json")
+    ffmpeg = make_file(manager.managed_ffmpeg)
+
+    resources = manager.resolve()
+
+    assert resources.python == python.resolve()
+    assert resources.model == model.resolve()
+    assert resources.ffmpeg == ffmpeg.resolve()

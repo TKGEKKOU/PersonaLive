@@ -20,3 +20,9 @@ data/
 milvus_data/
 
 .asr-venv/
+runtime/asr/
+runtime/ffmpeg/
+models/
+build/
+dist/
+PersonaLive.spec

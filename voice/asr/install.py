@@ -37,8 +37,9 @@ class ASRResourceManager:
         self.project_root = project_root.resolve()
         self.data_dir = self.project_root / "data" / "asr"
         self.config_path = self.data_dir / "config.json"
-        self.runtime_dir = self.project_root / ".asr-venv"
-        self.managed_model = self.project_root / "data" / "models" / "Qwen3-ASR-0.6B"
+        self.runtime_dir = self.project_root / "runtime" / "asr"
+        self.managed_model = self.project_root / "models" / "Qwen3-ASR-0.6B"
+        self.managed_ffmpeg = self.project_root / "runtime" / "ffmpeg" / "ffmpeg.exe"
         self.requirements = self.project_root / "voice" / "asr" / "requirements-local.txt"
         self._installing = False
         self._error = ""
@@ -87,7 +88,7 @@ class ASRResourceManager:
         return ASRResources(
             python=self._file(values["python_path"] or os.getenv("PERSONALIVE_ASR_PYTHON", ""), self.runtime_python, BUNDLE_PYTHON),
             model=self._model(values["model_path"] or os.getenv("PERSONALIVE_ASR_MODEL", ""), self.managed_model, BUNDLE_MODEL),
-            ffmpeg=self._file(values["ffmpeg_path"] or os.getenv("PERSONALIVE_ASR_FFMPEG", ""), Path("__missing__"), BUNDLE_FFMPEG, "ffmpeg"),
+            ffmpeg=self._file(values["ffmpeg_path"] or os.getenv("PERSONALIVE_ASR_FFMPEG", ""), self.managed_ffmpeg, BUNDLE_FFMPEG, "ffmpeg"),
         )
 
     def status(self) -> dict:
@@ -96,7 +97,7 @@ class ASRResourceManager:
         return {
             **values,
             "installed": resources.ready,
-            "managed_installed": self.runtime_dir.is_dir() or self.managed_model.is_dir(),
+            "managed_installed": self.runtime_dir.is_dir() or self.managed_model.is_dir() or self.managed_ffmpeg.is_file(),
             "ready": bool(values["enabled"] and resources.ready),
             "installing": self._installing,
             "error": self._error,
@@ -129,13 +130,19 @@ class ASRResourceManager:
                 f"snapshot_download('Qwen/Qwen3-ASR-0.6B', local_dir={str(self.managed_model)!r})"
             )
             subprocess.run([str(self.runtime_python), "-c", script], cwd=self.project_root, check=True)
+            self.managed_ffmpeg.parent.mkdir(parents=True, exist_ok=True)
+            ffmpeg_script = (
+                "import shutil; from imageio_ffmpeg import get_ffmpeg_exe; "
+                f"shutil.copy2(get_ffmpeg_exe(), {str(self.managed_ffmpeg)!r})"
+            )
+            subprocess.run([str(self.runtime_python), "-c", ffmpeg_script], cwd=self.project_root, check=True)
         except (OSError, subprocess.CalledProcessError) as exc:
             self._error = str(exc)
         finally:
             self._installing = False
 
     def remove_managed(self) -> dict:
-        for target in (self.runtime_dir, self.managed_model):
+        for target in (self.runtime_dir, self.managed_model, self.managed_ffmpeg.parent):
             if target.exists():
                 shutil.rmtree(target)
         self._error = ""
