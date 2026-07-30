@@ -139,6 +139,8 @@ APP_PORT=8002
 LLM、Embedding 与联网搜索配置在应用的“设置”页填写。Embedding 输出维度必须与
 当前 Milvus collection 一致；更换维度时应使用新的 `COLLECTION_NAME`。
 
+## ASR
+
 语音识别使用本地 Qwen3-ASR-0.6B，自动识别中文、英文和日文。该版本需要 NVIDIA 显卡和兼容
 CUDA 12.8 的显卡驱动。在“设置 → 本地语音识别”中点击自动安装后，应用会创建项目内 Python
 环境、安装 CUDA PyTorch 与 Qwen ASR、从魔搭下载模型，并准备 FFmpeg。新下载的仓库最初不包含
@@ -261,5 +263,4 @@ docker compose down
 
 ## 后续计划
 
-1. 资料批量导入、直接文本和图片输入、人物候选识别、领域专家回退与角色版本确认。
-2. faster-whisper、GPT-SoVITS/在线 TTS、数字人事件、OBS 与直播平台适配器。
+GPT-SoVITS/在线 TTS、数字人事件、OBS 与直播平台适配器。
