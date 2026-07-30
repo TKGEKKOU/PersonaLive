@@ -1,6 +1,13 @@
+import atexit
+import base64
+import json
 import subprocess
+import threading
+import time
 from pathlib import Path
 from typing import Callable
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 
 class TTSGenerationError(RuntimeError):
@@ -8,24 +15,97 @@ class TTSGenerationError(RuntimeError):
 
 
 class LocalTTS:
-    def __init__(self, cli_path: Path, model_dir: Path, runner: Callable = subprocess.run) -> None:
-        self.cli_path = Path(cli_path)
+    _process: subprocess.Popen | None = None
+    _process_lock = threading.Lock()
+
+    def __init__(
+        self,
+        runtime_path: Path,
+        model_dir: Path,
+        port: int = 36365,
+        opener: Callable = urlopen,
+        process_factory: Callable = subprocess.Popen,
+        sleeper: Callable = time.sleep,
+    ) -> None:
+        self.runtime_path = Path(runtime_path)
         self.model_dir = Path(model_dir)
-        self.runner = runner
+        self.port = port
+        self.opener = opener
+        self.process_factory = process_factory
+        self.sleeper = sleeper
+
+    @property
+    def base_url(self) -> str:
+        return f"http://127.0.0.1:{self.port}"
+
+    def _request(self, path: str, payload: dict | None = None) -> dict:
+        body = json.dumps(payload).encode("utf-8") if payload is not None else None
+        request = Request(
+            f"{self.base_url}{path}",
+            data=body,
+            headers={"Content-Type": "application/json"} if body else {},
+            method="POST" if body else "GET",
+        )
+        with self.opener(request, timeout=300 if body else 2) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    def _is_ready(self) -> bool:
+        try:
+            return self._request("/health").get("status") == "ok"
+        except (OSError, URLError, ValueError, json.JSONDecodeError):
+            return False
+
+    def _ensure_ready(self) -> None:
+        if self._is_ready():
+            return
+        if not self.runtime_path.is_file():
+            raise TTSGenerationError("Lunar TTS 运行库不存在")
+        project_root = self.model_dir.parents[1] if self.model_dir.parent.name == "models" else self.model_dir.parent
+        with self._process_lock:
+            if not self._is_ready():
+                process = self._process
+                if process is None or process.poll() is not None:
+                    self._process = self.process_factory(
+                        [str(self.runtime_path), "--basic-port", str(self.port), "--local-dir", str(project_root)],
+                        cwd=str(self.runtime_path.parent),
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                for _ in range(50):
+                    if self._is_ready():
+                        return
+                    self.sleeper(0.1)
+        raise TTSGenerationError("Lunar TTS 服务启动超时")
 
     def synthesize(self, text: str, output: Path, reference_audio: Path | None = None) -> Path:
         if not text.strip():
             raise TTSGenerationError("合成文本为空")
         output = Path(output)
         output.parent.mkdir(parents=True, exist_ok=True)
-        command = [str(self.cli_path), "-m", str(self.model_dir), "-t", text.strip(), "-o", str(output)]
+        self._ensure_ready()
+        payload = {"text": text.strip()}
         if reference_audio:
-            command.extend(["-r", str(reference_audio)])
+            payload["ref_audio"] = str(reference_audio)
         try:
-            self.runner(command, check=True, capture_output=True, text=True, timeout=300)
-        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-            detail = getattr(exc, "stderr", "") or str(exc)
-            raise TTSGenerationError(f"本地语音生成失败：{detail[-1000:]}") from exc
-        if not output.is_file() or output.stat().st_size == 0:
-            raise TTSGenerationError("C++ 推理程序没有生成音频")
+            response = self._request("/tts", payload)
+            if not response.get("success"):
+                raise TTSGenerationError(str(response.get("error") or "Lunar TTS 合成失败"))
+            audio = base64.b64decode(str(response.get("audio") or ""), validate=True)
+        except (OSError, URLError, ValueError, json.JSONDecodeError) as exc:
+            raise TTSGenerationError(f"本地语音生成失败：{exc}") from exc
+        if not audio:
+            raise TTSGenerationError("Lunar TTS 没有返回音频")
+        temporary = output.with_suffix(output.suffix + ".tmp")
+        temporary.write_bytes(audio)
+        temporary.replace(output)
         return output
+
+    @classmethod
+    def stop_service(cls) -> None:
+        with cls._process_lock:
+            if cls._process is not None and cls._process.poll() is None:
+                cls._process.terminate()
+            cls._process = None
+
+
+atexit.register(LocalTTS.stop_service)

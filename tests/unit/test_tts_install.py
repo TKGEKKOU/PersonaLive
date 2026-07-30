@@ -6,15 +6,16 @@ import pytest
 from voice.tts.install import TTSResourceManager
 
 
-def test_tts_status_requires_cli_and_both_models(tmp_path: Path):
+def test_tts_status_requires_lunar_runtime_and_both_models(tmp_path: Path):
     manager = TTSResourceManager(tmp_path)
     manager.runtime_dir.mkdir(parents=True)
-    manager.cli_path.write_bytes(b"exe")
+    manager.runtime_path.write_bytes(b"exe")
     manager.model_dir.mkdir(parents=True)
     manager.model_path.write_bytes(b"model")
 
     assert manager.status()["installed"] is False
 
+    manager.runtime_dll_path.write_bytes(b"dll")
     manager.tokenizer_path.write_bytes(b"tokenizer")
     status = manager.status()
     assert status["installed"] is True
@@ -25,7 +26,8 @@ def test_tts_status_requires_cli_and_both_models(tmp_path: Path):
 def test_tts_config_can_disable_ready_resources(tmp_path: Path):
     manager = TTSResourceManager(tmp_path)
     manager.runtime_dir.mkdir(parents=True)
-    manager.cli_path.write_bytes(b"exe")
+    manager.runtime_path.write_bytes(b"exe")
+    manager.runtime_dll_path.write_bytes(b"dll")
     manager.model_dir.mkdir(parents=True)
     manager.model_path.write_bytes(b"model")
     manager.tokenizer_path.write_bytes(b"tokenizer")
@@ -63,8 +65,9 @@ def test_tts_status_exposes_install_progress(tmp_path: Path):
 
 def test_install_downloads_only_models_when_runtime_is_bundled(tmp_path: Path, monkeypatch):
     manager = TTSResourceManager(tmp_path)
-    manager.cli_path.parent.mkdir(parents=True)
-    manager.cli_path.write_bytes(b"exe")
+    manager.runtime_path.parent.mkdir(parents=True)
+    manager.runtime_path.write_bytes(b"exe")
+    manager.runtime_dll_path.write_bytes(b"dll")
     downloaded = []
 
     def fake_download(url, destination, phase="download"):
@@ -87,4 +90,4 @@ def test_install_never_downloads_missing_runtime(tmp_path: Path, monkeypatch):
     manager._install()
 
     assert downloaded == []
-    assert "内置 TTS 运行库" in manager.status()["error"]
+    assert "内置 Lunar TTS 运行库" in manager.status()["error"]

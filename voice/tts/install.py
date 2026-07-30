@@ -17,7 +17,8 @@ class TTSResourceManager:
         self.data_dir = self.project_root / "data" / "tts"
         self.config_path = self.data_dir / "config.json"
         self.runtime_dir = self.project_root / "runtime" / "tts"
-        self.cli_path = self.runtime_dir / ("qwen3-tts-cli.exe" if os.name == "nt" else "qwen3-tts-cli")
+        self.runtime_path = self.runtime_dir / ("Qwen3_TTS_Lunar.exe" if os.name == "nt" else "Qwen3_TTS_Lunar")
+        self.runtime_dll_path = self.runtime_dir / ("qwen3tts.dll" if os.name == "nt" else "libqwen3tts.so")
         self.model_dir = self.project_root / "models" / "Qwen3-TTS"
         self.model_path = self.model_dir / "qwen3-tts-0.6b-f16.gguf"
         self.tokenizer_path = self.model_dir / "qwen3-tts-tokenizer-f16.gguf"
@@ -51,11 +52,12 @@ class TTSResourceManager:
 
     def status(self) -> dict:
         values = self.config()
-        installed = self.cli_path.is_file() and self.model_path.is_file() and self.tokenizer_path.is_file()
+        runtime_bundled = self.runtime_path.is_file() and self.runtime_dll_path.is_file()
+        installed = runtime_bundled and self.model_path.is_file() and self.tokenizer_path.is_file()
         return {
             **values,
             "installed": installed,
-            "runtime_bundled": self.cli_path.is_file(),
+            "runtime_bundled": runtime_bundled,
             "managed_installed": self.runtime_dir.exists() or self.model_dir.exists(),
             "ready": bool(values["enabled"] and installed),
             "installing": self._installing,
@@ -66,7 +68,7 @@ class TTSResourceManager:
             "total_bytes": self._total_bytes,
             "progress_percent": round(self._downloaded_bytes * 100 / self._total_bytes) if self._total_bytes else None,
             "download_size": "约 3 GB",
-            "runtime": str(self.cli_path if self.cli_path.is_file() else ""),
+            "runtime": str(self.runtime_path if runtime_bundled else ""),
             "model_dir": str(self.model_dir if self.model_dir.is_dir() else ""),
         }
 
@@ -107,8 +109,8 @@ class TTSResourceManager:
 
     def _install(self) -> None:
         try:
-            if not self.cli_path.is_file():
-                raise RuntimeError("当前开发目录缺少内置 TTS 运行库 qwen3-tts-cli.exe，请使用完整 Windows 发布包")
+            if not self.runtime_path.is_file() or not self.runtime_dll_path.is_file():
+                raise RuntimeError("当前开发目录缺少内置 Lunar TTS 运行库，请使用完整 Windows 发布包")
             model_base = os.getenv("PERSONALIVE_TTS_MODEL_BASE", MODEL_BASE).rstrip("/")
             for filename, destination in (
                 (self.model_path.name, self.model_path),

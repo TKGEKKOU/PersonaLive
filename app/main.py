@@ -53,7 +53,7 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     app.state.asr_resources = ASRResourceManager(settings.project_root)
     app.state.tts_resources = TTSResourceManager(settings.project_root)
     app.state.tts_factory = lambda: LocalTTS(
-        app.state.tts_resources.cli_path,
+        app.state.tts_resources.runtime_path,
         app.state.tts_resources.model_dir,
     )
     if initialize_database:
