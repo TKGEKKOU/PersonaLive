@@ -36,20 +36,14 @@ jobs:
           cmake --build third_party/lunar_tts/cpp/build --target qwen3tts_shared --parallel
           cd third_party/lunar_tts
           go build -o Qwen3_TTS_Lunar.exe .
-
-      - name: Collect direct runtime files
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Path runtime-artifact | Out-Null
-          $engine = Get-ChildItem third_party/lunar_tts/cpp/build -Filter qwen3tts.dll -Recurse | Select-Object -First 1
-          if (-not $engine) { throw "qwen3tts.dll was not found" }
-          Copy-Item third_party/lunar_tts/Qwen3_TTS_Lunar.exe runtime-artifact/
-          Copy-Item $engine.FullName runtime-artifact/
-          Copy-Item third_party/lunar_tts/LICENSE runtime-artifact/LICENSE-Lunar-Astral-Agents.txt
-          Copy-Item C:\msys64\ucrt64\bin\libgcc_s_seh-1.dll runtime-artifact/
-          Copy-Item C:\msys64\ucrt64\bin\libgomp-1.dll runtime-artifact/
-          Copy-Item C:\msys64\ucrt64\bin\libstdc++-6.dll runtime-artifact/
-          Copy-Item C:\msys64\ucrt64\bin\libwinpthread-1.dll runtime-artifact/
+          mkdir -p ../../runtime-artifact
+          cp Qwen3_TTS_Lunar.exe ../../runtime-artifact/
+          cp "$(find cpp/build -name qwen3tts.dll -print -quit)" ../../runtime-artifact/
+          cp LICENSE ../../runtime-artifact/LICENSE-Lunar-Astral-Agents.txt
+          cp /ucrt64/bin/libgcc_s_seh-1.dll ../../runtime-artifact/
+          cp /ucrt64/bin/libgomp-1.dll ../../runtime-artifact/
+          cp /ucrt64/bin/libstdc++-6.dll ../../runtime-artifact/
+          cp /ucrt64/bin/libwinpthread-1.dll ../../runtime-artifact/
 
       - uses: actions/upload-artifact@v4
         with:
