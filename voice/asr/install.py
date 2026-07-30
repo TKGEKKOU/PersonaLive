@@ -120,16 +120,40 @@ class ASRResourceManager:
         try:
             if not self.runtime_python.is_file():
                 subprocess.run([sys.executable, "-m", "venv", str(self.runtime_dir)], check=True)
+            pypi_index = os.getenv("PERSONALIVE_PYPI_INDEX", "https://mirrors.aliyun.com/pypi/simple/")
+            pytorch_index = os.getenv(
+                "PERSONALIVE_PYTORCH_INDEX",
+                "https://mirrors.aliyun.com/pytorch-wheels/cu128/",
+            )
             subprocess.run(
-                [str(self.runtime_python), "-m", "pip", "install", "-r", str(self.requirements)],
+                [
+                    str(self.runtime_python),
+                    "-m",
+                    "pip",
+                    "install",
+                    "--index-url",
+                    pypi_index,
+                    "--extra-index-url",
+                    pytorch_index,
+                    "-r",
+                    str(self.requirements),
+                ],
                 cwd=self.project_root,
                 check=True,
             )
+            model_id = os.getenv("PERSONALIVE_ASR_MODEL_ID", "Qwen/Qwen3-ASR-0.6B")
             script = (
-                "from huggingface_hub import snapshot_download; "
-                f"snapshot_download('Qwen/Qwen3-ASR-0.6B', local_dir={str(self.managed_model)!r})"
+                "from modelscope import snapshot_download; "
+                f"snapshot_download({model_id!r}, local_dir={str(self.managed_model)!r})"
             )
-            subprocess.run([str(self.runtime_python), "-c", script], cwd=self.project_root, check=True)
+            download_env = os.environ.copy()
+            download_env["MODELSCOPE_CACHE"] = str(self.project_root / "runtime" / "modelscope-cache")
+            subprocess.run(
+                [str(self.runtime_python), "-c", script],
+                cwd=self.project_root,
+                env=download_env,
+                check=True,
+            )
             self.managed_ffmpeg.parent.mkdir(parents=True, exist_ok=True)
             ffmpeg_script = (
                 "import shutil; from imageio_ffmpeg import get_ffmpeg_exe; "

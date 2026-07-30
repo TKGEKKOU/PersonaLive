@@ -22,6 +22,7 @@ milvus_data/
 .asr-venv/
 runtime/asr/
 runtime/ffmpeg/
+runtime/modelscope-cache/
 models/
 build/
 dist/

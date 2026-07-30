@@ -154,6 +154,14 @@ $env:PERSONALIVE_ASR_MODEL = "D:\Qwen3_ASR\models\Qwen\Qwen3-ASR-0.6B"
 $env:PERSONALIVE_ASR_FFMPEG = "D:\Qwen3_ASR\bin\ffmpeg.exe"
 ```
 
+自动安装默认使用中国大陆下载源：Python 包来自阿里云 PyPI 镜像，CUDA PyTorch 来自阿里云
+PyTorch Wheels，Qwen3-ASR-0.6B 模型来自魔搭 ModelScope。企业内网可在启动前覆盖包镜像：
+
+```powershell
+$env:PERSONALIVE_PYPI_INDEX = "https://your-mirror.example/simple/"
+$env:PERSONALIVE_PYTORCH_INDEX = "https://your-mirror.example/pytorch/cu128/"
+```
+
 API 文档：<http://127.0.0.1:8001/docs>
 
 Web 工作台：<http://127.0.0.1:8001/static/index.html>

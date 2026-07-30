@@ -2,12 +2,15 @@
   "schema_version": 1,
   "model": {
     "id": "Qwen/Qwen3-ASR-0.6B",
+    "source": "https://modelscope.cn/models/Qwen/Qwen3-ASR-0.6B",
     "target": "models/Qwen3-ASR-0.6B",
     "estimated_size_bytes": 1900000000
   },
   "runtime": {
     "target": "runtime/asr",
-    "requirements": "voice/asr/requirements-local.txt"
+    "requirements": "voice/asr/requirements-local.txt",
+    "pypi_index": "https://mirrors.aliyun.com/pypi/simple/",
+    "pytorch_index": "https://mirrors.aliyun.com/pytorch-wheels/cu128/"
   },
   "ffmpeg": {
     "target": "runtime/ffmpeg/ffmpeg.exe",
