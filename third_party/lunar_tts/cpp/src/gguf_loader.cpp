@@ -2,6 +2,7 @@
 #include "ggml-cpu.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 
@@ -37,14 +38,16 @@ ggml_backend_t init_preferred_backend(const char * component_name, std::string *
         return shared.backend;
     }
 
-    ggml_backend_t backend = ggml_backend_init_by_type(GGML_BACKEND_DEVICE_TYPE_GPU, nullptr);
+    const char * use_gpu = std::getenv("PERSONALIVE_TTS_USE_GPU");
+    const bool allow_gpu = !use_gpu || std::strcmp(use_gpu, "0") != 0;
+    ggml_backend_t backend = allow_gpu ? ggml_backend_init_by_type(GGML_BACKEND_DEVICE_TYPE_GPU, nullptr) : nullptr;
     if (backend) {
         ggml_backend_dev_t dev = ggml_backend_get_device(backend);
         const char * dev_name = dev ? ggml_backend_dev_name(dev) : "unknown";
         fprintf(stderr, "[Backend] Initialized GPU backend: %s\n", dev_name);
     }
 
-    if (!backend) {
+    if (!backend && allow_gpu) {
         backend = ggml_backend_init_by_type(GGML_BACKEND_DEVICE_TYPE_ACCEL, nullptr);
         if (backend) {
             ggml_backend_dev_t dev = ggml_backend_get_device(backend);

@@ -55,6 +55,7 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     app.state.tts_factory = lambda: LocalTTS(
         app.state.tts_resources.runtime_path,
         app.state.tts_resources.model_dir,
+        use_gpu=app.state.tts_resources.config()["use_gpu"],
     )
     if initialize_database:
         Base.metadata.create_all(engine)

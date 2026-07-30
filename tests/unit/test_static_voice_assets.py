@@ -34,7 +34,7 @@ def test_local_asr_install_controls_are_present():
 def test_local_tts_install_controls_are_present():
     html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
     script = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
-    for control in ["tts-enabled", "tts-state", "install-tts", "remove-tts"]:
+    for control in ["tts-enabled", "tts-use-gpu", "tts-state", "install-tts", "cancel-tts", "remove-tts", "open-tts-directory", "tts-preview-text", "preview-tts", "tts-preview-audio"]:
         assert f'id="{control}"' in html
     for control in ["tts-progress", "tts-progress-detail"]:
         assert f'id="{control}"' in html

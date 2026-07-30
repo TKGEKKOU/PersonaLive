@@ -1,4 +1,5 @@
 from pathlib import Path
+import time
 import zipfile
 
 import pytest
@@ -38,6 +39,14 @@ def test_tts_config_can_disable_ready_resources(tmp_path: Path):
     assert status["ready"] is False
 
 
+def test_tts_config_can_choose_gpu_acceleration(tmp_path: Path):
+    manager = TTSResourceManager(tmp_path)
+
+    status = manager.configure(use_gpu=False)
+
+    assert status["use_gpu"] is False
+
+
 def test_runtime_archive_rejects_path_traversal(tmp_path: Path):
     manager = TTSResourceManager(tmp_path / "project")
     archive = tmp_path / "runtime.zip"
@@ -61,6 +70,25 @@ def test_tts_status_exposes_install_progress(tmp_path: Path):
     assert status["downloaded_bytes"] == 25
     assert status["total_bytes"] == 100
     assert status["progress_percent"] == 25
+
+
+def test_tts_status_exposes_download_speed_and_eta(tmp_path: Path):
+    manager = TTSResourceManager(tmp_path)
+    manager._set_progress("model", "voice.gguf", 50, 100)
+    manager._download_started_at = time.monotonic() - 5
+
+    status = manager.status()
+
+    assert status["download_speed_bytes"] > 0
+    assert status["eta_seconds"] is not None
+
+
+def test_cancel_install_marks_active_download_for_cancellation(tmp_path: Path):
+    manager = TTSResourceManager(tmp_path)
+    manager._installing = True
+
+    assert manager.cancel_install() is True
+    assert manager.status()["cancelling"] is True
 
 
 def test_install_downloads_only_models_when_runtime_is_bundled(tmp_path: Path, monkeypatch):

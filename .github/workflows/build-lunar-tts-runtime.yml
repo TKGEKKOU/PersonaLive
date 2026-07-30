@@ -26,11 +26,13 @@ jobs:
             mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-ninja
             mingw-w64-ucrt-x86_64-go
+            mingw-w64-ucrt-x86_64-vulkan-headers
+            mingw-w64-ucrt-x86_64-vulkan-loader
 
       - name: Build TTS engine and service
         shell: msys2 {0}
         run: |
-          cmake -S third_party/lunar_tts/cpp/ggml -B third_party/lunar_tts/cpp/ggml/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_STATIC=ON -DGGML_BUILD_TESTS=OFF -DGGML_BUILD_EXAMPLES=OFF -DGGML_NATIVE=ON -DGGML_OPENMP=ON -DGGML_VULKAN=OFF -DGGML_CUDA=OFF
+          cmake -S third_party/lunar_tts/cpp/ggml -B third_party/lunar_tts/cpp/ggml/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_STATIC=ON -DGGML_BUILD_TESTS=OFF -DGGML_BUILD_EXAMPLES=OFF -DGGML_NATIVE=ON -DGGML_OPENMP=ON -DGGML_VULKAN=ON -DGGML_CUDA=OFF
           cmake --build third_party/lunar_tts/cpp/ggml/build --parallel
           cmake -S third_party/lunar_tts/cpp -B third_party/lunar_tts/cpp/build -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build third_party/lunar_tts/cpp/build --target qwen3tts_shared --parallel
@@ -44,6 +46,7 @@ jobs:
           cp /ucrt64/bin/libgomp-1.dll ../../runtime-artifact/
           cp /ucrt64/bin/libstdc++-6.dll ../../runtime-artifact/
           cp /ucrt64/bin/libwinpthread-1.dll ../../runtime-artifact/
+          cp /ucrt64/bin/libvulkan-1.dll ../../runtime-artifact/ || true
 
       - uses: actions/upload-artifact@v4
         with:

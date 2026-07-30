@@ -3,8 +3,10 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from starlette.background import BackgroundTask
 
 from app.database import get_session
 from app.models import ConversationMessage, Persona
@@ -14,17 +16,19 @@ from app.routers.settings import require_local
 from app.schemas import ConversationMessageResponse, PersonaResponse
 from persona.service import LOCAL_WORKSPACE_ID
 from settings import Settings
-from voice.tts.local_worker import TTSGenerationError
+from voice.tts.local_worker import LocalTTS, TTSGenerationError
 
 
 router = APIRouter(prefix="/api/tts", tags=["tts"])
 AUDIO_ROOT = Settings.load().project_root / "data" / "audio"
 VOICE_ROOT = Settings.load().project_root / "data" / "tts" / "voices"
+TTS_PREVIEW_ROOT = Settings.load().project_root / "data" / "tts" / "previews"
 MAX_REFERENCE_BYTES = 10 * 1024 * 1024
 
 
 class TTSConfigUpdate(BaseModel):
     enabled: bool | None = None
+    use_gpu: bool | None = None
 
 
 class TTSSynthesisRequest(BaseModel):
@@ -46,7 +50,10 @@ def get_status(request: Request):
 @router.patch("/config")
 def update_config(payload: TTSConfigUpdate, request: Request, x_personalive_request: str = Header(default="")):
     protected(request, x_personalive_request)
-    return request.app.state.tts_resources.configure(**payload.model_dump(exclude_unset=True))
+    values = payload.model_dump(exclude_unset=True)
+    if "use_gpu" in values and values["use_gpu"] != request.app.state.tts_resources.config()["use_gpu"]:
+        LocalTTS.stop_service()
+    return request.app.state.tts_resources.configure(**values)
 
 
 @router.post("/install", status_code=status.HTTP_202_ACCEPTED)
@@ -56,10 +63,40 @@ def install(request: Request, x_personalive_request: str = Header(default="")):
     return request.app.state.tts_resources.status()
 
 
+@router.delete("/install/cancel", status_code=status.HTTP_202_ACCEPTED)
+def cancel_install(request: Request, x_personalive_request: str = Header(default="")):
+    protected(request, x_personalive_request)
+    request.app.state.tts_resources.cancel_install()
+    return request.app.state.tts_resources.status()
+
+
 @router.delete("/install")
 def remove(request: Request, x_personalive_request: str = Header(default="")):
     protected(request, x_personalive_request)
-    return request.app.state.tts_resources.remove_managed()
+    return request.app.state.tts_resources.remove_models()
+
+
+@router.post("/model-directory")
+def open_model_directory(request: Request, x_personalive_request: str = Header(default="")):
+    protected(request, x_personalive_request)
+    return request.app.state.tts_resources.open_model_directory()
+
+
+@router.post("/preview")
+def preview(payload: TTSSynthesisRequest, request: Request, x_personalive_request: str = Header(default="")):
+    protected(request, x_personalive_request)
+    text = payload.text.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="TTS text is empty")
+    if not request.app.state.tts_resources.status()["ready"]:
+        raise HTTPException(status_code=409, detail="Local TTS is not ready")
+    TTS_PREVIEW_ROOT.mkdir(parents=True, exist_ok=True)
+    output = TTS_PREVIEW_ROOT / f"preview-{uuid4()}.wav"
+    try:
+        request.app.state.tts_factory().synthesize(text, output)
+    except TTSGenerationError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return FileResponse(output, media_type="audio/wav", background=BackgroundTask(output.unlink, missing_ok=True))
 
 
 @router.post("/personas/{persona_id}/reference", response_model=PersonaResponse)

@@ -1,6 +1,7 @@
 import atexit
 import base64
 import json
+import os
 import subprocess
 import threading
 import time
@@ -16,6 +17,7 @@ class TTSGenerationError(RuntimeError):
 
 class LocalTTS:
     _process: subprocess.Popen | None = None
+    _using_gpu: bool | None = None
     _process_lock = threading.Lock()
 
     def __init__(
@@ -23,6 +25,7 @@ class LocalTTS:
         runtime_path: Path,
         model_dir: Path,
         port: int = 36365,
+        use_gpu: bool = True,
         opener: Callable = urlopen,
         process_factory: Callable = subprocess.Popen,
         sleeper: Callable = time.sleep,
@@ -30,6 +33,7 @@ class LocalTTS:
         self.runtime_path = Path(runtime_path)
         self.model_dir = Path(model_dir)
         self.port = port
+        self.use_gpu = use_gpu
         self.opener = opener
         self.process_factory = process_factory
         self.sleeper = sleeper
@@ -64,13 +68,21 @@ class LocalTTS:
         with self._process_lock:
             if not self._is_ready():
                 process = self._process
+                if process is not None and process.poll() is None and self._using_gpu != self.use_gpu:
+                    process.terminate()
+                    self._process = None
+                    process = None
                 if process is None or process.poll() is not None:
+                    environment = os.environ.copy()
+                    environment["PERSONALIVE_TTS_USE_GPU"] = "1" if self.use_gpu else "0"
                     self._process = self.process_factory(
                         [str(self.runtime_path), "--basic-port", str(self.port), "--local-dir", str(project_root)],
                         cwd=str(self.runtime_path.parent),
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
+                        env=environment,
                     )
+                    self._using_gpu = self.use_gpu
                 for _ in range(50):
                     if self._is_ready():
                         return
@@ -106,6 +118,7 @@ class LocalTTS:
             if cls._process is not None and cls._process.poll() is None:
                 cls._process.terminate()
             cls._process = None
+            cls._using_gpu = None
 
 
 atexit.register(LocalTTS.stop_service)

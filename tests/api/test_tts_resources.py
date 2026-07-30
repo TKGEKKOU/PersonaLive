@@ -37,3 +37,13 @@ def test_tts_install_accepts_request_when_lunar_runtime_is_bundled(client, tmp_p
     assert response.status_code == 202
     assert started == [True]
     assert response.json()["runtime_bundled"] is True
+
+
+def test_tts_install_can_be_cancelled(client, tmp_path, monkeypatch):
+    manager = TTSResourceManager(tmp_path)
+    client.app.state.tts_resources = manager
+    monkeypatch.setattr(manager, "cancel_install", lambda: True)
+
+    response = client.delete("/api/tts/install/cancel", headers={"X-PersonaLive-Request": "web"})
+
+    assert response.status_code == 202

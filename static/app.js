@@ -98,8 +98,12 @@ function bindEvents() {
   $("install-asr").addEventListener("click", installAsr);
   $("remove-asr").addEventListener("click", removeAsr);
   $("tts-enabled").addEventListener("change", saveTtsConfig);
+  $("tts-use-gpu").addEventListener("change", saveTtsConfig);
   $("install-tts").addEventListener("click", installTts);
+  $("cancel-tts").addEventListener("click", cancelTts);
   $("remove-tts").addEventListener("click", removeTts);
+  $("open-tts-directory").addEventListener("click", openTtsDirectory);
+  $("preview-tts").addEventListener("click", previewTts);
   $("close-preview").addEventListener("click", closePreview);
   $("preview-backdrop").addEventListener("click", closePreview);
 }
@@ -821,21 +825,29 @@ async function loadTtsStatus() {
     const config = await api(fetch("/api/tts/status"));
     state.ttsConfigured = config.ready;
     $("tts-enabled").checked = config.enabled;
-    const phaseNames = { preparing: "准备下载", model: "下载语音模型", complete: "安装完成", error: "安装失败" };
+    $("tts-use-gpu").checked = config.use_gpu;
+    $("tts-use-gpu").disabled = config.installing;
+    const phaseNames = { preparing: "准备下载", model: "下载语音模型", cancelling: "正在取消", complete: "安装完成", error: "安装失败" };
     $("tts-state").textContent = config.installing ? (phaseNames[config.phase] || "正在安装") : config.ready ? "已就绪" : config.enabled ? "尚未安装" : "已关闭";
     setText("tts-status", config.error || (!config.runtime_bundled ? "当前开发目录缺少内置 Lunar TTS 运行库；完整 Windows 发布包将自带该文件" : config.ready ? `Qwen3-TTS-0.6B · ${config.model_dir}` : config.download_size));
     const progress = $("tts-progress"); progress.classList.toggle("is-hidden", !config.installing);
     if (config.progress_percent == null) progress.removeAttribute("value"); else progress.value = config.progress_percent;
     const size = (bytes) => bytes ? `${(bytes / 1024 / 1024).toFixed(bytes > 1024 * 1024 * 100 ? 0 : 1)} MB` : "";
-    setText("tts-progress-detail", config.installing ? [config.current_file, size(config.downloaded_bytes), config.total_bytes ? `/ ${size(config.total_bytes)}` : ""].filter(Boolean).join(" ") : "");
+    const duration = (seconds) => seconds == null ? "正在估算剩余时间" : seconds < 60 ? `预计剩余 ${seconds} 秒` : `预计剩余 ${Math.ceil(seconds / 60)} 分钟`;
+    const speed = config.download_speed_bytes ? `${size(config.download_speed_bytes)}/s` : "";
+    setText("tts-progress-detail", config.installing ? [config.current_file, size(config.downloaded_bytes), config.total_bytes ? `/ ${size(config.total_bytes)}` : "", speed, duration(config.eta_seconds)].filter(Boolean).join(" · ") : "");
     $("install-tts").disabled = config.installing || config.ready || !config.runtime_bundled;
-    $("remove-tts").disabled = config.installing || !config.managed_installed;
+    $("cancel-tts").classList.toggle("is-hidden", !config.installing);
+    $("cancel-tts").disabled = !config.installing || config.cancelling;
+    $("remove-tts").disabled = config.installing || !config.model_dir;
+    $("open-tts-directory").disabled = config.installing;
+    $("preview-tts").disabled = !config.ready;
     if (config.installing) setTimeout(loadTtsStatus, 2000);
   } catch (reason) { state.ttsConfigured = false; setText("tts-status", reason); }
 }
 async function saveTtsConfig() {
   try {
-    await api(fetch("/api/tts/config", { method: "PATCH", headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" }, body: JSON.stringify({ enabled: $("tts-enabled").checked }) }));
+    await api(fetch("/api/tts/config", { method: "PATCH", headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" }, body: JSON.stringify({ enabled: $("tts-enabled").checked, use_gpu: $("tts-use-gpu").checked }) }));
     await loadTtsStatus();
   } catch (reason) { setText("tts-status", reason); }
 }
@@ -848,12 +860,47 @@ async function installTts() {
   } catch (reason) { setText("tts-status", reason); $("install-tts").disabled = false; }
 }
 async function removeTts() {
-  if (!confirm("删除项目自动下载的 TTS 模型和运行库？角色参考声音不会删除。")) return;
+  if (!confirm("删除已下载的 TTS 模型？内置运行库和角色参考声音不会删除。")) return;
   $("remove-tts").disabled = true;
   try {
     await api(fetch("/api/tts/install", { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
     await loadTtsStatus();
   } catch (reason) { setText("tts-status", reason); $("remove-tts").disabled = false; }
+}
+async function cancelTts() {
+  $("cancel-tts").disabled = true;
+  try {
+    await api(fetch("/api/tts/install/cancel", { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
+    await loadTtsStatus();
+  } catch (reason) { setText("tts-status", reason); $("cancel-tts").disabled = false; }
+}
+async function openTtsDirectory() {
+  $("open-tts-directory").disabled = true;
+  try {
+    await api(fetch("/api/tts/model-directory", { method: "POST", headers: { "X-PersonaLive-Request": "web" } }));
+  } catch (reason) { setText("tts-status", reason); }
+  finally { $("open-tts-directory").disabled = false; }
+}
+async function previewTts() {
+  const text = $("tts-preview-text").value.trim();
+  if (!text) return setText("tts-preview-status", "请输入试听文本");
+  const button = $("preview-tts");
+  button.disabled = true;
+  setText("tts-preview-status", "正在生成试听");
+  try {
+    const response = await fetch("/api/tts/preview", { method: "POST", headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" }, body: JSON.stringify({ text }) });
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+      throw new Error(data?.detail || `请求失败 (${response.status})`);
+    }
+    const audio = $("tts-preview-audio");
+    if (audio.src) URL.revokeObjectURL(audio.src);
+    audio.src = URL.createObjectURL(await response.blob());
+    audio.classList.remove("is-hidden");
+    setText("tts-preview-status", "试听已生成");
+    audio.play().catch(() => {});
+  } catch (reason) { setText("tts-preview-status", reason.message || reason); }
+  finally { button.disabled = !state.ttsConfigured; }
 }
 function normalizedUrl(value) { return value.trim().replace(/\/+$/, "").toLowerCase(); }
 function inferProvider(presets, baseUrl) {
