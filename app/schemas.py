@@ -199,3 +199,15 @@ class LocalSettingsResponse(BaseModel):
 
 class TranscriptionResponse(BaseModel):
     text: str
+
+
+class ConversationMessageResponse(BaseModel):
+    id: str
+    role: Literal["user", "assistant"]
+    kind: Literal["text", "audio"]
+    content: str
+    audio_url: str | None = None
+    transcript: str | None = None
+    status: Literal["pending", "transcribing", "completed", "failed"]
+    error_message: str | None = None
+    created_at: datetime

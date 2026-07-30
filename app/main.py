@@ -12,6 +12,7 @@ from app.database import Base, build_engine, build_session_factory, upgrade_pers
 from app.routers.agents import router as agents_router
 from app.routers.documents import router as documents_router
 from app.routers.persona_drafts import router as persona_drafts_router
+from app.routers.messages import router as messages_router
 from app.routers.personas import router as personas_router
 from app.routers.rag import router as rag_router
 from app.routers.realtime import router as realtime_router
@@ -52,6 +53,7 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     else:
         app.state.agent_service = PersonaAgentService(MemorySaver())
     app.include_router(agents_router)
+    app.include_router(messages_router)
     app.include_router(personas_router)
     app.include_router(documents_router)
     app.include_router(persona_drafts_router)

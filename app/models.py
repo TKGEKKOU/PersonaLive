@@ -101,6 +101,27 @@ class PersonaMemory(Base):
     )
 
 
+class ConversationMessage(Base):
+    __tablename__ = "conversation_messages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    workspace_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    persona_id: Mapped[str] = mapped_column(ForeignKey("personas.id"), nullable=False, index=True)
+    conversation_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    audio_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    audio_content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class DocumentJob(Base):
     __tablename__ = "document_jobs"
 
