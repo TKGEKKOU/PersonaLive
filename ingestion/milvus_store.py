@@ -65,11 +65,26 @@ class MilvusRagStore:
     def collection_exists(self) -> bool:
         return self.settings.collection_name in self.client().list_collections()
 
+    def validate_collection_dimensions(self, client: MilvusClient | None = None) -> None:
+        active_client = client or self.client()
+        if self.settings.collection_name not in active_client.list_collections():
+            return
+        description = active_client.describe_collection(collection_name=self.settings.collection_name)
+        dense = next((field for field in description.get("fields", []) if field.get("name") == "dense"), None)
+        params = dense.get("params", {}) if dense else {}
+        actual = int(params.get("dim") or dense.get("dim") or 0) if dense else 0
+        if actual and actual != self.settings.embedding_dimensions:
+            raise RuntimeError(
+                f"当前 Embedding 为 {self.settings.embedding_dimensions} 维，但 Milvus Collection 为 {actual} 维；"
+                "请重建 Collection 并重新导入资料"
+            )
+
     def create_collection(self, reset: bool = False) -> None:
         client = self.client()
         collection_name = self.settings.collection_name
         if collection_name in client.list_collections():
             if not reset:
+                self.validate_collection_dimensions(client)
                 return
             client.drop_collection(collection_name=collection_name)
 
@@ -142,6 +157,7 @@ class MilvusRagStore:
         )
 
     def connect(self) -> Milvus:
+        self.validate_collection_dimensions()
         self.vector_store = Milvus(
             embedding_function=get_embedding_model(self.settings),
             collection_name=self.settings.collection_name,

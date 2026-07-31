@@ -1,0 +1,4 @@
+torch==2.8.0+cu128
+sentence-transformers>=5.1,<6
+modelscope>=1.28,<2
+huggingface-hub>=0.34,<1

@@ -43,3 +43,16 @@ def install(request: Request, x_personalive_request: str = Header(default="")):
 def remove(request: Request, x_personalive_request: str = Header(default="")):
     protected(request, x_personalive_request)
     return request.app.state.asr_resources.remove_managed()
+
+
+@router.delete("/install/cancel", status_code=status.HTTP_202_ACCEPTED)
+def cancel_install(request: Request, x_personalive_request: str = Header(default="")):
+    protected(request, x_personalive_request)
+    request.app.state.asr_resources.cancel_install()
+    return request.app.state.asr_resources.status()
+
+
+@router.post("/model-directory")
+def open_model_directory(request: Request, x_personalive_request: str = Header(default="")):
+    protected(request, x_personalive_request)
+    return request.app.state.asr_resources.open_model_directory()

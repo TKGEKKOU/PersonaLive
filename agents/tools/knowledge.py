@@ -3,7 +3,8 @@ from typing import Any
 from langchain.tools import ToolRuntime, tool
 
 from agents.context import PersonaAgentContext
-from rag.contracts import RagQueryContext
+from agents.contracts import SpecialistResult
+from rag.contracts import RagEvidenceResult, RagQueryContext
 from rag.service import RagRequest, RagService, create_rag_service
 
 
@@ -28,13 +29,8 @@ def run_persona_knowledge_search(
             force_knowledge=True,
         )
     )
-    return {
-        "answer": result.answer_draft,
-        "evidence": list(result.evidence),
-        "confidence": result.confidence,
-        "missing_points": list(result.missing_points),
-        "trace": list(result.trace),
-    }
+    evidence_result = RagEvidenceResult.from_rag_result(result)
+    return SpecialistResult.from_rag_evidence(evidence_result).as_dict()
 
 
 @tool("search_persona_knowledge")
@@ -44,4 +40,3 @@ def search_persona_knowledge(
 ) -> dict[str, Any]:
     """Search the active persona's uploaded knowledge with corrective RAG."""
     return run_persona_knowledge_search(query, runtime.context)
-

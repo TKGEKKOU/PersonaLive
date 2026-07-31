@@ -201,14 +201,27 @@ def generate_node(state: AdaptiveRagState) -> AdaptiveRagState:
 
 
 def decide_after_generation(state: dict) -> str:
-    return "quality_gate" if state.get("needs_quality_check", True) else "useful"
+    # 所有生成结果都经过门禁；高置信度时门禁节点只做本地检查。
+    return "quality_gate"
 
 
 def quality_gate_node(state: AdaptiveRagState) -> AdaptiveRagState:
+    documents = state.get("documents", [])
+    answer = (state.get("answer") or "").strip()
+    if float(state.get("confidence") or 0.0) >= settings.confidence_threshold and documents and answer:
+        return _complete(
+            state,
+            "quality_gate",
+            grounded=True,
+            useful=True,
+            missing_points=[],
+            unsupported_claims=[],
+            correction_action="no_answer",
+        )
     score = grade_answer_quality(
         state["question"],
-        format_documents(state.get("documents", [])),
-        state.get("answer", ""),
+        format_documents(documents),
+        answer,
     )
     return _complete(
         state,

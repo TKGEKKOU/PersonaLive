@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import asyncio
 from pathlib import Path
 import sys
 
@@ -13,6 +14,7 @@ from app.database import Base, build_engine, build_session_factory, upgrade_pers
 from app.routers.agents import router as agents_router
 from app.routers.asr import router as asr_router
 from app.routers.documents import router as documents_router
+from app.routers.embedding import router as embedding_router
 from app.routers.persona_drafts import router as persona_drafts_router
 from app.routers.messages import router as messages_router
 from app.routers.personas import router as personas_router
@@ -23,6 +25,8 @@ from app.routers.tts import router as tts_router
 from app.routers.voice import router as voice_router
 from settings import Settings
 from ingestion.status import get_system_status
+from ingestion.local_embedding.resources import LocalEmbeddingResourceManager
+from ingestion.embeddings import warm_managed_embedding
 from persona.delete_service import PersonaDeletionService
 from realtime.execution import ConversationExecutionRegistry
 from voice.asr import build_asr_provider
@@ -39,7 +43,11 @@ def create_app(initialize_database: bool = True) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        app.state.embedding_warmup_task = asyncio.create_task(
+            asyncio.to_thread(warm_managed_embedding, settings)
+        )
         yield
+        app.state.embedding_warmup_task.cancel()
         app.state.tts_worker.stop_service()
         resource = getattr(app.state, "checkpoint_resource", None)
         if resource is not None:
@@ -52,6 +60,7 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     app.state.realtime_executions = ConversationExecutionRegistry()
     app.state.asr_provider_factory = build_asr_provider
     app.state.asr_resources = ASRResourceManager(settings.project_root)
+    app.state.embedding_resources = LocalEmbeddingResourceManager(settings.project_root)
     app.state.tts_resources = TTSResourceManager(settings.project_root)
     app.state.tts_worker = LocalTTS(
         app.state.tts_resources.runtime_path,
@@ -72,6 +81,7 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     app.include_router(messages_router)
     app.include_router(personas_router)
     app.include_router(documents_router)
+    app.include_router(embedding_router)
     app.include_router(persona_drafts_router)
     app.include_router(rag_router)
     app.include_router(realtime_router)

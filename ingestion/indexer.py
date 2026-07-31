@@ -2,6 +2,7 @@ from pathlib import Path
 
 from ingestion.markdown_parser import DocumentScope, MarkdownParser
 from ingestion.milvus_store import MilvusRagStore
+from settings import Settings
 
 
 def ingest_markdown_file(
@@ -16,7 +17,8 @@ def ingest_markdown_file(
     if store is None:
         active_store.create_collection(reset=False)
 
-    documents = MarkdownParser().parse_file(path, scope)
+    settings = Settings.load()
+    documents = MarkdownParser(settings.chunk_size, settings.chunk_overlap).parse_file(path, scope)
     if not documents:
         return 0
 

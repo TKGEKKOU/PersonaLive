@@ -64,7 +64,9 @@ def test_install_pip_command_has_bounded_network_retries(tmp_path, monkeypatch):
         commands.append(command)
         if command[:3] == [str(manager.runtime_python), "-m", "pip"]:
             raise asr_install.subprocess.CalledProcessError(1, command, stderr="unreachable")
+        return asr_install.subprocess.CompletedProcess(command, 0, "", "")
 
+    monkeypatch.setattr(manager, "_run", fake_run)
     monkeypatch.setattr(asr_install.subprocess, "run", fake_run)
     manager._install()
 

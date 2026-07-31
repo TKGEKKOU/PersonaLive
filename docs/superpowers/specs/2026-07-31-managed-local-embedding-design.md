@@ -29,14 +29,14 @@
 
 ## 方案
 
-采用 FastAPI 主进程内的懒加载模型管理器。它与当前本地单用户架构一致，比新增常驻子服务或工作进程更容易维护。模型仅在探测维度、入库或检索时加载；切换模型后释放旧实例，再按新配置加载。
+采用应用托管的独立 Embedding 运行环境和按需工作进程。主应用当前不包含 PyTorch、Sentence Transformers 或 ModelScope；独立的 `runtime/embedding` 可由应用自动安装依赖，避免要求用户操作 Python，也避免大模型依赖污染现有 LangChain 环境。工作进程仅在探测维度、入库或检索时启动；切换模型后重启并加载新模型。
 
 模型管理器负责四件事：
 
 1. 将模型 ID 解析为受控的 `models` 子目录，禁止路径越界。
 2. 使用所选下载源下载快照，并持续发布结构化进度。
-3. 使用 Sentence Transformers 加载模型，默认尝试 CUDA，失败后回退 CPU。
-4. 提供统一的 `embed_documents` 和 `embed_query` 接口，供现有 Milvus 调用链使用。
+3. 自动创建独立 Python 环境，并在其中使用 Sentence Transformers 加载模型；默认尝试 CUDA，失败后回退 CPU。
+4. 通过本机标准输入输出协议提供 `embed_documents` 和 `embed_query`，供主进程适配器调用。
 
 云端模式继续使用 `OpenAIEmbeddings`。本地模式由同一工厂函数返回应用内置适配器，因此索引和检索调用方不需要区分实现。
 

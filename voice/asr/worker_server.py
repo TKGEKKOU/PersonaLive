@@ -8,10 +8,13 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from qwen_asr import Qwen3ASRModel
 
 
-bundled_model = Path(r"D:\Qwen3_ASR\models\Qwen\Qwen3-ASR-0.6B")
-MODEL_ID = os.getenv("PERSONALIVE_ASR_MODEL") or (
-    str(bundled_model) if bundled_model.is_dir() else "Qwen/Qwen3-ASR-0.6B"
-)
+MANAGED_MODEL = Path(__file__).resolve().parents[2] / "models" / "Qwen3-ASR-0.6B"
+MODEL_ID = os.getenv("PERSONALIVE_ASR_MODEL") or str(MANAGED_MODEL)
+if not Path(MODEL_ID).joinpath("config.json").is_file():
+    raise RuntimeError(
+        f"本地 ASR 模型不存在：{MODEL_ID}。"
+        f"请在「设置 → 本地语音识别」中完成安装，模型将下载到 {MANAGED_MODEL}。"
+    )
 app = FastAPI(title="PersonaLive Local ASR")
 model = None
 

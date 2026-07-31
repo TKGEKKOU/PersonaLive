@@ -70,8 +70,9 @@ def _supervisor_prompt(context: PersonaAgentContext) -> str:
     profile = json.dumps(context.persona_profile, ensure_ascii=False, sort_keys=True, default=str)
     tts_enabled = bool((context.persona_profile.get("tts") or {}).get("enabled"))
     voice_guidance = (
-        "Because voice output is enabled, keep ordinary chat replies to one or two short sentences, "
-        "preferably under 80 Chinese characters (or 45 English words), and put the direct answer first. "
+        "Because voice output is enabled, keep ordinary chat replies to one compact paragraph under 30 Chinese "
+        "characters (or 20 English words). knowledge answers may be under 80 Chinese characters, and citations "
+        "must remain outside the spoken reply. Put the direct answer first. "
         if tts_enabled
         else ""
     )
@@ -88,7 +89,8 @@ def _supervisor_prompt(context: PersonaAgentContext) -> str:
         "For uploaded-knowledge questions, give the evidence-backed answer before interpretation. "
         "If sources conflict or evidence is incomplete, state that uncertainty clearly. Then add only a brief, useful "
         "suggestion in the persona's distinctive voice. Do not mention internal workers. Preserve citations and do not "
-        "invent unsupported facts. "
+        "invent unsupported facts. Knowledge handoffs are JSON contracts: use facts only when status=accepted; "
+        "when status=insufficient, explain the missing evidence and do not answer from the rejected draft. "
         f"{voice_guidance}"
     )
 
@@ -158,21 +160,67 @@ def _handoff_call_id(messages: list, worker: Worker) -> str | None:
     return None
 
 
+def _knowledge_specialist_result(messages: list) -> dict:
+    """从 RAG 工具消息恢复可信交接；不使用 Knowledge Worker 的自由文本总结。"""
+
+    for message in reversed(messages):
+        if not isinstance(message, ToolMessage) or message.name != "search_persona_knowledge":
+            continue
+        try:
+            payload = message.content if isinstance(message.content, dict) else json.loads(str(message.content))
+        except (json.JSONDecodeError, TypeError, ValueError):
+            break
+        if not isinstance(payload, dict) or payload.get("specialist") != "knowledge":
+            break
+        status = payload.get("status")
+        if status not in {"accepted", "insufficient"}:
+            break
+        # accepted 结果也只保留合同字段，避免工具载荷中意外增加的字段进入 Supervisor 上下文。
+        return {
+            "specialist": "knowledge",
+            "status": status,
+            "answer": str(payload.get("answer") or "") if status == "accepted" else "",
+            "evidence": list(payload.get("evidence") or []) if status == "accepted" else [],
+            "citations": list(payload.get("citations") or []) if status == "accepted" else [],
+            "uncertainties": list(payload.get("uncertainties") or []),
+            "trace": list(payload.get("trace") or []),
+            "confidence": float(payload.get("confidence") or 0.0),
+        }
+    # 工具没有产生合法合同意味着证据链不完整，必须失败关闭而不是回退到模型总结。
+    return {
+        "specialist": "knowledge",
+        "status": "insufficient",
+        "answer": "",
+        "evidence": [],
+        "citations": [],
+        "uncertainties": ["RAG 未返回可验证的结构化证据。"],
+        "trace": [],
+        "confidence": 0.0,
+    }
+
+
 def _finalize_worker(worker: Worker):
     def finalize(state: PersonaWorkflowState) -> dict:
         messages = state.get("messages", [])
-        result = next(
-            (
-                message.content
-                for message in reversed(messages)
-                if isinstance(message, AIMessage) and message.content
-            ),
-            "The specialist completed without a text summary.",
-        )
+        if worker == "knowledge":
+            specialist_result = _knowledge_specialist_result(messages)
+            # Supervisor 只接收门禁后的 JSON；未通过时只有不确定性，不包含答案草稿或弱证据。
+            result = json.dumps(specialist_result, ensure_ascii=False, sort_keys=True)
+            worker_result = specialist_result
+        else:
+            result = next(
+                (
+                    message.content
+                    for message in reversed(messages)
+                    if isinstance(message, AIMessage) and message.content
+                ),
+                "The specialist completed without a text summary.",
+            )
+            worker_result = {"worker": worker, "summary": str(result)}
         call_id = _handoff_call_id(messages, worker)
         updates: dict = {
             "active_worker": None,
-            "worker_results": [{"worker": worker, "summary": str(result)}],
+            "worker_results": [worker_result],
         }
         if call_id:
             # 用 ToolMessage 回填原始 handoff tool_call_id，保持 LLM 工具调用协议闭合；

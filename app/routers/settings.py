@@ -4,10 +4,17 @@ import tempfile
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request, Response
 
-from app.schemas import LocalSettingsResponse, LocalSettingsUpdate
-from settings import SUPPORTED_WEB_SEARCH_PROVIDERS, Settings
+from app.schemas import ApiKeyRevealRequest, ApiKeyRevealResponse, LocalSettingsResponse, LocalSettingsUpdate
+from settings import (
+    DEFAULT_LOCAL_EMBEDDING_MODEL,
+    SUPPORTED_EMBEDDING_DEVICES,
+    SUPPORTED_EMBEDDING_PROVIDERS,
+    SUPPORTED_EMBEDDING_SOURCES,
+    SUPPORTED_WEB_SEARCH_PROVIDERS,
+    Settings,
+)
 
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -69,15 +76,26 @@ def settings_response(path: Path, restart_required: bool = False) -> LocalSettin
     if web_search_provider not in SUPPORTED_WEB_SEARCH_PROVIDERS:
         web_search_provider = "off"
     web_search_api_key = str(values.get("web_search_api_key") or values.get("tavily_api_key") or "")
+    embedding_base_url = str(values.get("embedding_base_url") or "")
+    embedding_provider = str(values.get("embedding_provider") or "")
+    if embedding_provider not in SUPPORTED_EMBEDDING_PROVIDERS:
+        embedding_provider = "qwen" if "dashscope.aliyuncs.com" in embedding_base_url else "custom" if embedding_base_url else "managed_local"
+    embedding_source = str(values.get("embedding_model_source") or "modelscope")
+    embedding_device = str(values.get("embedding_device") or "auto")
     return LocalSettingsResponse(
         openai_api_key_configured=bool(values.get("openai_api_key")),
         openai_base_url=str(values.get("openai_base_url") or ""),
         openai_model=str(values.get("openai_model") or ""),
         embedding_api_key_configured=bool(values.get("embedding_api_key")),
-        embedding_base_url=str(values.get("embedding_base_url") or ""),
-        embedding_model=str(values.get("embedding_model") or ""),
-        embedding_dimensions=int(values.get("embedding_dimensions") or 512),
+        embedding_provider=embedding_provider,
+        embedding_model_source=embedding_source if embedding_source in SUPPORTED_EMBEDDING_SOURCES else "modelscope",
+        embedding_device=embedding_device if embedding_device in SUPPORTED_EMBEDDING_DEVICES else "auto",
+        embedding_base_url=embedding_base_url,
+        embedding_model=str(values.get("embedding_model") or (DEFAULT_LOCAL_EMBEDDING_MODEL if embedding_provider == "managed_local" else "")),
+        embedding_dimensions=int(values.get("embedding_dimensions") or (1024 if embedding_provider == "managed_local" else 512)),
         embedding_send_dimensions=bool(values.get("embedding_send_dimensions", True)),
+        chunk_size=int(values.get("chunk_size") or 1000),
+        chunk_overlap=int(values.get("chunk_overlap") or 150),
         web_search_provider=web_search_provider,
         web_search_api_key_configured=bool(web_search_api_key),
         web_search_base_url=str(values.get("web_search_base_url") or ""),
@@ -110,6 +128,20 @@ def get_settings(request: Request) -> LocalSettingsResponse:
     return settings_response(SETTINGS_PATH)
 
 
+@router.post("/reveal-key", response_model=ApiKeyRevealResponse)
+def reveal_api_key(
+    payload: ApiKeyRevealRequest,
+    request: Request,
+    response: Response,
+    x_personalive_request: str = Header(default=""),
+) -> ApiKeyRevealResponse:
+    require_local(request)
+    if x_personalive_request != "web":
+        raise HTTPException(status_code=403, detail="Missing same-origin request header")
+    response.headers["Cache-Control"] = "no-store"
+    return ApiKeyRevealResponse(value=str(read_settings(SETTINGS_PATH).get(payload.field) or ""))
+
+
 @router.patch("", response_model=LocalSettingsResponse)
 def save_settings(payload: LocalSettingsUpdate, request: Request) -> LocalSettingsResponse:
     require_local(request)
@@ -125,6 +157,21 @@ def save_settings(payload: LocalSettingsUpdate, request: Request) -> LocalSettin
     if provider is None and submitted.get("enable_web_fallback") is False:
         submitted["web_search_provider"] = "off"
         provider = "off"
+    if submitted.get("embedding_provider") not in (None, *SUPPORTED_EMBEDDING_PROVIDERS):
+        raise HTTPException(status_code=422, detail="Unsupported embedding provider")
+    if submitted.get("embedding_model_source") not in (None, *SUPPORTED_EMBEDDING_SOURCES):
+        raise HTTPException(status_code=422, detail="Unsupported embedding model source")
+    if submitted.get("embedding_device") not in (None, *SUPPORTED_EMBEDDING_DEVICES):
+        raise HTTPException(status_code=422, detail="Unsupported embedding device")
+    current = read_settings(SETTINGS_PATH)
+    chunk_size = int(submitted.get("chunk_size") or current.get("chunk_size") or 1000)
+    chunk_overlap = int(
+        submitted.get("chunk_overlap")
+        if submitted.get("chunk_overlap") is not None
+        else current.get("chunk_overlap", 150)
+    )
+    if chunk_overlap > chunk_size // 4:
+        raise HTTPException(status_code=422, detail="切分重叠不能超过切分长度的 25%")
     updates = {}
     for field, value in submitted.items():
         if isinstance(value, bool) or isinstance(value, int):

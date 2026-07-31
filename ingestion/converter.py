@@ -37,6 +37,9 @@ def convert_source(source: Path, destination: Path) -> str:
     """Convert one supported source file, write Markdown, and return its contents."""
     if not source.is_file():
         raise FileNotFoundError(f"Source file does not exist: {source}")
+    # MarkItDown 不支持旧版二进制 Word；提前给出用户可执行的处理方式。
+    if source.suffix.lower() == ".doc":
+        raise ValueError("暂不支持旧版 Word .doc 文件，请先用 Word 或 WPS 另存为 .docx 后重新上传")
 
     result = _create_converter().convert(str(source))
     text_content = getattr(result, "text_content", None)

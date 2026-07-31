@@ -12,6 +12,8 @@ const state = {
   settingsAction: null,
   deletePersona: null,
   savedEmbeddingDimensions: 512,
+  embeddingKeyConfigured: false,
+  webSearchKeyConfigured: false,
   realtimeSocket: null,
   realtimeTurnId: null,
   realtimeAnswerNode: null,
@@ -23,6 +25,10 @@ const state = {
   agentRequestPending: false,
   asrConfigured: false,
   ttsConfigured: false,
+  embeddingConfigured: false,
+  embeddingInstalledModel: "",
+  embeddingResourceStatus: null,
+  openaiKeyConfigured: false,
   audioMode: "idle",
   audioStarting: false,
   audioRecorder: null,
@@ -34,6 +40,7 @@ const state = {
   voiceStreamBuffer: "",
   voicePlaybackQueue: [],
   voicePlaybackActive: false,
+  pendingReplyNode: null,
 };
 const $ = (id) => document.getElementById(id);
 const LLM_PRESETS = {
@@ -43,6 +50,7 @@ const LLM_PRESETS = {
 };
 const EMBEDDING_PRESETS = {
   qwen: { baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "text-embedding-v4", dimensions: 512, sendDimensions: true },
+  managed_local: { baseUrl: "", model: "Qwen/Qwen3-Embedding-0.6B", dimensions: 1024, sendDimensions: false },
 };
 const WEB_SEARCH_GUIDES = {
   off: { text: "选择服务并填写 API Key 后，联网搜索才会启用。" },
@@ -53,7 +61,7 @@ const WEB_SEARCH_GUIDES = {
 
 document.addEventListener("DOMContentLoaded", async () => {
   bindEvents();
-  await Promise.all([loadStatus(), loadPersonas(), loadSettings(), loadAsrStatus(), loadTtsStatus()]);
+  await Promise.all([loadStatus(), loadPersonas(), loadSettings(), loadEmbeddingStatus(), loadAsrStatus(), loadTtsStatus()]);
   icons();
 });
 
@@ -65,12 +73,21 @@ async function api(request) {
   return data;
 }
 function setText(id, value = "") { $(id).textContent = value?.message || value; }
+const API_KEY_FIELDS = {
+  "openai-api-key": { field: "openai_api_key", configured: "openaiKeyConfigured" },
+  "embedding-api-key": { field: "embedding_api_key", configured: "embeddingKeyConfigured" },
+  "web-search-api-key": { field: "web_search_api_key", configured: "webSearchKeyConfigured" },
+};
 
 function bindEvents() {
-  $("brand-home").addEventListener("click", () => switchView("home"));
-  document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
+  setSidebarPinned(false);
+  prepareSettingsSections();
+  $("sidebar-toggle").addEventListener("click", () => setSidebarPinned(!document.body.classList.contains("sidebar-pinned")));
+  document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => {
+    switchView(button.dataset.view);
+    setSidebarPinned(false);
+  }));
   document.querySelectorAll("[data-target-view]").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.targetView)));
-  document.querySelectorAll("[data-settings-target]").forEach((button) => button.addEventListener("click", () => switchSettingsPanel(button.dataset.settingsTarget)));
   document.querySelectorAll('input[name="material-action"]').forEach((input) => input.addEventListener("change", () => switchMaterialMode(input.value)));
   $("document-files").addEventListener("change", () => summarizeFiles("document-files", "file-summary", "未选择文件"));
   $("edit-document-files").addEventListener("change", () => summarizeFiles("edit-document-files", "edit-file-summary", "添加文件或图片"));
@@ -89,6 +106,7 @@ function bindEvents() {
   $("edit-tts-enabled").addEventListener("change", syncEditTtsControls);
   $("edit-upload-form").addEventListener("submit", uploadEditDocuments);
   $("question-form").addEventListener("submit", submitQuestion);
+  $("chat-process-toggle").addEventListener("click", toggleChatProcess);
   $("question").addEventListener("input", resizeComposer);
   $("cancel-generation").addEventListener("click", cancelRealtimeTurn);
   $("record-audio").addEventListener("click", () => state.audioMode === "recording" ? finishAudioRecording() : startAudioRecording());
@@ -104,13 +122,27 @@ function bindEvents() {
   $("delete-persona-cancel").addEventListener("click", () => $("delete-persona-dialog").close());
   $("delete-persona-confirm").addEventListener("click", confirmPersonaDeletion);
   $("llm-provider").addEventListener("change", applyLlmPreset);
+  Object.keys(API_KEY_FIELDS).forEach((id) => {
+    $(`toggle-${id}`).addEventListener("click", () => toggleApiKeyVisibility(id));
+    $(`copy-${id}`).addEventListener("click", () => copyApiKey(id));
+  });
   $("embedding-provider").addEventListener("change", applyEmbeddingPreset);
-  $("embedding-dimensions").addEventListener("input", renderEmbeddingWarning);
+  $("managed-embedding-preset").addEventListener("change", applyManagedEmbeddingPreset);
+  $("embedding-model").addEventListener("input", markEmbeddingSelectionChanged);
+  ["embedding-base-url", "embedding-model", "embedding-api-key", "embedding-dimensions", "chunk-size", "chunk-overlap"].forEach((id) => $(id).addEventListener("input", renderEmbeddingWarning));
+  $("web-search-enabled").addEventListener("change", renderWebSearchSettings);
   $("web-search-provider").addEventListener("change", renderWebSearchSettings);
+  ["web-search-api-key", "web-search-base-url"].forEach((id) => $(id).addEventListener("input", renderWebSearchSettings));
   $("clear-conversation").addEventListener("click", clearConversation);
   $("save-asr").addEventListener("click", saveAsrConfig);
   $("install-asr").addEventListener("click", installAsr);
+  $("cancel-asr").addEventListener("click", cancelAsr);
   $("remove-asr").addEventListener("click", removeAsr);
+  $("open-asr-directory").addEventListener("click", openAsrDirectory);
+  $("install-embedding").addEventListener("click", installEmbedding);
+  $("cancel-embedding").addEventListener("click", cancelEmbedding);
+  $("remove-embedding").addEventListener("click", removeEmbedding);
+  $("open-embedding-directory").addEventListener("click", openEmbeddingDirectory);
   $("tts-enabled").addEventListener("change", saveTtsConfig);
   $("tts-use-gpu").addEventListener("change", saveTtsConfig);
   $("install-tts").addEventListener("click", installTts);
@@ -127,12 +159,107 @@ function bindEvents() {
   document.querySelectorAll("[data-collapsible]").forEach((section) => section.addEventListener("toggle", () => {
     const label = section.querySelector(".section-toggle-label"); if (label) label.textContent = section.open ? "收起" : "展开";
   }));
-  switchSettingsPanel("model");
+  // 对话是主要工作区，应用启动后直接进入，资料和设置通过侧栏切换。
+  switchView("chat");
+}
+
+// 配置项直接展示，获取途径和补充说明保持收起，减少设置页首屏的信息密度。
+function prepareSettingsSections() {
+  const sections = [...document.querySelectorAll(".settings-section")];
+  sections.forEach((section) => { section.open = true; });
+  document.querySelectorAll(".settings-help, .inline-guide").forEach((guide) => { guide.open = false; });
+
+  const asrSection = sections.find((section) => section.querySelector("#asr-enabled"));
+  if (asrSection && !asrSection.querySelector(".settings-help")) {
+    const guide = document.createElement("details");
+    guide.className = "settings-help";
+    const summary = document.createElement("summary");
+    summary.textContent = "参数说明与获取途径";
+    const description = document.createElement("p");
+    description.textContent = "直接点击“自动下载安装”可从国内 ModelScope 获取本地 ASR 环境和模型。Python、模型目录与 FFmpeg 仅用于接入已有本地资源，留空时由应用自动检测；下载失败后可重试。";
+    guide.append(summary, description);
+    asrSection.querySelector(".settings-grid")?.after(guide);
+  }
+
+  const ttsGuide = $("tts-guide");
+  if (ttsGuide) {
+    ttsGuide.open = false;
+    ttsGuide.querySelector("summary").textContent = "参数说明与获取途径";
+    ttsGuide.querySelector("p").textContent = "直接点击“自动下载安装”可从国内 ModelScope 获取本地 TTS 模型。安装完成后，在角色资料中上传参考音频即可生成角色语音；GPU 加速可按设备情况启用。";
+  }
+}
+
+// 默认保持窄轨道；按钮只控制是否固定展开，普通悬停展开由 CSS 负责。
+function setSidebarPinned(pinned) {
+  document.body.classList.toggle("sidebar-pinned", pinned);
+  const button = $("sidebar-toggle");
+  const label = pinned ? "取消固定展开" : "固定展开侧边栏";
+  button.setAttribute("aria-label", label);
+  button.setAttribute("aria-pressed", String(pinned));
+  button.title = label;
+}
+
+function setApiKeyVisibilityIcon(inputId, visible) {
+  const button = $(`toggle-${inputId}`);
+  const icon = document.createElement("i");
+  icon.setAttribute("data-lucide", visible ? "eye-off" : "eye");
+  button.replaceChildren(icon);
+  button.setAttribute("aria-label", visible ? "隐藏 API Key" : "显示 API Key");
+  button.title = button.getAttribute("aria-label");
+  icons();
+}
+
+async function ensureApiKeyValue(inputId) {
+  const input = $(inputId);
+  if (input.value) return input.value;
+  const config = API_KEY_FIELDS[inputId];
+  if (!state[config.configured]) {
+    setText("settings-status", "尚未配置该 API Key");
+    return "";
+  }
+  const result = await api(fetch("/api/settings/reveal-key", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" },
+    body: JSON.stringify({ field: config.field }),
+  }));
+  input.value = result.value || "";
+  return input.value;
+}
+
+async function toggleApiKeyVisibility(inputId) {
+  const input = $(inputId);
+  try {
+    if (input.type === "text") {
+      input.type = "password";
+      setApiKeyVisibilityIcon(inputId, false);
+      return;
+    }
+    if (!await ensureApiKeyValue(inputId)) return;
+    input.type = "text";
+    setApiKeyVisibilityIcon(inputId, true);
+  } catch (reason) { setText("settings-status", reason); }
+}
+
+async function copyApiKey(inputId) {
+  try {
+    const value = await ensureApiKeyValue(inputId);
+    if (!value) return;
+    await navigator.clipboard.writeText(value);
+    setText("settings-status", "API Key 已复制");
+  } catch (reason) { setText("settings-status", `复制失败：${reason.message || reason}`); }
+}
+
+function resetApiKeyInputs() {
+  Object.keys(API_KEY_FIELDS).forEach((id) => {
+    $(id).value = "";
+    $(id).type = "password";
+    setApiKeyVisibilityIcon(id, false);
+  });
 }
 
 function switchView(view) {
   if (view !== "chat" && (state.audioStarting || state.audioMode !== "idle")) cancelAudioActivity();
-  for (const name of ["home", "upload", "chat", "settings"]) $(name + "-view").classList.toggle("is-hidden", name !== view);
+  for (const name of ["upload", "chat", "settings"]) $(name + "-view").classList.toggle("is-hidden", name !== view);
   document.querySelectorAll("[data-view]").forEach((button) => button.classList.toggle("is-active", button.dataset.view === view));
 }
 
@@ -145,14 +272,30 @@ function switchMaterialMode(mode) {
 async function loadStatus() {
   try {
     const status = await api(fetch("/api/status"));
-    $("system-status").replaceChildren(statusBadge("MySQL", status.mysql), statusBadge("Milvus", status.milvus));
-  } catch { $("system-status").textContent = "离线"; }
+    renderServiceStatus("mysql", "MySQL", status.mysql);
+    renderServiceStatus("milvus", "Milvus", status.milvus);
+  } catch {
+    renderServiceStatus("mysql", "MySQL", "unavailable");
+    renderServiceStatus("milvus", "Milvus", "unavailable");
+  }
 }
-function statusBadge(label, value) {
-  const node = document.createElement("span");
-  node.className = `status-badge${value === "ok" ? " is-ok" : ""}`;
-  node.textContent = `${label} ${value}`;
-  return node;
+function renderServiceStatus(service, label, value, state = value) {
+  const node = document.querySelector(`[data-service-status="${service}"]`);
+  if (!node) return;
+  const stateLabel = {
+    ok: "正常",
+    collection_missing: "缺少集合",
+    unavailable: "不可用",
+    ready: "正常",
+    installing: "安装中",
+    not_installed: "未安装",
+    disabled: "已关闭",
+  }[value] || value || "不可用";
+  node.classList.toggle("is-ok", state === "ok" || state === "ready");
+  node.classList.toggle("is-pending", state === "installing");
+  node.classList.toggle("is-warning", ["not_installed", "disabled", "collection_missing"].includes(state));
+  node.querySelector("b").textContent = label;
+  node.querySelector("span").textContent = stateLabel;
 }
 
 function summarizeFiles(inputId, outputId, emptyText) {
@@ -350,6 +493,57 @@ function setRealtimeBusy(busy) {
   updateComposerControls();
 }
 
+function toggleChatProcess() {
+  const body = $("chat-process-body");
+  const hidden = body.classList.toggle("is-hidden");
+  $("chat-process-toggle").setAttribute("aria-expanded", String(!hidden));
+}
+
+function resetChatProcess() {
+  $("chat-process-panel").classList.add("is-hidden");
+  $("chat-process-body").classList.add("is-hidden");
+  $("chat-process-toggle").setAttribute("aria-expanded", "false");
+  $("chat-process-summary").textContent = "等待中";
+  $("chat-process-content").replaceChildren();
+}
+
+function renderChatProcess(result) {
+  const traces = result?.trace || [];
+  const toolCalls = result?.tool_calls || [];
+  if (!traces.length && !toolCalls.length) return;
+  $("chat-process-panel").classList.remove("is-hidden");
+  $("chat-process-summary").textContent = `工具 ${toolCalls.length} · 检索 ${traces.length}`;
+  const content = $("chat-process-content"); content.replaceChildren();
+  const toolCounts = new Map();
+  for (const tool of toolCalls) { const name = tool.name || String(tool); toolCounts.set(name, (toolCounts.get(name) || 0) + 1); }
+  const nodeLabels = { route_query: "问题路由", retrieve: "知识检索", batch_grade_documents: "证据筛选", generate: "生成回答", quality_gate: "质量门禁", prepare_correction: "自我纠正", rewrite_query: "改写问题", web_search: "联网检索" };
+  const items = [
+    ...[...toolCounts].map(([name, count]) => ({ label: name, value: `${count} 次` })),
+    ...traces.map((x) => ({ label: nodeLabels[x.node] || x.node || "处理步骤", value: x.document_count != null ? `${x.document_count} 个片段` : "完成" })),
+  ];
+  for (const item of items) {
+    const row = document.createElement("div"); row.className = "chat-process-row";
+    const label = document.createElement("span"); label.textContent = item.label;
+    const value = document.createElement("span"); value.textContent = item.value;
+    row.append(label, value); content.append(row);
+  }
+}
+
+function showReplyLoading() {
+  if (state.pendingReplyNode) return state.pendingReplyNode;
+  const node = appendMessage("assistant", ""); node.classList.add("message-loading");
+  const body = node.querySelector("p"); body.classList.add("loading-bubble");
+  body.innerHTML = "<span></span><span></span><span></span>";
+  state.pendingReplyNode = node; return node;
+}
+
+function replaceReplyLoading(node, text) {
+  if (!node) return appendMessage("assistant", text);
+  node.classList.remove("message-loading");
+  const body = node.querySelector("p"); body.classList.remove("loading-bubble"); body.textContent = text;
+  state.pendingReplyNode = null; return node;
+}
+
 function handleRealtimeEvent(event) {
   if (event.type === "session.ready") {
     state.realtimeExecutionPending = false;
@@ -362,17 +556,25 @@ function handleRealtimeEvent(event) {
     state.realtimeTurnId = event.turn_id;
     state.realtimeAnswerNode = null;
     state.voiceStreamBuffer = "";
+    resetChatProcess();
+    showReplyLoading();
     setRealtimeBusy(true);
     return;
   }
   if (event.turn_id && event.turn_id !== state.realtimeTurnId) return;
   if (event.type === "text.delta") {
-    if (!state.realtimeAnswerNode) state.realtimeAnswerNode = appendMessage("assistant", "");
+    if (!state.realtimeAnswerNode) state.realtimeAnswerNode = showReplyLoading();
+    state.realtimeAnswerNode.classList.remove("message-loading");
+    state.realtimeAnswerNode.querySelector("p").classList.remove("loading-bubble");
     state.realtimeAnswerNode.querySelector("p").textContent += event.text;
     collectStreamVoice(event.text, state.realtimeAnswerNode);
   } else if (event.type === "text.final") {
-    if (!state.realtimeAnswerNode && event.answer) state.realtimeAnswerNode = appendMessage("assistant", event.answer);
-    if (state.realtimeAnswerNode) { flushStreamVoice(true, state.realtimeAnswerNode); appendResultDetails(state.realtimeAnswerNode, event); }
+    if (!state.realtimeAnswerNode && event.answer) state.realtimeAnswerNode = showReplyLoading();
+    if (state.realtimeAnswerNode) {
+      replaceReplyLoading(state.realtimeAnswerNode, event.answer || state.realtimeAnswerNode.querySelector("p").textContent);
+      flushStreamVoice(true, state.realtimeAnswerNode);
+      renderChatProcess(event);
+    }
     state.pendingAction = null;
     renderConfirmation();
     state.realtimeTurnId = null;
@@ -617,20 +819,6 @@ async function loadEditPersona() {
   await loadEditDocuments();
 }
 
-function switchSettingsPanel(target) {
-  const groups = { model: [0, 1], retrieval: [2], asr: [3], tts: [4] };
-  const visible = groups[target] || groups.model;
-  document.querySelectorAll(".settings-section").forEach((section, index) => {
-    section.classList.toggle("is-settings-hidden", !visible.includes(index));
-    if (visible.includes(index)) section.open = true;
-  });
-  document.querySelectorAll("[data-settings-target]").forEach((button) => {
-    const active = button.dataset.settingsTarget === target;
-    button.classList.toggle("is-active", active);
-    button.setAttribute("aria-current", active ? "page" : "false");
-  });
-}
-
 function togglePersonaDrawer() {
   const menu = $("chat-persona-menu");
   const open = menu.classList.toggle("is-hidden");
@@ -717,7 +905,7 @@ async function generateEditPreview() {
   } catch (reason) { setText("edit-tts-preview-status", reason.message || reason); }
   finally { await loadEditReference(); }
 }
-function openTtsSettings() { switchView("settings"); switchSettingsPanel("tts"); const section = $("tts-settings-anchor"); section.open = true; section.scrollIntoView({ behavior: "smooth", block: "start" }); }
+function openTtsSettings() { switchView("settings"); const section = $("tts-settings-anchor"); section.open = true; section.scrollIntoView({ behavior: "smooth", block: "start" }); }
 function requestPersonaDeletion() {
   if (!state.editPersona) return;
   state.deletePersona = state.editPersona;
@@ -788,7 +976,7 @@ async function submitQuestion(event) {
   if (state.realtimeTurnId || state.realtimeExecutionPending || state.audioStarting || state.audioMode !== "idle") return;
   const question = $("question").value.trim(); if (!question) return;
   state.agentRequestPending = true;
-  appendMessage("user", question); setText("chat-error"); updateComposerControls();
+  appendMessage("user", question); resetChatProcess(); showReplyLoading(); setText("chat-error"); updateComposerControls();
   if (sendRealtime({ type: "text.submit", question })) {
     awaitRealtimeAcknowledgement(question);
     $("question-form").reset(); resizeComposer();
@@ -836,11 +1024,13 @@ function appendAudioMessage(message) {
   if ($("chat-log").querySelector(".empty-state")) $("chat-log").replaceChildren();
   const node = document.createElement("article");
   node.className = `message message-${message.role} message-audio`; node.dataset.messageId = message.id;
-  const audio = document.createElement("audio"); audio.controls = true; audio.preload = "metadata"; audio.src = message.audio_url;
+  const audio = document.createElement("audio"); audio.controls = false; audio.preload = "metadata"; audio.src = message.audio_url; audio.className = "voice-audio-source";
   if (message.role === "assistant") {
     const body = document.createElement("p"); body.textContent = message.content; const status = document.createElement("span"); status.className = "voice-bubble-status"; status.textContent = "语音回复"; audio.controls = false; audio.className = "voice-audio-source"; node.append(body, status); appendVoiceControl(node, audio);
     $("chat-log").append(node); node.scrollIntoView({ block: "nearest" }); return node;
   }
+  const voiceLabel = document.createElement("span"); voiceLabel.className = "voice-bubble-label"; voiceLabel.textContent = "语音消息";
+  node.append(voiceLabel); appendVoiceControl(node, audio);
   const transcript = document.createElement("details"); transcript.className = "voice-transcript";
   const summary = document.createElement("summary"); summary.textContent = message.status === "failed" ? "识别失败" : "查看转写";
   const text = document.createElement("p"); text.textContent = message.transcript || (message.status === "failed" ? message.error_message : "正在识别…");
@@ -883,15 +1073,18 @@ async function clearConversation() {
 }
 function handleAgentResult(result) {
   state.pendingAction = result.status === "pending_confirmation" ? { action: result.pending_action, specialist: result.specialist } : null;
-  renderConfirmation(); $("send-question").disabled = Boolean(state.pendingAction) || !state.activePersona; if (result.answer) appendAnswer(result);
+  renderConfirmation(); $("send-question").disabled = Boolean(state.pendingAction) || !state.activePersona;
+  if (result.answer) {
+    const node = replaceReplyLoading(state.pendingReplyNode, result.answer);
+    appendResultDetails(node, result);
+    renderChatProcess(result);
+    synthesizeAnswer(result.answer, node);
+  } else if (state.pendingReplyNode) { state.pendingReplyNode.remove(); state.pendingReplyNode = null; }
 }
-function appendAnswer(result) { const node = appendMessage("assistant", result.answer); appendResultDetails(node, result); synthesizeAnswer(result.answer, node); }
+function appendAnswer(result) { const node = replaceReplyLoading(state.pendingReplyNode, result.answer); renderChatProcess(result); synthesizeAnswer(result.answer, node); }
 function collectStreamVoice(text, node) {
   if (!state.activePersona?.profile?.tts?.enabled || !$("assistant-voice-toggle").checked) return;
   state.voiceStreamBuffer += text;
-  const punctuation = "。！？!?；;\n";
-  const boundary = Math.max(...[...punctuation].map((mark) => state.voiceStreamBuffer.lastIndexOf(mark)));
-  if (state.voiceStreamBuffer.length >= 60 && boundary >= 35) flushStreamVoice(false, node);
 }
 function flushStreamVoice(force, node) {
   if (!state.voiceStreamBuffer) return;
@@ -921,7 +1114,7 @@ async function synthesizeAnswer(text, node, options = {}) {
     if (voice.auto_play !== false) options.queued ? enqueueVoiceAudio(audio) : audio.play().catch(() => {});
   } catch (reason) { status.textContent = "语音生成失败"; status.classList.remove("is-generating"); setText("chat-error", `文字回复正常，语音生成失败：${reason.message || reason}`); }
 }
-function appendResultDetails(node, result) { if (result.evidence?.length) node.append(details("引用", result.evidence)); if (result.tool_calls?.length) node.append(details("工具", result.tool_calls)); if (result.trace?.length) node.append(details("检索", result.trace)); }
+function appendResultDetails(node, result) { if (result.evidence?.length) node.append(details("引用", result.evidence)); }
 function renderConfirmation() {
   $("confirmation-panel").classList.toggle("is-hidden", !state.pendingAction); if (!state.pendingAction) return;
   const action = state.pendingAction.action || {}; $("confirmation-title").textContent = action.title || "确认操作"; $("confirmation-detail").textContent = `${action.target || "当前角色"} · ${JSON.stringify(action.arguments || {})}`;
@@ -945,17 +1138,90 @@ async function loadSettings() {
     $("openai-api-key").placeholder = keyPlaceholder(config.openai_api_key_configured);
     $("embedding-api-key").placeholder = keyPlaceholder(config.embedding_api_key_configured);
     $("web-search-api-key").placeholder = keyPlaceholder(config.web_search_api_key_configured);
+    state.openaiKeyConfigured = config.openai_api_key_configured;
+    state.embeddingKeyConfigured = config.embedding_api_key_configured;
+    state.webSearchKeyConfigured = config.web_search_api_key_configured;
     $("openai-base-url").value = config.openai_base_url; $("openai-model").value = config.openai_model;
     $("embedding-base-url").value = config.embedding_base_url; $("embedding-model").value = config.embedding_model;
     $("web-search-base-url").value = config.web_search_base_url;
     $("llm-provider").value = inferProvider(LLM_PRESETS, config.openai_base_url);
-    $("embedding-provider").value = inferProvider(EMBEDDING_PRESETS, config.embedding_base_url);
+    $("embedding-provider").value = config.embedding_provider;
+    $("embedding-model-source").value = config.embedding_model_source;
+    $("embedding-device").value = config.embedding_device;
     $("embedding-dimensions").value = config.embedding_dimensions;
     $("embedding-send-dimensions").checked = config.embedding_send_dimensions;
-    $("web-search-provider").value = config.web_search_provider;
+    $("chunk-size").value = config.chunk_size;
+    $("chunk-overlap").value = config.chunk_overlap;
+    $("web-search-enabled").checked = config.enable_web_fallback;
+    $("web-search-provider").value = config.web_search_provider === "off" ? "bocha" : config.web_search_provider;
     state.savedEmbeddingDimensions = config.embedding_dimensions;
-    renderEmbeddingWarning(); renderWebSearchSettings(); renderAudioState();
+    syncManagedEmbeddingPreset(); renderEmbeddingSettings(); renderEmbeddingInstallAction(); renderEmbeddingWarning(); renderWebSearchSettings(); renderAudioState();
   } catch (reason) { setText("settings-status", reason); }
+}
+async function loadEmbeddingStatus() {
+  try {
+    const config = await api(fetch("/api/embedding/status"));
+    const wasReady = state.embeddingConfigured;
+    state.embeddingConfigured = config.ready;
+    state.embeddingInstalledModel = config.installed ? config.model_id : "";
+    state.embeddingResourceStatus = config;
+    const embeddingState = config.installing ? "installing" : config.ready ? "ready" : "not_installed";
+    const phaseNames = { preparing: "准备安装", runtime: "安装运行环境", model: "下载模型", loading: "加载并探测维度", cancelling: "正在取消", complete: "已就绪", error: "安装失败" };
+    $("embedding-state").textContent = config.installing ? (phaseNames[config.phase] || "处理中") : config.ready ? "已就绪" : "尚未安装";
+    const device = config.actual_device ? ` · ${config.actual_device.toUpperCase()}` : "";
+    setText("embedding-status", config.error || (config.ready ? `${config.model_id} · ${config.dimensions} 维${device} · ${config.model_dir}` : `${config.model_id} · ${config.source === "modelscope" ? "ModelScope" : "Hugging Face"}`));
+    const progress = $("embedding-progress");
+    progress.classList.toggle("is-hidden", !config.installing);
+    if (config.progress_percent == null) progress.removeAttribute("value"); else progress.value = config.progress_percent;
+    setText("embedding-progress-detail", config.installing ? `${phaseNames[config.phase] || "处理中"}${config.elapsed_seconds ? ` · 已用时 ${config.elapsed_seconds} 秒` : ""}` : "");
+    renderEmbeddingInstallAction();
+    $("cancel-embedding").classList.toggle("is-hidden", !config.installing);
+    $("cancel-embedding").disabled = !config.installing || config.cancelling;
+    $("remove-embedding").disabled = config.installing || !config.installed;
+    $("open-embedding-directory").disabled = config.installing;
+    renderServiceStatus("embedding", "Embedding", embeddingState, embeddingState);
+    if (config.ready && !wasReady && Number($("embedding-dimensions").value) !== Number(config.dimensions)) await loadSettings();
+    if (config.installing) setTimeout(loadEmbeddingStatus, 2000);
+  } catch (reason) {
+    state.embeddingConfigured = false;
+    setText("embedding-status", reason);
+  }
+}
+function embeddingResourcePayload() {
+  return { model_id: $("embedding-model").value.trim(), source: $("embedding-model-source").value, device: $("embedding-device").value };
+}
+async function installEmbedding() {
+  if (!validateSettings()) return;
+  if (!confirm("将自动安装独立运行环境并下载所选 Embedding 模型，是否继续？")) return;
+  $("install-embedding").disabled = true;
+  $("install-embedding").textContent = "安装中";
+  try {
+    await api(fetch("/api/embedding/install", { method: "POST", headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" }, body: JSON.stringify(embeddingResourcePayload()) }));
+    await loadEmbeddingStatus();
+  } catch (reason) { setText("embedding-status", reason); $("install-embedding").disabled = false; }
+}
+async function cancelEmbedding() {
+  $("cancel-embedding").disabled = true;
+  try {
+    await api(fetch("/api/embedding/install/cancel", { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
+    await loadEmbeddingStatus();
+  } catch (reason) { setText("embedding-status", reason); $("cancel-embedding").disabled = false; }
+}
+async function removeEmbedding() {
+  if (!confirm("删除当前本地 Embedding 模型？Milvus 中的资料不会被删除。")) return;
+  $("remove-embedding").disabled = true;
+  try {
+    await api(fetch("/api/embedding/model", { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
+    await loadEmbeddingStatus();
+  } catch (reason) { setText("embedding-status", reason); $("remove-embedding").disabled = false; }
+}
+async function openEmbeddingDirectory() {
+  $("open-embedding-directory").disabled = true;
+  try {
+    const result = await api(fetch("/api/embedding/model-directory", { method: "POST", headers: { "X-PersonaLive-Request": "web" } }));
+    setText("embedding-status", `已打开：${result.opened_directory}`);
+  } catch (reason) { setText("embedding-status", reason); }
+  finally { $("open-embedding-directory").disabled = false; }
 }
 async function loadAsrStatus() {
   try {
@@ -965,14 +1231,24 @@ async function loadAsrStatus() {
     $("asr-model-path").value = config.model_path || "";
     $("asr-ffmpeg-path").value = config.ffmpeg_path || "";
     state.asrConfigured = config.ready;
-    $("asr-state").textContent = config.installing ? "正在安装" : config.ready ? "已就绪" : config.enabled ? "尚未安装" : "已关闭";
+    const asrState = config.installing ? "installing" : config.ready ? "ready" : config.enabled ? "not_installed" : "disabled";
+    $("asr-state").textContent = { installing: "正在安装", ready: "已就绪", not_installed: "尚未安装", disabled: "已关闭" }[asrState];
+    renderServiceStatus("asr", "ASR", asrState, asrState);
     setText("asr-status", config.error || (config.ready ? `Qwen3-ASR-0.6B · ${config.resolved_model}` : config.download_size));
-    $("install-asr").disabled = config.installing || config.ready;
+    const phaseNames = { preparing: "准备安装", runtime: "安装运行环境", model: "从 ModelScope 下载模型", ffmpeg: "准备 FFmpeg", cancelling: "正在取消", complete: "已就绪", error: "安装失败" };
+    const progress = $("asr-progress");
+    progress.classList.toggle("is-hidden", !config.installing);
+    if (config.progress_percent == null) progress.removeAttribute("value"); else progress.value = config.progress_percent;
+    setText("asr-progress-detail", config.installing ? `${phaseNames[config.phase] || "处理中"}${config.elapsed_seconds ? ` · 已用时 ${config.elapsed_seconds} 秒` : ""}` : "");
+    $("install-asr").disabled = config.installing || config.installed;
+    $("install-asr").textContent = config.installing ? "安装中" : config.installed ? "已安装" : "自动下载安装";
+    $("cancel-asr").classList.toggle("is-hidden", !config.installing);
+    $("cancel-asr").disabled = !config.installing || config.cancelling;
     $("remove-asr").disabled = config.installing || !config.managed_installed;
     updateComposerControls();
     if (config.installing) setTimeout(loadAsrStatus, 2000);
   } catch (reason) {
-    state.asrConfigured = false; setText("asr-status", reason); updateComposerControls();
+    state.asrConfigured = false; renderServiceStatus("asr", "ASR", "unavailable"); setText("asr-status", reason); updateComposerControls();
   }
 }
 async function saveAsrConfig() {
@@ -986,6 +1262,7 @@ async function saveAsrConfig() {
 async function installAsr() {
   if (!confirm("将下载约 5-10 GB 的 CUDA 运行环境和 Qwen3-ASR 模型，是否继续？")) return;
   $("install-asr").disabled = true;
+  $("install-asr").textContent = "安装中";
   try {
     await saveAsrConfig();
     await api(fetch("/api/asr/install", { method: "POST", headers: { "X-PersonaLive-Request": "web" } }));
@@ -1007,6 +1284,8 @@ async function loadTtsStatus() {
     $("tts-enabled").checked = config.enabled;
     $("tts-use-gpu").checked = config.use_gpu;
     $("tts-use-gpu").disabled = config.installing;
+    const ttsState = config.installing ? "installing" : config.ready ? "ready" : config.enabled ? "not_installed" : "disabled";
+    renderServiceStatus("tts", "TTS", ttsState, ttsState);
     const phaseNames = { preparing: "准备下载", model: "下载语音模型", cancelling: "正在取消", complete: "安装完成", error: "安装失败" };
     $("tts-state").textContent = config.installing ? (phaseNames[config.phase] || "正在安装") : config.ready ? "已就绪" : config.enabled ? "尚未安装" : "已关闭";
     setText("tts-status", config.error || (!config.runtime_bundled ? "当前开发目录缺少内置 Lunar TTS 运行库；完整 Windows 发布包将自带该文件" : config.ready ? `Qwen3-TTS-0.6B · ${config.model_dir}` : config.download_size));
@@ -1016,7 +1295,8 @@ async function loadTtsStatus() {
     const duration = (seconds) => seconds == null ? "正在估算剩余时间" : seconds < 60 ? `预计剩余 ${seconds} 秒` : `预计剩余 ${Math.ceil(seconds / 60)} 分钟`;
     const speed = config.download_speed_bytes ? `${size(config.download_speed_bytes)}/s` : "";
     setText("tts-progress-detail", config.installing ? [config.current_file, size(config.downloaded_bytes), config.total_bytes ? `/ ${size(config.total_bytes)}` : "", speed, duration(config.eta_seconds)].filter(Boolean).join(" · ") : "");
-    $("install-tts").disabled = config.installing || config.ready || !config.runtime_bundled;
+    $("install-tts").disabled = config.installing || config.installed || !config.runtime_bundled;
+    $("install-tts").textContent = config.installing ? "安装中" : config.installed ? "已安装" : "自动下载安装";
     $("cancel-tts").classList.toggle("is-hidden", !config.installing);
     $("cancel-tts").disabled = !config.installing || config.cancelling;
     $("remove-tts").disabled = config.installing || !config.model_dir;
@@ -1027,7 +1307,23 @@ async function loadTtsStatus() {
       syncEditTtsPreview(reference.configured);
     }
     if (config.installing) setTimeout(loadTtsStatus, 2000);
-  } catch (reason) { state.ttsConfigured = false; setText("tts-status", reason); }
+  } catch (reason) { state.ttsConfigured = false; renderServiceStatus("tts", "TTS", "unavailable"); setText("tts-status", reason); }
+}
+async function cancelAsr() {
+  $("cancel-asr").disabled = true;
+  try {
+    await api(fetch("/api/asr/install/cancel", { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
+    await loadAsrStatus();
+  } catch (reason) { setText("asr-status", reason); $("cancel-asr").disabled = false; }
+}
+async function openAsrDirectory() {
+  const button = $("open-asr-directory");
+  button.disabled = true;
+  try {
+    const result = await api(fetch("/api/asr/model-directory", { method: "POST", headers: { "X-PersonaLive-Request": "web" } }));
+    setText("asr-status", `已打开：${result.opened_directory}`);
+  } catch (reason) { setText("asr-status", reason); }
+  finally { button.disabled = false; }
 }
 async function saveTtsConfig() {
   try {
@@ -1038,6 +1334,7 @@ async function saveTtsConfig() {
 async function installTts() {
   if (!confirm("将下载约 3 GB 的 Qwen3-TTS GGUF 模型，Lunar TTS 运行库已随应用内置。是否继续？")) return;
   $("install-tts").disabled = true;
+  $("install-tts").textContent = "安装中";
   try {
     await api(fetch("/api/tts/install", { method: "POST", headers: { "X-PersonaLive-Request": "web" } }));
     await loadTtsStatus();
@@ -1061,7 +1358,8 @@ async function cancelTts() {
 async function openTtsDirectory() {
   $("open-tts-directory").disabled = true;
   try {
-    await api(fetch("/api/tts/model-directory", { method: "POST", headers: { "X-PersonaLive-Request": "web" } }));
+    const result = await api(fetch("/api/tts/model-directory", { method: "POST", headers: { "X-PersonaLive-Request": "web" } }));
+    setText("tts-status", `已打开：${result.opened_directory}`);
   } catch (reason) { setText("tts-status", reason); }
   finally { $("open-tts-directory").disabled = false; }
 }
@@ -1096,21 +1394,77 @@ function applyLlmPreset() {
   $("openai-base-url").value = preset.baseUrl; $("openai-model").value = preset.model;
 }
 function applyEmbeddingPreset() {
-  const preset = EMBEDDING_PRESETS[$("embedding-provider").value]; if (!preset) return;
-  $("embedding-base-url").value = preset.baseUrl; $("embedding-model").value = preset.model;
-  $("embedding-dimensions").value = preset.dimensions; $("embedding-send-dimensions").checked = preset.sendDimensions;
-  renderEmbeddingWarning();
+  const provider = $("embedding-provider").value;
+  const preset = EMBEDDING_PRESETS[provider];
+  if (preset) {
+    $("embedding-base-url").value = preset.baseUrl; $("embedding-model").value = preset.model;
+    $("embedding-dimensions").value = preset.dimensions; $("embedding-send-dimensions").checked = preset.sendDimensions;
+  }
+  syncManagedEmbeddingPreset(); renderEmbeddingSettings(); markEmbeddingSelectionChanged(); renderEmbeddingWarning();
+}
+function applyManagedEmbeddingPreset() {
+  const selected = $("managed-embedding-preset").value;
+  if (selected !== "custom") $("embedding-model").value = selected;
+  markEmbeddingSelectionChanged();
+}
+function markEmbeddingSelectionChanged() {
+  syncManagedEmbeddingPreset();
+  renderEmbeddingInstallAction();
+  if ($("embedding-provider").value === "managed_local" && $("embedding-model").value.trim() !== state.embeddingInstalledModel) {
+    setText("embedding-status", "选择新模型后，点击“下载并启用”。");
+  }
+}
+function renderEmbeddingInstallAction() {
+  const button = $("install-embedding");
+  const status = state.embeddingResourceStatus;
+  const managed = $("embedding-provider").value === "managed_local";
+  const selectedModel = $("embedding-model").value.trim();
+  const installed = Boolean(status?.installed && status.model_id === selectedModel);
+  if (status?.installing) {
+    button.textContent = "安装中";
+    button.disabled = true;
+  } else if (managed && installed) {
+    button.textContent = "已安装";
+    button.disabled = true;
+  } else {
+    button.textContent = "下载并启用";
+    button.disabled = !managed || !selectedModel;
+  }
+}
+function syncManagedEmbeddingPreset() {
+  const model = $("embedding-model").value.trim();
+  const options = [...$("managed-embedding-preset").options].map((option) => option.value);
+  $("managed-embedding-preset").value = options.includes(model) ? model : "custom";
+}
+function renderEmbeddingSettings() {
+  const managed = $("embedding-provider").value === "managed_local";
+  $("managed-embedding-fields").classList.toggle("is-hidden", !managed);
+  $("embedding-api-key-field").classList.toggle("is-hidden", managed);
+  $("embedding-base-url-field").classList.toggle("is-hidden", managed);
+  $("embedding-send-dimensions-field").classList.toggle("is-hidden", managed);
+  $("embedding-dimensions").readOnly = managed;
+  if (managed) $("embedding-send-dimensions").checked = false;
 }
 function renderEmbeddingWarning() {
   const changed = Number($("embedding-dimensions").value) !== Number(state.savedEmbeddingDimensions);
-  $("embedding-dimension-warning").classList.toggle("is-hidden", !changed);
+  const warning = $("embedding-dimension-warning");
+  warning.textContent = changed ? "向量维度已改变。保存后请使用匹配维度的 Milvus Collection，并重新入库已有资料。" : "";
+  warning.classList.toggle("is-hidden", !changed);
+  const chunkSize = Number($("chunk-size").value);
+  const chunkOverlap = Number($("chunk-overlap").value);
+  const chunkWarning = $("chunk-settings-warning");
+  const invalidChunk = chunkSize && chunkOverlap > Math.floor(chunkSize / 4);
+  chunkWarning.textContent = invalidChunk ? "重叠长度不能超过切分长度的 25%。" : "";
+  chunkWarning.classList.toggle("is-hidden", !invalidChunk);
 }
 function renderWebSearchSettings() {
+  const enabled = $("web-search-enabled").checked;
   const provider = $("web-search-provider").value;
   const isCustom = provider === "custom";
-  $("web-search-api-key").disabled = provider === "off";
+  $("web-search-provider").disabled = !enabled;
+  $("web-search-api-key").disabled = !enabled;
   $("web-search-base-url-field").classList.toggle("is-hidden", !isCustom);
-  $("web-search-base-url").disabled = !isCustom;
+  $("web-search-base-url").disabled = !enabled || !isCustom;
   const guide = WEB_SEARCH_GUIDES[provider] || WEB_SEARCH_GUIDES.off;
   const text = document.createElement("p"); text.textContent = guide.text;
   $("web-search-guide").replaceChildren(text);
@@ -1118,18 +1472,46 @@ function renderWebSearchSettings() {
     const link = document.createElement("a"); link.href = guide.href; link.target = "_blank"; link.rel = "noopener"; link.textContent = guide.link;
     const source = document.createElement("p"); source.textContent = `${guide.label}：`; source.append(link); $("web-search-guide").append(source);
   }
+  const missingKey = enabled && !state.webSearchKeyConfigured && !$("web-search-api-key").value.trim();
+  const invalidUrl = enabled && isCustom && !isHttpUrl($("web-search-base-url").value);
+  const warning = $("web-search-warning");
+  warning.textContent = missingKey ? "启用联网搜索后需要填写 API Key。" : invalidUrl ? "自定义搜索需要填写完整的 HTTP(S) 接口地址。" : "";
+  warning.classList.toggle("is-hidden", !warning.textContent);
 }
 function requestSettingsSave(event) { event.preventDefault(); openSettingsConfirmation("save"); }
 function requestSettingsReset() { openSettingsConfirmation("reset"); }
 function openSettingsConfirmation(action) {
+  if (action === "save" && !validateSettings()) return;
   state.settingsAction = action;
   const isSave = action === "save";
   $("settings-confirm-title").textContent = isSave ? "保存前确认" : "确认重置配置";
   $("settings-confirm-detail").textContent = isSave
-    ? `对话：${$("llm-provider").selectedOptions[0].textContent} · ${$("openai-model").value.trim() || "未填写模型"}\nEmbedding：${$("embedding-provider").selectedOptions[0].textContent} · ${$("embedding-model").value.trim() || "未填写模型"} · ${$("embedding-dimensions").value || "未填写维度"} 维\n联网搜索：${$("web-search-provider").selectedOptions[0].textContent}\n将更新：${["openai-api-key", "embedding-api-key", "web-search-api-key"].filter((id) => $(id).value.trim()).length || "模型与连接配置"}`
+    ? `对话：${$("llm-provider").selectedOptions[0].textContent} · ${$("openai-model").value.trim() || "未填写模型"}\nEmbedding：${$("embedding-provider").selectedOptions[0].textContent} · ${$("embedding-model").value.trim() || "未填写模型"} · ${$("embedding-dimensions").value || "未填写维度"} 维\n文档切分：${$("chunk-size").value} / ${$("chunk-overlap").value}\n联网搜索：${$("web-search-enabled").checked ? `开启 · ${$("web-search-provider").selectedOptions[0].textContent}` : "关闭"}\n将更新：${["openai-api-key", "embedding-api-key", "web-search-api-key"].filter((id) => $(id).value.trim()).length || "模型与连接配置"}`
     : "将清除本机前端保存的 LLM、Embedding、联网搜索配置和 Key。不会影响 .env 中的 MySQL、Milvus 或端口配置。";
   $("settings-confirm-submit").textContent = isSave ? "确认保存" : "确认重置";
   $("settings-confirm-dialog").showModal();
+}
+function isHttpUrl(value) {
+  try { return ["http:", "https:"].includes(new URL(value).protocol); }
+  catch { return false; }
+}
+function validateSettings() {
+  const managedEmbedding = $("embedding-provider").value === "managed_local";
+  const modelId = $("embedding-model").value.trim();
+  const localModelInvalid = managedEmbedding && (!/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(modelId) || modelId.split("/").includes(".."));
+  const embeddingMissing = !modelId || !Number($("embedding-dimensions").value) || (!managedEmbedding && (!$("embedding-base-url").value.trim() || (!state.embeddingKeyConfigured && !$("embedding-api-key").value.trim())));
+  const chunkSize = Number($("chunk-size").value);
+  const chunkOverlap = Number($("chunk-overlap").value);
+  const chunkInvalid = chunkSize < 200 || chunkSize > 4000 || chunkOverlap < 0 || chunkOverlap > 1000 || chunkOverlap > Math.floor(chunkSize / 4);
+  const webEnabled = $("web-search-enabled").checked;
+  const webInvalid = webEnabled && ((!state.webSearchKeyConfigured && !$("web-search-api-key").value.trim()) || ($("web-search-provider").value === "custom" && !isHttpUrl($("web-search-base-url").value)));
+  renderEmbeddingWarning(); renderWebSearchSettings();
+  if (localModelInvalid) setText("settings-status", "自定义模型 ID 格式不正确，请参考 Qwen/Qwen3-Embedding-0.6B。");
+  else if (embeddingMissing) setText("settings-status", managedEmbedding ? "请选择或填写本地 Embedding 模型。" : "请完整填写 Embedding 的 Base URL、模型、维度和 API Key。");
+  else if (chunkInvalid) setText("settings-status", "请检查文档切分参数：重叠长度不能超过切分长度的 25%。");
+  else if (webInvalid) setText("settings-status", "请补全联网搜索的 API Key 和兼容接口地址。");
+  else return true;
+  return false;
 }
 async function confirmSettingsAction() {
   const action = state.settingsAction; $("settings-confirm-dialog").close();
@@ -1140,8 +1522,9 @@ async function saveSettings() {
   $("save-settings").disabled = true; setText("settings-status");
   const value = (id) => $(id).value.trim();
   try {
-    const result = await api(fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ openai_api_key: value("openai-api-key"), openai_base_url: value("openai-base-url"), openai_model: value("openai-model"), embedding_api_key: value("embedding-api-key"), embedding_base_url: value("embedding-base-url"), embedding_model: value("embedding-model"), embedding_dimensions: Number(value("embedding-dimensions")), embedding_send_dimensions: $("embedding-send-dimensions").checked, web_search_provider: $("web-search-provider").value, web_search_api_key: value("web-search-api-key"), web_search_base_url: value("web-search-base-url"), enable_web_fallback: $("web-search-provider").value !== "off" }) }));
-    $("openai-api-key").value = ""; $("embedding-api-key").value = ""; $("web-search-api-key").value = ""; $("web-search-base-url").value = "";
+    const webEnabled = $("web-search-enabled").checked;
+    await api(fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ openai_api_key: value("openai-api-key"), openai_base_url: value("openai-base-url"), openai_model: value("openai-model"), embedding_api_key: value("embedding-api-key"), embedding_provider: $("embedding-provider").value, embedding_model_source: $("embedding-model-source").value, embedding_device: $("embedding-device").value, embedding_base_url: value("embedding-base-url"), embedding_model: value("embedding-model"), embedding_dimensions: Number(value("embedding-dimensions")), embedding_send_dimensions: $("embedding-send-dimensions").checked, chunk_size: Number(value("chunk-size")), chunk_overlap: Number(value("chunk-overlap")), web_search_provider: webEnabled ? $("web-search-provider").value : "off", web_search_api_key: value("web-search-api-key"), web_search_base_url: value("web-search-base-url"), enable_web_fallback: webEnabled }) }));
+    resetApiKeyInputs();
     setText("settings-status", "已保存，可立即使用"); await loadSettings();
   } catch (reason) { setText("settings-status", reason); }
   finally { $("save-settings").disabled = false; }
@@ -1150,7 +1533,7 @@ async function resetSettings() {
   $("reset-settings").disabled = true; setText("settings-status");
   try {
     await api(fetch("/api/settings", { method: "DELETE" }));
-    $("openai-api-key").value = ""; $("embedding-api-key").value = ""; $("web-search-api-key").value = ""; $("web-search-base-url").value = "";
+    resetApiKeyInputs(); $("web-search-base-url").value = "";
     setText("settings-status", "配置已重置"); await loadSettings();
   } catch (reason) { setText("settings-status", reason); }
   finally { $("reset-settings").disabled = false; }

@@ -10,4 +10,3 @@ def web_search(query: str, runtime: ToolRuntime[PersonaAgentContext]) -> list[di
     """Search current public web information when local knowledge is insufficient."""
     del runtime
     return [serialize_document(document) for document in web_search_documents(query, recent=True)]
-

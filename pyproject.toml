@@ -15,6 +15,9 @@ where = ["."]
 include = ["app*", "persona*", "ingestion*", "rag*", "agents*", "realtime*", "voice*", "live*", "desktop*"]
 exclude = ["tests*", "docs*"]
 
+[tool.setuptools.package-data]
+"ingestion.local_embedding" = ["requirements-local.txt"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["integration: requires external infrastructure and credentials"]

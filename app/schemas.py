@@ -160,10 +160,15 @@ class LocalSettingsUpdate(BaseModel):
     openai_base_url: str | None = None
     openai_model: str | None = None
     embedding_api_key: str | None = None
+    embedding_provider: str | None = None
+    embedding_model_source: str | None = None
+    embedding_device: str | None = None
     embedding_base_url: str | None = None
     embedding_model: str | None = None
     embedding_dimensions: int | None = Field(default=None, ge=1, le=4096)
     embedding_send_dimensions: bool | None = None
+    chunk_size: int | None = Field(default=None, ge=200, le=4000)
+    chunk_overlap: int | None = Field(default=None, ge=0, le=1000)
     web_search_provider: str | None = None
     web_search_api_key: str | None = None
     web_search_base_url: str | None = None
@@ -171,15 +176,30 @@ class LocalSettingsUpdate(BaseModel):
     enable_web_fallback: bool | None = None
 
 
+class ApiKeyRevealRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    field: Literal["openai_api_key", "embedding_api_key", "web_search_api_key"]
+
+
+class ApiKeyRevealResponse(BaseModel):
+    value: str
+
+
 class LocalSettingsResponse(BaseModel):
     openai_api_key_configured: bool
     openai_base_url: str
     openai_model: str
     embedding_api_key_configured: bool
+    embedding_provider: str
+    embedding_model_source: str
+    embedding_device: str
     embedding_base_url: str
     embedding_model: str
     embedding_dimensions: int
     embedding_send_dimensions: bool
+    chunk_size: int
+    chunk_overlap: int
     web_search_provider: str
     web_search_api_key_configured: bool
     web_search_base_url: str

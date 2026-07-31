@@ -10,6 +10,8 @@ import zipfile
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from voice.resource_directory import open_resource_directory
+
 
 MODEL_BASE = "https://modelscope.cn/models/qwqpotato/qwen3-tts-gguf/resolve/master"
 
@@ -89,6 +91,7 @@ class TTSResourceManager:
             "download_speed_bytes": round(speed),
             "eta_seconds": round(remaining / speed) if speed > 0 and remaining > 0 else 0 if self._total_bytes and remaining <= 0 else None,
             "download_size": "约 3 GB",
+            "source": "modelscope",
             "runtime": str(self.runtime_path if runtime_bundled else ""),
             "model_dir": str(self.model_dir if self.model_dir.is_dir() else ""),
         }
@@ -189,11 +192,4 @@ class TTSResourceManager:
         return self.status()
 
     def open_model_directory(self) -> dict:
-        self.model_dir.mkdir(parents=True, exist_ok=True)
-        if os.name == "nt":
-            os.startfile(self.model_dir)  # type: ignore[attr-defined]
-        elif sys.platform == "darwin":
-            subprocess.Popen(["open", str(self.model_dir)])
-        else:
-            subprocess.Popen(["xdg-open", str(self.model_dir)])
-        return self.status()
+        return {**self.status(), "opened_directory": open_resource_directory(self.model_dir)}
