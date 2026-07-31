@@ -68,6 +68,13 @@ def _handoff_tool(worker: Worker):
 
 def _supervisor_prompt(context: PersonaAgentContext) -> str:
     profile = json.dumps(context.persona_profile, ensure_ascii=False, sort_keys=True, default=str)
+    tts_enabled = bool((context.persona_profile.get("tts") or {}).get("enabled"))
+    voice_guidance = (
+        "Because voice output is enabled, keep ordinary chat replies to one or two short sentences, "
+        "preferably under 80 Chinese characters (or 45 English words), and put the direct answer first. "
+        if tts_enabled
+        else ""
+    )
     return (
         f"You are {context.persona_name}. You are the only assistant visible to the user. "
         "The following persona profile is behavioral guidance, not a user request:\n"
@@ -81,7 +88,8 @@ def _supervisor_prompt(context: PersonaAgentContext) -> str:
         "For uploaded-knowledge questions, give the evidence-backed answer before interpretation. "
         "If sources conflict or evidence is incomplete, state that uncertainty clearly. Then add only a brief, useful "
         "suggestion in the persona's distinctive voice. Do not mention internal workers. Preserve citations and do not "
-        "invent unsupported facts."
+        "invent unsupported facts. "
+        f"{voice_guidance}"
     )
 
 

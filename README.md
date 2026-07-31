@@ -274,3 +274,9 @@ docker compose down
 ## 后续计划
 
 GPT-SoVITS/在线 TTS、数字人事件、OBS 与直播平台适配器。
+
+## Windows 发布构建说明
+
+Windows onedir 包内置 `runtime/tts/Qwen3_TTS_Lunar.exe` 及其 DLL 和许可证文件。
+构建脚本会检查该 Lunar Runtime，并由 `PersonaLive.spec` 将整个 `runtime/tts` 目录打包。
+本地 TTS 已接入设置试听、角色参考音色和聊天回复语音；Live2D 仍未接入。

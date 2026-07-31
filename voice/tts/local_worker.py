@@ -2,6 +2,7 @@ import atexit
 import base64
 import json
 import os
+import socket
 import subprocess
 import threading
 import time
@@ -16,15 +17,11 @@ class TTSGenerationError(RuntimeError):
 
 
 class LocalTTS:
-    _process: subprocess.Popen | None = None
-    _using_gpu: bool | None = None
-    _process_lock = threading.Lock()
-
     def __init__(
         self,
         runtime_path: Path,
         model_dir: Path,
-        port: int = 36365,
+        port: int | None = None,
         use_gpu: bool = True,
         opener: Callable = urlopen,
         process_factory: Callable = subprocess.Popen,
@@ -32,11 +29,19 @@ class LocalTTS:
     ) -> None:
         self.runtime_path = Path(runtime_path)
         self.model_dir = Path(model_dir)
+        if port is None:
+            with socket.socket() as probe:
+                probe.bind(("127.0.0.1", 0))
+                port = probe.getsockname()[1]
         self.port = port
         self.use_gpu = use_gpu
         self.opener = opener
         self.process_factory = process_factory
         self.sleeper = sleeper
+        self._process: subprocess.Popen | None = None
+        self._using_gpu: bool | None = None
+        self._process_lock = threading.Lock()
+        atexit.register(self.stop_service)
 
     @property
     def base_url(self) -> str:
@@ -95,7 +100,7 @@ class LocalTTS:
         output = Path(output)
         output.parent.mkdir(parents=True, exist_ok=True)
         self._ensure_ready()
-        payload = {"text": text.strip()}
+        payload = {"text": text.strip(), "max_tokens": 160}
         if reference_audio:
             payload["ref_audio"] = str(reference_audio)
         try:
@@ -112,13 +117,9 @@ class LocalTTS:
         temporary.replace(output)
         return output
 
-    @classmethod
-    def stop_service(cls) -> None:
-        with cls._process_lock:
-            if cls._process is not None and cls._process.poll() is None:
-                cls._process.terminate()
-            cls._process = None
-            cls._using_gpu = None
-
-
-atexit.register(LocalTTS.stop_service)
+    def stop_service(self) -> None:
+        with self._process_lock:
+            if self._process is not None and self._process.poll() is None:
+                self._process.terminate()
+            self._process = None
+            self._using_gpu = None

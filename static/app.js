@@ -30,6 +30,10 @@ const state = {
   audioOperationId: 0,
   audioStartedAt: 0,
   audioClock: null,
+  editReferenceUrl: null,
+  voiceStreamBuffer: "",
+  voicePlaybackQueue: [],
+  voicePlaybackActive: false,
 };
 const $ = (id) => document.getElementById(id);
 const LLM_PRESETS = {
@@ -63,7 +67,10 @@ async function api(request) {
 function setText(id, value = "") { $(id).textContent = value?.message || value; }
 
 function bindEvents() {
+  $("brand-home").addEventListener("click", () => switchView("home"));
   document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
+  document.querySelectorAll("[data-target-view]").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.targetView)));
+  document.querySelectorAll("[data-settings-target]").forEach((button) => button.addEventListener("click", () => switchSettingsPanel(button.dataset.settingsTarget)));
   document.querySelectorAll('input[name="material-action"]').forEach((input) => input.addEventListener("change", () => switchMaterialMode(input.value)));
   $("document-files").addEventListener("change", () => summarizeFiles("document-files", "file-summary", "未选择文件"));
   $("edit-document-files").addEventListener("change", () => summarizeFiles("edit-document-files", "edit-file-summary", "添加文件或图片"));
@@ -73,9 +80,16 @@ function bindEvents() {
   $("confirm-draft").addEventListener("click", confirmDraft);
   $("edit-persona-select").addEventListener("change", loadEditPersona);
   $("edit-persona-form").addEventListener("submit", saveEditPersona);
+  $("edit-tts-reference").addEventListener("change", previewSelectedReference);
+  $("edit-tts-confirm-upload").addEventListener("click", confirmReferenceUpload);
+  $("edit-tts-preview-reference").addEventListener("click", playEditReference);
+  $("edit-tts-generate-preview").addEventListener("click", generateEditPreview);
+  $("edit-tts-open-settings").addEventListener("click", openTtsSettings);
+  $("edit-tts-remove-reference").addEventListener("click", removeEditReference);
+  $("edit-tts-enabled").addEventListener("change", syncEditTtsControls);
   $("edit-upload-form").addEventListener("submit", uploadEditDocuments);
-  $("persona-select").addEventListener("change", selectPersona);
   $("question-form").addEventListener("submit", submitQuestion);
+  $("question").addEventListener("input", resizeComposer);
   $("cancel-generation").addEventListener("click", cancelRealtimeTurn);
   $("record-audio").addEventListener("click", () => state.audioMode === "recording" ? finishAudioRecording() : startAudioRecording());
   $("cancel-audio").addEventListener("click", cancelAudioActivity);
@@ -106,11 +120,19 @@ function bindEvents() {
   $("preview-tts").addEventListener("click", previewTts);
   $("close-preview").addEventListener("click", closePreview);
   $("preview-backdrop").addEventListener("click", closePreview);
+  $("chat-persona-toggle").addEventListener("click", togglePersonaDrawer);
+  document.addEventListener("click", (event) => { if (!event.target.closest(".chat-persona-picker")) closePersonaMenu(); });
+  $("assistant-voice-toggle").checked = localStorage.getItem("personalive:assistant-voice") !== "off";
+  $("assistant-voice-toggle").addEventListener("change", () => localStorage.setItem("personalive:assistant-voice", $("assistant-voice-toggle").checked ? "on" : "off"));
+  document.querySelectorAll("[data-collapsible]").forEach((section) => section.addEventListener("toggle", () => {
+    const label = section.querySelector(".section-toggle-label"); if (label) label.textContent = section.open ? "收起" : "展开";
+  }));
+  switchSettingsPanel("model");
 }
 
 function switchView(view) {
   if (view !== "chat" && (state.audioStarting || state.audioMode !== "idle")) cancelAudioActivity();
-  for (const name of ["upload", "chat", "settings"]) $(name + "-view").classList.toggle("is-hidden", name !== view);
+  for (const name of ["home", "upload", "chat", "settings"]) $(name + "-view").classList.toggle("is-hidden", name !== view);
   document.querySelectorAll("[data-view]").forEach((button) => button.classList.toggle("is-active", button.dataset.view === view));
 }
 
@@ -213,7 +235,7 @@ async function confirmDraft() {
   try {
     await saveDraft(true);
     state.draft = await api(fetch(`/api/persona-drafts/${state.draft.id}/confirm`, { method: "POST" }));
-    renderDraft(); await loadPersonas(state.draft.persona.id); switchView("chat"); pollDraft();
+    renderDraft(); await loadPersonas(state.draft.persona.id); switchView("upload"); document.querySelector('input[name="material-action"][value="edit"]').checked = true; switchMaterialMode("edit"); $("edit-persona-select").value = state.draft.persona.id; await loadEditPersona(); setText("edit-persona-status", "角色已创建，请配置参考音色后保存"); pollDraft();
   } catch (reason) { setText("upload-error", reason); }
   finally { $("confirm-draft").disabled = false; }
 }
@@ -232,10 +254,9 @@ function resetDraft() { clearTimeout(state.poller); state.draft = null; $("batch
 async function loadPersonas(selectId = "") {
   try {
     state.personas = await api(fetch("/api/personas"));
-    fillPersonaSelect($("persona-select"), "选择角色");
     fillPersonaSelect($("edit-persona-select"), "请选择");
     renderPersonaList();
-    if (selectId) { $("persona-select").value = selectId; selectPersona(); }
+    if (selectId) await selectPersona(selectId);
   } catch (reason) { setText("chat-error", reason); }
 }
 function fillPersonaSelect(select, placeholder) {
@@ -249,15 +270,16 @@ function renderPersonaList() {
   for (const persona of state.personas) {
     const button = document.createElement("button"); button.type = "button"; button.className = "persona-item";
     button.classList.toggle("is-active", state.activePersona?.id === persona.id); button.textContent = persona.name;
-    button.addEventListener("click", () => { $("persona-select").value = persona.id; selectPersona(); });
+    button.setAttribute("role", "menuitem");
+    button.addEventListener("click", () => selectPersona(persona.id));
     $("persona-list").append(button);
   }
 }
-async function selectPersona() {
+async function selectPersona(personaId = "") {
   cancelAudioActivity();
   setText("audio-status");
   closeRealtime();
-  state.activePersona = state.personas.find((item) => item.id === $("persona-select").value) || null;
+  state.activePersona = state.personas.find((item) => item.id === personaId) || null;
   if (state.activePersona) {
     const key = `personalive:conversation:${state.activePersona.id}`;
     state.conversationId = localStorage.getItem(key) || crypto.randomUUID();
@@ -268,6 +290,7 @@ async function selectPersona() {
   $("send-question").disabled = !state.activePersona;
   $("chat-log").replaceChildren(empty(state.activePersona ? "开始对话" : "选择角色后开始聊天"));
   $("clear-conversation").disabled = !state.activePersona;
+  closePersonaMenu();
   if (state.activePersona) { await loadConversationMessages(); connectRealtime(); }
   updateComposerControls();
 }
@@ -318,6 +341,7 @@ function connectRealtime() {
 
 function setRealtimeBusy(busy) {
   state.realtimeBusy = busy;
+  setText("question-status", busy ? "角色正在生成回复…" : "");
   $("question-form").classList.toggle("is-generating", busy);
   $("cancel-generation").classList.toggle("is-hidden", !busy);
   $("cancel-generation").disabled = !busy;
@@ -337,6 +361,7 @@ function handleRealtimeEvent(event) {
     clearRealtimeSubmission();
     state.realtimeTurnId = event.turn_id;
     state.realtimeAnswerNode = null;
+    state.voiceStreamBuffer = "";
     setRealtimeBusy(true);
     return;
   }
@@ -344,18 +369,21 @@ function handleRealtimeEvent(event) {
   if (event.type === "text.delta") {
     if (!state.realtimeAnswerNode) state.realtimeAnswerNode = appendMessage("assistant", "");
     state.realtimeAnswerNode.querySelector("p").textContent += event.text;
+    collectStreamVoice(event.text, state.realtimeAnswerNode);
   } else if (event.type === "text.final") {
     if (!state.realtimeAnswerNode && event.answer) state.realtimeAnswerNode = appendMessage("assistant", event.answer);
-    if (state.realtimeAnswerNode) appendResultDetails(state.realtimeAnswerNode, event);
+    if (state.realtimeAnswerNode) { flushStreamVoice(true, state.realtimeAnswerNode); appendResultDetails(state.realtimeAnswerNode, event); }
     state.pendingAction = null;
     renderConfirmation();
     state.realtimeTurnId = null;
     state.realtimeAnswerNode = null;
+    state.voiceStreamBuffer = "";
     setRealtimeBusy(false);
   } else if (event.type === "confirmation.required") {
     state.pendingAction = { action: event.pending_action, specialist: event.specialist };
     state.realtimeTurnId = null;
     state.realtimeAnswerNode = null;
+    state.voiceStreamBuffer = "";
     renderConfirmation();
     setRealtimeBusy(false);
   } else if (event.type === "turn.cancelled") {
@@ -584,8 +612,112 @@ async function loadEditPersona() {
   $("edit-tts-enabled").checked = Boolean(state.editPersona.profile?.tts?.enabled);
   $("edit-tts-auto-play").checked = state.editPersona.profile?.tts?.auto_play !== false;
   $("edit-tts-reference").value = "";
+  await loadEditReference();
+  syncEditTtsControls();
   await loadEditDocuments();
 }
+
+function switchSettingsPanel(target) {
+  const groups = { model: [0, 1], retrieval: [2], asr: [3], tts: [4] };
+  const visible = groups[target] || groups.model;
+  document.querySelectorAll(".settings-section").forEach((section, index) => {
+    section.classList.toggle("is-settings-hidden", !visible.includes(index));
+    if (visible.includes(index)) section.open = true;
+  });
+  document.querySelectorAll("[data-settings-target]").forEach((button) => {
+    const active = button.dataset.settingsTarget === target;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-current", active ? "page" : "false");
+  });
+}
+
+function togglePersonaDrawer() {
+  const menu = $("chat-persona-menu");
+  const open = menu.classList.toggle("is-hidden");
+  $("chat-persona-toggle").setAttribute("aria-expanded", String(!open));
+}
+function closePersonaMenu() { $("chat-persona-menu").classList.add("is-hidden"); $("chat-persona-toggle").setAttribute("aria-expanded", "false"); }
+async function loadEditReference() {
+  if (!state.editPersona) return;
+  const info = await api(fetch(`/api/tts/personas/${state.editPersona.id}/reference`, { headers: { "X-PersonaLive-Request": "web" } }));
+  setText("edit-tts-reference-status", info.configured ? `已配置：${info.name}${info.count > 1 ? `（已合并 ${info.count} 条）` : ""}` : "未配置参考音色");
+  $("edit-tts-preview-reference").disabled = !info.configured;
+  $("edit-tts-remove-reference").disabled = !info.configured;
+  syncEditTtsPreview(info.configured);
+  markTtsStep("select", info.configured ? "已配置参考音色" : "选择 WAV 音频");
+  markTtsStep("upload", info.configured ? "音色文件已处理" : "点击确认上传并处理");
+  markTtsStep("preview", info.configured ? "可生成示例语音试听" : "生成示例语音并试听");
+}
+function markTtsStep(step, text, active = false) {
+  const item = $("edit-tts-steps")?.querySelector(`[data-step="${step}"]`);
+  if (!item) return;
+  item.textContent = text; item.classList.toggle("is-active", active); item.classList.toggle("is-complete", !active && text.includes("已"));
+}
+function syncEditTtsControls() { $("edit-tts-auto-play").disabled = !$("edit-tts-enabled").checked; }
+function syncEditTtsPreview(referenceConfigured) {
+  $("edit-tts-generate-preview").disabled = !referenceConfigured;
+  $("edit-tts-open-settings").classList.toggle("is-hidden", state.ttsConfigured);
+}
+function previewSelectedReference() {
+  const files = [...$("edit-tts-reference").files];
+  if (!files.length) return setText("edit-tts-reference-status", "未选择参考音频");
+  const invalid = files.find((file) => !file.name.toLowerCase().endsWith(".wav") || file.size > 10 * 1024 * 1024);
+  if (invalid) return setText("edit-tts-reference-status", `文件不可用：${invalid.name}（仅支持 10 MB 内 WAV）`);
+  setText("edit-tts-reference-status", `已选择 ${files.length} 条，点击“确认上传音色”开始处理`);
+  $("edit-tts-confirm-upload").disabled = false;
+  markTtsStep("select", `已选择 ${files.length} 条 WAV`, true);
+}
+async function confirmReferenceUpload() {
+  if (!state.editPersona) return;
+  const files = [...$("edit-tts-reference").files];
+  if (!files.length) return setText("edit-tts-reference-status", "请先选择 WAV 音频");
+  const invalid = files.find((file) => !file.name.toLowerCase().endsWith(".wav") || file.size > 10 * 1024 * 1024);
+  if (invalid) return setText("edit-tts-reference-status", `文件不可用：${invalid.name}（仅支持 10 MB 内 WAV）`);
+  const button = $("edit-tts-confirm-upload"); button.disabled = true;
+  markTtsStep("upload", `正在校验并合并 ${files.length} 条音频…`, true); setText("edit-tts-reference-status", "正在校验音频格式与大小…");
+  try {
+    const form = new FormData(); files.forEach((file) => form.append("files", file));
+    setText("edit-tts-reference-status", `正在上传并处理 ${files.length} 条音频…`);
+    state.editPersona = await api(fetch(`/api/tts/personas/${state.editPersona.id}/reference`, { method: "POST", headers: { "X-PersonaLive-Request": "web" }, body: form }));
+    $("edit-tts-reference").value = "";
+    setText("edit-tts-reference-status", "音色处理完成，正在刷新试听状态…"); markTtsStep("upload", "音色文件已处理"); markTtsStep("preview", "可生成示例语音试听", true);
+    await loadEditReference(); setText("edit-persona-status", "参考音色已保存，可生成示例语音试听");
+  } catch (reason) { setText("edit-tts-reference-status", reason); markTtsStep("upload", "上传处理失败"); }
+  finally { button.disabled = false; }
+}
+async function playEditReference() {
+  if (!state.editPersona) return;
+  try {
+    const response = await fetch(`/api/tts/personas/${state.editPersona.id}/reference/audio`, { headers: { "X-PersonaLive-Request": "web" } });
+    if (!response.ok) throw new Error("参考音色尚未配置");
+    if (state.editReferenceUrl) URL.revokeObjectURL(state.editReferenceUrl);
+    state.editReferenceUrl = URL.createObjectURL(await response.blob());
+    const audio = new Audio(state.editReferenceUrl); audio.play();
+  } catch (reason) { setText("edit-persona-status", reason); }
+}
+async function removeEditReference() {
+  if (!state.editPersona || !window.confirm("移除当前角色的参考音色？")) return;
+  try {
+    await api(fetch(`/api/tts/personas/${state.editPersona.id}/reference`, { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
+    state.editPersona.profile = { ...(state.editPersona.profile || {}), tts: { ...(state.editPersona.profile?.tts || {}) } };
+    delete state.editPersona.profile.tts.reference_audio;
+    setText("edit-persona-status", "参考音色已移除"); await loadEditReference();
+  } catch (reason) { setText("edit-persona-status", reason); }
+}
+async function generateEditPreview() {
+  if (!state.editPersona) return;
+  if (!state.ttsConfigured) return openTtsSettings();
+  const text = $("edit-tts-preview-text").value.trim();
+  if (!text) return setText("edit-tts-preview-status", "请输入示例文案");
+  const button = $("edit-tts-generate-preview"); button.disabled = true; setText("edit-tts-preview-status", "正在生成示例语音…");
+  try {
+    const response = await fetch(`/api/tts/personas/${state.editPersona.id}/reference/preview`, { method: "POST", headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" }, body: JSON.stringify({ text }) });
+    if (!response.ok) { const data = await response.json().catch(() => null); if (response.status === 409) { setText("edit-tts-preview-status", "请先安装 TTS 模型"); return openTtsSettings(); } throw new Error(data?.detail || `请求失败 (${response.status})`); }
+    const audio = $("edit-tts-preview-audio"); if (audio.src) URL.revokeObjectURL(audio.src); audio.src = URL.createObjectURL(await response.blob()); audio.classList.remove("is-hidden"); setText("edit-tts-preview-status", "示例语音已生成"); audio.play().catch(() => {});
+  } catch (reason) { setText("edit-tts-preview-status", reason.message || reason); }
+  finally { await loadEditReference(); }
+}
+function openTtsSettings() { switchView("settings"); switchSettingsPanel("tts"); const section = $("tts-settings-anchor"); section.open = true; section.scrollIntoView({ behavior: "smooth", block: "start" }); }
 function requestPersonaDeletion() {
   if (!state.editPersona) return;
   state.deletePersona = state.editPersona;
@@ -609,7 +741,6 @@ async function confirmPersonaDeletion() {
     state.activePersona = null;
     await loadPersonas(nextPersona?.id || "");
     if (!nextPersona) {
-      $("persona-select").value = "";
       $("edit-persona-select").value = "";
       selectPersona();
     }
@@ -627,17 +758,15 @@ async function loadEditDocuments() {
 }
 async function saveEditPersona(event) {
   event.preventDefault(); if (!state.editPersona) return;
-  setText("edit-persona-status");
+  const submit = $("edit-persona-form").querySelector("button[type=submit]"); submit.disabled = true; setText("edit-persona-status", "正在保存角色资料设置…");
   try {
+    const referenceFiles = [...$("edit-tts-reference").files];
+    if (referenceFiles.length) throw new Error("已选择新的音频，请先点击“确认上传音色”再保存角色资料");
     const profile = { ...(state.editPersona.profile || {}), description: $("edit-persona-profile").value.trim(), tts: { ...(state.editPersona.profile?.tts || {}), enabled: $("edit-tts-enabled").checked, auto_play: $("edit-tts-auto-play").checked } };
     state.editPersona = await api(fetch(`/api/personas/${state.editPersona.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: $("edit-persona-name").value.trim(), profile }) }));
-    const reference = $("edit-tts-reference").files[0];
-    if (reference) {
-      const form = new FormData(); form.append("file", reference);
-      state.editPersona = await api(fetch(`/api/tts/personas/${state.editPersona.id}/reference`, { method: "POST", headers: { "X-PersonaLive-Request": "web" }, body: form }));
-    }
-    setText("edit-persona-status", "已保存"); await loadPersonas(); $("edit-persona-select").value = state.editPersona.id;
+    setText("edit-persona-status", "角色资料已保存"); await loadPersonas(); $("edit-persona-select").value = state.editPersona.id; await loadEditReference();
   } catch (reason) { setText("edit-persona-status", reason); }
+  finally { submit.disabled = false; }
 }
 async function uploadEditDocuments(event) {
   event.preventDefault(); if (!state.editPersona) return;
@@ -662,35 +791,60 @@ async function submitQuestion(event) {
   appendMessage("user", question); setText("chat-error"); updateComposerControls();
   if (sendRealtime({ type: "text.submit", question })) {
     awaitRealtimeAcknowledgement(question);
-    $("question-form").reset();
+    $("question-form").reset(); resizeComposer();
     return;
   }
   try {
     const result = await api(fetch(`/api/personas/${state.activePersona.id}/agent/query`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question, conversation_id: state.conversationId }) }));
-    handleAgentResult(result); $("question-form").reset();
+    handleAgentResult(result); $("question-form").reset(); resizeComposer();
   } catch (reason) { setText("chat-error", reason); }
   finally { state.agentRequestPending = false; updateComposerControls(); }
+}
+function resizeComposer() {
+  const input = $("question");
+  input.style.height = "40px";
+  const height = Math.min(input.scrollHeight, 104);
+  input.style.height = `${height}px`;
+  input.style.overflowY = input.scrollHeight > 104 ? "auto" : "hidden";
 }
 function appendMessage(type, text) {
   if ($("chat-log").querySelector(".empty-state")) $("chat-log").replaceChildren();
   const node = document.createElement("article"); node.className = `message message-${type}`;
-  const label = document.createElement("strong"); label.textContent = type === "user" ? "你" : state.activePersona.name;
-  const body = document.createElement("p"); body.textContent = text; node.append(label, body); $("chat-log").append(node); node.scrollIntoView({ block: "nearest" }); return node;
+  const body = document.createElement("p"); body.textContent = text; node.append(body); $("chat-log").append(node); node.scrollIntoView({ block: "nearest" }); return node;
+}
+function appendVoiceControl(node, audio) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "voice-play-button";
+  button.title = "播放语音";
+  button.setAttribute("aria-label", "播放语音");
+  const icon = document.createElement("i");
+  icon.dataset.lucide = "volume-2";
+  button.append(icon);
+  button.addEventListener("click", () => {
+    if (audio.paused) audio.play().catch(() => {});
+    else audio.pause();
+  });
+  audio.addEventListener("play", () => button.classList.add("is-playing"));
+  audio.addEventListener("pause", () => button.classList.remove("is-playing"));
+  audio.addEventListener("ended", () => button.classList.remove("is-playing"));
+  node.append(button, audio);
+  icons();
+  return button;
 }
 function appendAudioMessage(message) {
   if ($("chat-log").querySelector(".empty-state")) $("chat-log").replaceChildren();
   const node = document.createElement("article");
   node.className = `message message-${message.role} message-audio`; node.dataset.messageId = message.id;
-  const label = document.createElement("strong"); label.textContent = message.role === "assistant" ? state.activePersona.name : "你";
   const audio = document.createElement("audio"); audio.controls = true; audio.preload = "metadata"; audio.src = message.audio_url;
   if (message.role === "assistant") {
-    const body = document.createElement("p"); body.textContent = message.content; node.append(label, body, audio);
+    const body = document.createElement("p"); body.textContent = message.content; const status = document.createElement("span"); status.className = "voice-bubble-status"; status.textContent = "语音回复"; audio.controls = false; audio.className = "voice-audio-source"; node.append(body, status); appendVoiceControl(node, audio);
     $("chat-log").append(node); node.scrollIntoView({ block: "nearest" }); return node;
   }
   const transcript = document.createElement("details"); transcript.className = "voice-transcript";
   const summary = document.createElement("summary"); summary.textContent = message.status === "failed" ? "识别失败" : "查看转写";
   const text = document.createElement("p"); text.textContent = message.transcript || (message.status === "failed" ? message.error_message : "正在识别…");
-  transcript.append(summary, text); node.append(label, audio, transcript);
+  transcript.append(summary, text); node.append(audio, transcript);
   if (message.status === "failed") {
     const retry = document.createElement("button"); retry.type = "button"; retry.className = "voice-retry"; retry.textContent = "重试";
     retry.addEventListener("click", () => retryVoiceMessage(message.id)); node.append(retry);
@@ -732,14 +886,40 @@ function handleAgentResult(result) {
   renderConfirmation(); $("send-question").disabled = Boolean(state.pendingAction) || !state.activePersona; if (result.answer) appendAnswer(result);
 }
 function appendAnswer(result) { const node = appendMessage("assistant", result.answer); appendResultDetails(node, result); synthesizeAnswer(result.answer, node); }
-async function synthesizeAnswer(text, node) {
+function collectStreamVoice(text, node) {
+  if (!state.activePersona?.profile?.tts?.enabled || !$("assistant-voice-toggle").checked) return;
+  state.voiceStreamBuffer += text;
+  const punctuation = "。！？!?；;\n";
+  const boundary = Math.max(...[...punctuation].map((mark) => state.voiceStreamBuffer.lastIndexOf(mark)));
+  if (state.voiceStreamBuffer.length >= 60 && boundary >= 35) flushStreamVoice(false, node);
+}
+function flushStreamVoice(force, node) {
+  if (!state.voiceStreamBuffer) return;
+  if (!force && state.voiceStreamBuffer.length < 60) return;
+  const text = state.voiceStreamBuffer.trim(); state.voiceStreamBuffer = "";
+  if (text) synthesizeAnswer(text, node, { queued: true });
+}
+function enqueueVoiceAudio(audio) {
+  state.voicePlaybackQueue.push(audio);
+  playNextVoiceAudio();
+}
+function playNextVoiceAudio() {
+  if (state.voicePlaybackActive || !state.voicePlaybackQueue.length) return;
+  state.voicePlaybackActive = true;
+  const audio = state.voicePlaybackQueue.shift();
+  audio.addEventListener("ended", () => { state.voicePlaybackActive = false; playNextVoiceAudio(); }, { once: true });
+  audio.play().catch(() => { state.voicePlaybackActive = false; playNextVoiceAudio(); });
+}
+async function synthesizeAnswer(text, node, options = {}) {
   const voice = state.activePersona?.profile?.tts;
-  if (!state.ttsConfigured || !voice?.enabled || !text) return;
+  if (!state.ttsConfigured || !voice?.enabled || !$("assistant-voice-toggle").checked || !text) return;
+  const status = document.createElement("span"); status.className = "voice-bubble-status is-generating"; status.textContent = "正在生成语音…"; node.append(status);
   try {
     const message = await api(fetch(`/api/tts/personas/${state.activePersona.id}/conversations/${state.conversationId}/synthesize`, { method: "POST", headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" }, body: JSON.stringify({ text }) }));
-    const audio = document.createElement("audio"); audio.controls = true; audio.preload = "metadata"; audio.src = message.audio_url; node.append(audio);
-    if (voice.auto_play !== false) audio.play().catch(() => {});
-  } catch (reason) { setText("chat-error", `文字回复正常，语音生成失败：${reason.message || reason}`); }
+    status.textContent = "语音已生成"; status.classList.remove("is-generating");
+    const audio = document.createElement("audio"); audio.controls = false; audio.preload = "metadata"; audio.src = message.audio_url; audio.className = "voice-audio-source"; appendVoiceControl(node, audio);
+    if (voice.auto_play !== false) options.queued ? enqueueVoiceAudio(audio) : audio.play().catch(() => {});
+  } catch (reason) { status.textContent = "语音生成失败"; status.classList.remove("is-generating"); setText("chat-error", `文字回复正常，语音生成失败：${reason.message || reason}`); }
 }
 function appendResultDetails(node, result) { if (result.evidence?.length) node.append(details("引用", result.evidence)); if (result.tool_calls?.length) node.append(details("工具", result.tool_calls)); if (result.trace?.length) node.append(details("检索", result.trace)); }
 function renderConfirmation() {
@@ -842,6 +1022,10 @@ async function loadTtsStatus() {
     $("remove-tts").disabled = config.installing || !config.model_dir;
     $("open-tts-directory").disabled = config.installing;
     $("preview-tts").disabled = !config.ready;
+    if (state.editPersona) {
+      const reference = await api(fetch(`/api/tts/personas/${state.editPersona.id}/reference`, { headers: { "X-PersonaLive-Request": "web" } }));
+      syncEditTtsPreview(reference.configured);
+    }
     if (config.installing) setTimeout(loadTtsStatus, 2000);
   } catch (reason) { state.ttsConfigured = false; setText("tts-status", reason); }
 }

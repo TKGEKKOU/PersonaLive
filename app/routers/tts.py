@@ -1,4 +1,7 @@
 import hashlib
+import io
+import audioop
+import wave
 from pathlib import Path
 from uuid import uuid4
 
@@ -16,7 +19,7 @@ from app.routers.settings import require_local
 from app.schemas import ConversationMessageResponse, PersonaResponse
 from persona.service import LOCAL_WORKSPACE_ID
 from settings import Settings
-from voice.tts.local_worker import LocalTTS, TTSGenerationError
+from voice.tts.local_worker import TTSGenerationError
 
 
 router = APIRouter(prefix="/api/tts", tags=["tts"])
@@ -24,6 +27,50 @@ AUDIO_ROOT = Settings.load().project_root / "data" / "audio"
 VOICE_ROOT = Settings.load().project_root / "data" / "tts" / "voices"
 TTS_PREVIEW_ROOT = Settings.load().project_root / "data" / "tts" / "previews"
 MAX_REFERENCE_BYTES = 10 * 1024 * 1024
+REFERENCE_RATE = 24000
+MAX_REFERENCE_SECONDS = 8
+
+
+def normalize_reference_wavs(payloads: list[bytes]) -> bytes:
+    frames = bytearray()
+    frame_limit = REFERENCE_RATE * MAX_REFERENCE_SECONDS * 2
+    for payload in payloads:
+        try:
+            with wave.open(io.BytesIO(payload), "rb") as source:
+                channels = source.getnchannels()
+                width = source.getsampwidth()
+                rate = source.getframerate()
+                if channels not in (1, 2) or width not in (1, 2, 3, 4) or source.getcomptype() != "NONE":
+                    raise ValueError("unsupported WAV format")
+                audio = source.readframes(source.getnframes())
+        except (wave.Error, EOFError) as exc:
+            raise ValueError("invalid WAV file") from exc
+        if width == 1:
+            audio = audioop.bias(audio, 1, -128)
+        if channels == 2:
+            audio = audioop.tomono(audio, width, 0.5, 0.5)
+        if width != 2:
+            audio = audioop.lin2lin(audio, width, 2)
+        if rate != REFERENCE_RATE:
+            audio, _ = audioop.ratecv(audio, 2, 1, rate, REFERENCE_RATE, None)
+        frames.extend(audio[: max(0, frame_limit - len(frames))])
+        if len(frames) >= frame_limit:
+            break
+    output = io.BytesIO()
+    with wave.open(output, "wb") as target:
+        target.setnchannels(1)
+        target.setsampwidth(2)
+        target.setframerate(REFERENCE_RATE)
+        target.writeframes(frames)
+    return output.getvalue()
+
+
+def reference_path(persona: Persona) -> Path | None:
+    name = str(((persona.profile_json or {}).get("tts") or {}).get("reference_audio") or "")
+    if not name or Path(name).name != name:
+        return None
+    path = VOICE_ROOT / name
+    return path if path.is_file() else None
 
 
 class TTSConfigUpdate(BaseModel):
@@ -52,7 +99,8 @@ def update_config(payload: TTSConfigUpdate, request: Request, x_personalive_requ
     protected(request, x_personalive_request)
     values = payload.model_dump(exclude_unset=True)
     if "use_gpu" in values and values["use_gpu"] != request.app.state.tts_resources.config()["use_gpu"]:
-        LocalTTS.stop_service()
+        request.app.state.tts_worker.stop_service()
+        request.app.state.tts_worker.use_gpu = values["use_gpu"]
     return request.app.state.tts_resources.configure(**values)
 
 
@@ -103,17 +151,23 @@ def preview(payload: TTSSynthesisRequest, request: Request, x_personalive_reques
 async def upload_reference(
     persona_id: str,
     request: Request,
-    file: UploadFile = File(),
+    file: UploadFile | None = File(default=None),
+    files: list[UploadFile] | None = File(default=None),
     x_personalive_request: str = Header(default=""),
     session: Session = Depends(get_session),
 ):
     protected(request, x_personalive_request)
     persona = local_persona_or_404(session, persona_id)
-    audio = await file.read(MAX_REFERENCE_BYTES + 1)
-    if len(audio) > MAX_REFERENCE_BYTES:
+    uploads = files or ([file] if file else [])
+    if not uploads:
+        raise HTTPException(status_code=422, detail="Reference audio is required")
+    payloads = [await item.read(MAX_REFERENCE_BYTES + 1) for item in uploads]
+    if sum(len(item) for item in payloads) > MAX_REFERENCE_BYTES:
         raise HTTPException(status_code=413, detail="Reference audio is too large")
-    if len(audio) < 12 or audio[:4] != b"RIFF" or audio[8:12] != b"WAVE":
-        raise HTTPException(status_code=415, detail="Reference audio must be a PCM WAV file")
+    try:
+        audio = normalize_reference_wavs(payloads)
+    except ValueError as exc:
+        raise HTTPException(status_code=415, detail="Reference audio must be an uncompressed PCM WAV file") from exc
     VOICE_ROOT.mkdir(parents=True, exist_ok=True)
     target = VOICE_ROOT / f"{persona.id}.wav"
     temporary = target.with_suffix(".tmp")
@@ -121,12 +175,92 @@ async def upload_reference(
     temporary.replace(target)
     profile = dict(persona.profile_json or {})
     tts = dict(profile.get("tts") or {})
-    tts.update({"enabled": True, "reference_audio": target.name})
+    tts.update({"enabled": True, "reference_audio": target.name, "reference_audio_count": len(payloads)})
     profile["tts"] = tts
     persona.profile_json = profile
     session.commit()
     session.refresh(persona)
     return persona
+
+
+@router.get("/personas/{persona_id}/reference")
+def get_reference(
+    persona_id: str,
+    request: Request,
+    x_personalive_request: str = Header(default=""),
+    session: Session = Depends(get_session),
+):
+    protected(request, x_personalive_request)
+    persona = local_persona_or_404(session, persona_id)
+    path = reference_path(persona)
+    if path is None:
+        return {"configured": False, "name": None}
+    count = int((((persona.profile_json or {}).get("tts") or {}).get("reference_audio_count") or 1))
+    return {"configured": True, "name": path.name, "size": path.stat().st_size, "count": count}
+
+
+@router.get("/personas/{persona_id}/reference/audio")
+def play_reference(
+    persona_id: str,
+    request: Request,
+    x_personalive_request: str = Header(default=""),
+    session: Session = Depends(get_session),
+):
+    protected(request, x_personalive_request)
+    persona = local_persona_or_404(session, persona_id)
+    path = reference_path(persona)
+    if path is None:
+        raise HTTPException(status_code=404, detail="Reference audio is not configured")
+    return FileResponse(path, media_type="audio/wav", filename=path.name)
+
+
+@router.post("/personas/{persona_id}/reference/preview")
+def preview_reference(
+    persona_id: str,
+    payload: TTSSynthesisRequest,
+    request: Request,
+    x_personalive_request: str = Header(default=""),
+    session: Session = Depends(get_session),
+):
+    protected(request, x_personalive_request)
+    persona = local_persona_or_404(session, persona_id)
+    text = payload.text.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="TTS text is empty")
+    if not request.app.state.tts_resources.status()["ready"]:
+        raise HTTPException(status_code=409, detail="Local TTS is not ready; install the model in Settings first")
+    reference = reference_path(persona)
+    if reference is None:
+        raise HTTPException(status_code=404, detail="Reference audio is not configured")
+    TTS_PREVIEW_ROOT.mkdir(parents=True, exist_ok=True)
+    output = TTS_PREVIEW_ROOT / f"persona-{persona_id}-{uuid4()}.wav"
+    try:
+        request.app.state.tts_factory().synthesize(text, output, reference)
+    except TTSGenerationError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return FileResponse(output, media_type="audio/wav", background=BackgroundTask(output.unlink, missing_ok=True))
+
+
+@router.delete("/personas/{persona_id}/reference")
+def remove_reference(
+    persona_id: str,
+    request: Request,
+    x_personalive_request: str = Header(default=""),
+    session: Session = Depends(get_session),
+):
+    protected(request, x_personalive_request)
+    persona = local_persona_or_404(session, persona_id)
+    profile = dict(persona.profile_json or {})
+    tts = dict(profile.get("tts") or {})
+    name = str(tts.pop("reference_audio", "") or "")
+    tts.pop("reference_audio_count", None)
+    if name and Path(name).name == name:
+        path = VOICE_ROOT / name
+        path.unlink(missing_ok=True)
+    profile["tts"] = tts
+    persona.profile_json = profile
+    session.commit()
+    return {"configured": False, "name": None}
 
 
 @router.post(
@@ -152,10 +286,7 @@ def synthesize(
     output = directory / f"{uuid4()}.wav"
     try:
         tts_profile = (persona.profile_json or {}).get("tts") or {}
-        reference_name = str(tts_profile.get("reference_audio") or "")
-        reference = VOICE_ROOT / reference_name if reference_name else None
-        if reference is not None and not reference.is_file():
-            reference = None
+        reference = reference_path(persona)
         request.app.state.tts_factory().synthesize(text, output, reference)
     except TTSGenerationError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc

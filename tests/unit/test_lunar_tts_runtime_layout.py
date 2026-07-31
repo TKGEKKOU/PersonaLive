@@ -25,3 +25,16 @@ def test_readme_discloses_lunar_non_commercial_tts_component():
 
     assert "Lunar Astral Agents" in readme
     assert "Non-Commercial License" in readme
+
+
+def test_windows_build_uses_published_lunar_runtime():
+    script = Path("scripts/build_windows.ps1").read_text(encoding="utf-8")
+
+    assert 'runtime\\tts\\Qwen3_TTS_Lunar.exe' in script
+    assert 'runtime\\tts\\qwen3-tts-cli.exe' not in script
+
+
+def test_pyinstaller_spec_packages_lunar_tts_runtime():
+    spec = Path("PersonaLive.spec").read_text(encoding="utf-8")
+
+    assert "('runtime/tts', 'runtime/tts')" in spec

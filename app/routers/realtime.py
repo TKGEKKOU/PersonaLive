@@ -18,6 +18,39 @@ from realtime.session import RealtimeSession, TurnInProgressError
 router = APIRouter(tags=["realtime"])
 
 
+def chunk_text(text: str, max_chars: int = 80) -> list[str]:
+    """Split visible answers into short sentence-aware chunks for incremental UI/TTS."""
+    remaining = text.strip()
+    chunks: list[str] = []
+    punctuation = "。！？!?；;\n"
+    while remaining:
+        if len(remaining) <= max_chars:
+            chunks.append(remaining)
+            break
+        window = remaining[: max_chars + 1]
+        boundary = max((window.rfind(mark) for mark in punctuation), default=-1)
+        if boundary >= 0:
+            cut = boundary + 1
+        else:
+            cut = max_chars
+        chunks.append(remaining[:cut])
+        remaining = remaining[cut:]
+    return chunks
+
+
+def voice_limited_answer(answer: str, persona_profile: dict) -> str:
+    """Keep TTS-enabled replies short enough that speech can catch up with text."""
+    tts = persona_profile.get("tts") or {}
+    if not tts.get("enabled"):
+        return answer
+    limit = 80
+    if len(answer) <= limit:
+        return answer
+    shortened = answer[:limit]
+    boundary = max((shortened.rfind(mark) for mark in "。！？!?；;\n"), default=-1)
+    return shortened[: boundary + 1 if boundary >= 80 else limit].rstrip() + "…"
+
+
 @router.websocket("/ws/personas/{persona_id}/conversations/{conversation_id}")
 async def persona_realtime(
     websocket: WebSocket,
@@ -72,6 +105,7 @@ async def persona_realtime(
                 if not realtime.is_current(turn_id):
                     return
                 response = response_for(result).model_dump()
+                response["answer"] = voice_limited_answer(response["answer"], context.persona_profile)
                 if response["status"] == "pending_confirmation":
                     await send_if_current(
                         turn_id,
@@ -79,12 +113,9 @@ async def persona_realtime(
                         **response,
                     )
                     return
-                if response["answer"]:
-                    await send_if_current(
-                        turn_id,
-                        "text.delta",
-                        text=response["answer"],
-                    )
+                for chunk in chunk_text(response["answer"]):
+                    await send_if_current(turn_id, "text.delta", text=chunk)
+                    await asyncio.sleep(0)
                 await send_if_current(turn_id, "text.final", **response)
             except asyncio.CancelledError:
                 raise
@@ -121,12 +152,10 @@ async def persona_realtime(
                 if not realtime.is_current(turn_id):
                     return
                 response = response_for(result).model_dump()
-                if response["answer"]:
-                    await send_if_current(
-                        turn_id,
-                        "text.delta",
-                        text=response["answer"],
-                    )
+                response["answer"] = voice_limited_answer(response["answer"], context.persona_profile)
+                for chunk in chunk_text(response["answer"]):
+                    await send_if_current(turn_id, "text.delta", text=chunk)
+                    await asyncio.sleep(0)
                 await send_if_current(turn_id, "text.final", **response)
             except asyncio.CancelledError:
                 raise

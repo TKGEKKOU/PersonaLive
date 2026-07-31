@@ -40,7 +40,7 @@ def test_local_tts_posts_to_lunar_service_and_writes_wav(tmp_path: Path):
     LocalTTS(runtime, model_dir, opener=opener).synthesize("hello", output, reference)
 
     assert requests[-1].full_url.endswith("/tts")
-    assert json.loads(requests[-1].data) == {"text": "hello", "ref_audio": str(reference)}
+    assert json.loads(requests[-1].data) == {"text": "hello", "ref_audio": str(reference), "max_tokens": 160}
     assert output.read_bytes() == b"RIFFaudio"
 
 
@@ -55,3 +55,10 @@ def test_local_tts_rejects_invalid_service_response(tmp_path: Path):
 
     with pytest.raises(TTSGenerationError, match="failed"):
         LocalTTS(runtime, tmp_path, opener=opener).synthesize("hello", tmp_path / "out.wav")
+
+
+def test_local_tts_instances_do_not_share_a_fixed_port(tmp_path: Path):
+    first = LocalTTS(tmp_path / "one.exe", tmp_path)
+    second = LocalTTS(tmp_path / "two.exe", tmp_path)
+
+    assert first.port != second.port

@@ -40,6 +40,7 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         yield
+        app.state.tts_worker.stop_service()
         resource = getattr(app.state, "checkpoint_resource", None)
         if resource is not None:
             resource.close()
@@ -52,11 +53,12 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     app.state.asr_provider_factory = build_asr_provider
     app.state.asr_resources = ASRResourceManager(settings.project_root)
     app.state.tts_resources = TTSResourceManager(settings.project_root)
-    app.state.tts_factory = lambda: LocalTTS(
+    app.state.tts_worker = LocalTTS(
         app.state.tts_resources.runtime_path,
         app.state.tts_resources.model_dir,
         use_gpu=app.state.tts_resources.config()["use_gpu"],
     )
+    app.state.tts_factory = lambda: app.state.tts_worker
     if initialize_database:
         Base.metadata.create_all(engine)
         upgrade_persona_schema(engine)

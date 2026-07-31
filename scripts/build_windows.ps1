@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $projectRoot
 
-$ttsRuntime = Join-Path $projectRoot "runtime\tts\qwen3-tts-cli.exe"
+$ttsRuntime = Join-Path $projectRoot "runtime\tts\Qwen3_TTS_Lunar.exe"
 if (-not (Test-Path $ttsRuntime)) {
   throw "Missing bundled TTS runtime: $ttsRuntime. Run the Build TTS runtime workflow or local runtime build first."
 }

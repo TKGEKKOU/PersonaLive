@@ -13,6 +13,16 @@ from rag.service import RagRequest, create_rag_service
 router = APIRouter(prefix="/api/personas", tags=["rag"])
 
 
+class _RagServiceProxy:
+    """Keep the module-level query seam while loading current settings per request."""
+
+    def query(self, request: RagRequest):
+        return create_rag_service(Settings.load()).query(request)
+
+
+rag_service = _RagServiceProxy()
+
+
 @router.post("/{persona_id}/rag/query", response_model=RagQueryResponse)
 def query_persona(
     persona_id: str,
@@ -32,7 +42,7 @@ def query_persona(
         conversation_id=payload.conversation_id,
     )
     persona = session.get(Persona, persona_id)
-    result = create_rag_service(settings).query(
+    result = rag_service.query(
         RagRequest(
             question=payload.question,
             context=context,

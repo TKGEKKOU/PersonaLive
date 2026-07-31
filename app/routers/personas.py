@@ -6,6 +6,7 @@ from app.database import get_session
 from app.models import DocumentJob, Persona
 from app.schemas import DocumentJobResponse, PersonaCreate, PersonaResponse, PersonaUpdate
 from persona.service import LOCAL_WORKSPACE_ID, PersonaNotFound, create_persona
+from settings import Settings
 
 router = APIRouter(prefix="/api/personas", tags=["personas"])
 
@@ -66,6 +67,8 @@ def delete_persona(
         request.app.state.persona_delete_service.delete(session, persona_id)
     except PersonaNotFound as exc:
         raise HTTPException(status_code=404, detail="Persona not found") from exc
+    voice = Settings.load().project_root / "data" / "tts" / "voices" / f"{persona_id}.wav"
+    voice.unlink(missing_ok=True)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
