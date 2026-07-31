@@ -139,7 +139,11 @@ def reveal_api_key(
     if x_personalive_request != "web":
         raise HTTPException(status_code=403, detail="Missing same-origin request header")
     response.headers["Cache-Control"] = "no-store"
-    return ApiKeyRevealResponse(value=str(read_settings(SETTINGS_PATH).get(payload.field) or ""))
+    values = read_settings(SETTINGS_PATH)
+    value = values.get(payload.field)
+    if not value and payload.field == "web_search_api_key":
+        value = values.get("tavily_api_key")
+    return ApiKeyRevealResponse(value=str(value or ""))
 
 
 @router.patch("", response_model=LocalSettingsResponse)

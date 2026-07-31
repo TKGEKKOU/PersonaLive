@@ -94,7 +94,7 @@ def create_app(initialize_database: bool = True) -> FastAPI:
         return {"status": "ok", "workspace_id": settings.workspace_id}
 
     @app.get("/api/status")
-    def status() -> dict[str, str]:
+    def status() -> dict:
         return get_system_status()
 
     @app.get("/", include_in_schema=False)

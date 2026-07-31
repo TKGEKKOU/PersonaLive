@@ -83,6 +83,8 @@ function bindEvents() {
   setSidebarPinned(false);
   prepareSettingsSections();
   $("sidebar-toggle").addEventListener("click", () => setSidebarPinned(!document.body.classList.contains("sidebar-pinned")));
+  $("refresh-status").addEventListener("click", refreshSystemStatus);
+  $("collapse-status").addEventListener("click", toggleStatusCards);
   document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => {
     switchView(button.dataset.view);
     setSidebarPinned(false);
@@ -92,7 +94,7 @@ function bindEvents() {
   $("document-files").addEventListener("change", () => summarizeFiles("document-files", "file-summary", "未选择文件"));
   $("edit-document-files").addEventListener("change", () => summarizeFiles("edit-document-files", "edit-file-summary", "添加文件或图片"));
   $("batch-form").addEventListener("submit", uploadDraft);
-  $("new-batch").addEventListener("click", resetDraft);
+  $("reset-batch").addEventListener("click", resetDraft);
   $("save-draft").addEventListener("click", saveDraft);
   $("confirm-draft").addEventListener("click", confirmDraft);
   $("edit-persona-select").addEventListener("change", loadEditPersona);
@@ -154,6 +156,9 @@ function bindEvents() {
   $("preview-backdrop").addEventListener("click", closePreview);
   $("chat-persona-toggle").addEventListener("click", togglePersonaDrawer);
   document.addEventListener("click", (event) => { if (!event.target.closest(".chat-persona-picker")) closePersonaMenu(); });
+  $("chat-settings-toggle").addEventListener("click", (event) => { event.stopPropagation(); toggleChatSettingsMenu(); });
+  document.addEventListener("click", (event) => { if (!event.target.closest(".chat-settings")) closeChatSettingsMenu(); });
+  document.querySelectorAll("#chat-settings-menu button").forEach((button) => button.addEventListener("click", closeChatSettingsMenu));
   $("assistant-voice-toggle").checked = localStorage.getItem("personalive:assistant-voice") !== "off";
   $("assistant-voice-toggle").addEventListener("change", () => localStorage.setItem("personalive:assistant-voice", $("assistant-voice-toggle").checked ? "on" : "off"));
   document.querySelectorAll("[data-collapsible]").forEach((section) => section.addEventListener("toggle", () => {
@@ -166,7 +171,7 @@ function bindEvents() {
 // 配置项直接展示，获取途径和补充说明保持收起，减少设置页首屏的信息密度。
 function prepareSettingsSections() {
   const sections = [...document.querySelectorAll(".settings-section")];
-  sections.forEach((section) => { section.open = true; });
+  sections.forEach((section) => { section.open = false; });
   document.querySelectorAll(".settings-help, .inline-guide").forEach((guide) => { guide.open = false; });
 
   const asrSection = sections.find((section) => section.querySelector("#asr-enabled"));
@@ -266,7 +271,6 @@ function switchView(view) {
 function switchMaterialMode(mode) {
   $("create-material-panel").classList.toggle("is-hidden", mode !== "create");
   $("edit-material-panel").classList.toggle("is-hidden", mode !== "edit");
-  $("new-batch").classList.toggle("is-hidden", mode !== "create");
 }
 
 async function loadStatus() {
@@ -274,10 +278,133 @@ async function loadStatus() {
     const status = await api(fetch("/api/status"));
     renderServiceStatus("mysql", "MySQL", status.mysql);
     renderServiceStatus("milvus", "Milvus", status.milvus);
+    renderSystemStatusDetail(status);
   } catch {
     renderServiceStatus("mysql", "MySQL", "unavailable");
     renderServiceStatus("milvus", "Milvus", "unavailable");
+    setText("system-status-detail", "无法获取详细状态，请稍后重试。");
   }
+}
+function refreshSystemStatus() {
+  const button = $("refresh-status");
+  if (button) button.disabled = true;
+  Promise.all([loadStatus(), loadEmbeddingStatus(), loadAsrStatus(), loadTtsStatus()]).finally(() => { if (button) button.disabled = false; });
+}
+function toggleStatusCards() {
+  const collapsed = document.body.classList.toggle("status-cards-collapsed");
+  const button = $("collapse-status");
+  if (button) {
+    const label = collapsed ? "展开详情" : "折叠详情";
+    button.setAttribute("aria-pressed", String(collapsed));
+    button.title = label;
+    button.setAttribute("aria-label", label);
+  }
+}
+function formatDuration(seconds) {
+  if (!Number.isFinite(seconds)) return "—";
+  const h = Math.floor(seconds / 3600), m = Math.floor((seconds % 3600) / 60), s = Math.floor(seconds % 60);
+  if (h > 0) return `${h} 小时 ${m} 分`;
+  if (m > 0) return `${m} 分 ${s} 秒`;
+  return `${s} 秒`;
+}
+function renderSystemStatusDetail(status) {
+  const base = (path) => { const text = String(path || ""); const parts = text.split(/[\\/]/); return parts[parts.length - 1] || text; };
+  const setDetail = (service, lines) => {
+    const node = document.querySelector(`[data-service-status="${service}"] [data-status-detail]`);
+    if (!node) return;
+    const anchor = node.querySelector("a.status-card-text-link");
+    node.querySelectorAll("div").forEach((item) => item.remove());
+    lines.filter(Boolean).forEach((line) => {
+      const div = document.createElement("div");
+      div.textContent = line;
+      if (anchor) node.insertBefore(div, anchor); else node.append(div);
+    });
+  };
+  const setValue = (service, text) => {
+    const node = document.querySelector(`[data-service-status="${service}"] [data-status-value]`);
+    if (node) node.textContent = text || "—";
+  };
+
+  const config = status.config || {};
+  const providerNames = { openai: "OpenAI", deepseek: "DeepSeek", qwen: "通义千问", custom: "自定义" };
+  const llmConfigured = Boolean(config.llm_provider && config.llm_provider !== "未配置");
+  const llmCard = document.querySelector('[data-service-status="llm"]');
+  if (llmCard) llmCard.classList.toggle("is-ok", llmConfigured);
+  setValue("llm", llmConfigured ? "正常" : "未配置");
+  setDetail("llm", [config.openai_model, config.openai_base_url]);
+
+  const resources = status.resources || {};
+  const embedding = resources.embedding || {};
+  const embeddingDevice = embedding.actual_device ? embedding.actual_device.toUpperCase() : "";
+  setDetail("embedding", embedding.ready
+    ? [`${base(embedding.model_id)}${embeddingDevice ? ` · ${embeddingDevice}` : ""}`, embedding.dimensions ? `${embedding.dimensions} 维` : ""]
+    : [embedding.installing ? "安装中" : (embedding.error || "未安装")]);
+
+  const asr = resources.asr || {};
+  setDetail("asr", asr.ready
+    ? [`${base(asr.resolved_model)}`, "按需启动 · 首次语音消息时运行"]
+    : [asr.installing ? "安装中" : (asr.error || "未安装")]);
+
+  const tts = resources.tts || {};
+  setDetail("tts", tts.ready
+    ? [`${base(tts.model_dir || tts.runtime)}`, `GPU ${tts.use_gpu ? "加速" : "关闭"} · 首次合成时运行`]
+    : [tts.installing ? "安装中" : (tts.error || "未安装")]);
+
+  setDetail("mysql", status.mysql === "ok"
+    ? [status.mysql_version ? `MySQL ${status.mysql_version} · 已连接` : "本地数据库已连接"]
+    : [status.mysql === "unavailable" ? "连接失败" : "检查中"]);
+  setDetail("milvus", [
+    status.milvus === "ok"
+      ? "知识库已就绪"
+      : status.milvus === "collection_missing"
+        ? "缺少集合，请重建"
+        : status.milvus === "unavailable" ? "服务不可用" : "检查中",
+    status.collection ? `集合 ${status.collection}` : "",
+  ]);
+
+  const app = status.app || {};
+  setValue("machine", app.version ? `v${app.version}` : "—");
+  const machineLines = [
+    Number.isFinite(app.uptime_seconds) ? `运行 ${formatDuration(app.uptime_seconds)}` : "",
+    app.python ? `Python ${app.python}` : "",
+    app.system ? `系统 ${app.system}${app.system_build ? ` · ${app.system_build}` : ""}` : "",
+  ];
+  const memory = status.memory || {};
+  if (memory.total_gb) machineLines.push(`内存 可用 ${memory.available_gb} / ${memory.total_gb} GB`);
+  const disk = status.disk || {};
+  if (disk.system && disk.system.total_gb) machineLines.push(`磁盘 ${disk.system.drive} 剩余 ${disk.system.free_gb} GB${disk.project && disk.project.total_gb ? ` · ${disk.project.drive} 剩余 ${disk.project.free_gb} GB` : ""}`);
+  const gpu = status.gpu;
+  machineLines.push(gpu && gpu.name ? `GPU ${gpu.name} · ${gpu.vram_used_gb}/${gpu.vram_total_gb} GB` : "GPU 未检测到 NVIDIA 显卡");
+  setDetail("machine", machineLines);
+}
+function keyStateLabel(configured, input) {
+  const typed = input.value.trim();
+  if (typed) return "将保存新 Key";
+  return configured ? "已保存（留空不修改）" : "未填写";
+}
+function buildConfigDetail() {
+  const webEnabled = $("web-search-enabled").checked;
+  const lines = [
+    `LLM：${$("llm-provider").selectedOptions[0].textContent} · ${$("openai-model").value.trim() || "未填写模型"}`,
+    `对话 Base URL：${$("openai-base-url").value.trim() || "未填写"}`,
+    `对话 API Key：${keyStateLabel(state.openaiKeyConfigured, $("openai-api-key"))}`,
+    "",
+    `Embedding：${$("embedding-provider").selectedOptions[0].textContent} · ${$("embedding-model").value.trim() || "未填写模型"}`,
+    `Embedding 来源：${$("embedding-model-source").selectedOptions[0].textContent} · 设备：${$("embedding-device").selectedOptions[0].textContent}`,
+    `Embedding 维度：${$("embedding-dimensions").value || "未填写"}${$("embedding-send-dimensions").checked ? "（发送 dimensions）" : ""}`,
+    `Embedding Base URL：${$("embedding-base-url").value.trim() || "未填写"}`,
+    `Embedding API Key：${keyStateLabel(state.embeddingKeyConfigured, $("embedding-api-key"))}`,
+    "",
+    `文档切分：长度 ${$("chunk-size").value} / 重叠 ${$("chunk-overlap").value}`,
+    "",
+    `联网搜索：${webEnabled ? "开启" : "关闭"}`,
+  ];
+  if (webEnabled) {
+    lines.push(`搜索服务：${$("web-search-provider").selectedOptions[0].textContent}`);
+    lines.push(`搜索 API Key：${keyStateLabel(state.webSearchKeyConfigured, $("web-search-api-key"))}`);
+    if ($("web-search-provider").value === "custom") lines.push(`搜索接口地址：${$("web-search-base-url").value.trim() || "未填写"}`);
+  }
+  return lines.join("\n");
 }
 function renderServiceStatus(service, label, value, state = value) {
   const node = document.querySelector(`[data-service-status="${service}"]`);
@@ -294,8 +421,10 @@ function renderServiceStatus(service, label, value, state = value) {
   node.classList.toggle("is-ok", state === "ok" || state === "ready");
   node.classList.toggle("is-pending", state === "installing");
   node.classList.toggle("is-warning", ["not_installed", "disabled", "collection_missing"].includes(state));
-  node.querySelector("b").textContent = label;
-  node.querySelector("span").textContent = stateLabel;
+  const labelNode = node.querySelector("[data-status-label]");
+  const valueNode = node.querySelector("[data-status-value]");
+  if (labelNode) labelNode.textContent = label;
+  if (valueNode) valueNode.textContent = stateLabel;
 }
 
 function summarizeFiles(inputId, outputId, emptyText) {
@@ -825,6 +954,20 @@ function togglePersonaDrawer() {
   $("chat-persona-toggle").setAttribute("aria-expanded", String(!open));
 }
 function closePersonaMenu() { $("chat-persona-menu").classList.add("is-hidden"); $("chat-persona-toggle").setAttribute("aria-expanded", "false"); }
+function toggleChatSettingsMenu() {
+  const menu = $("chat-settings-menu");
+  const button = $("chat-settings-toggle");
+  if (!menu || !button) return;
+  const open = menu.classList.toggle("is-hidden") === false;
+  button.setAttribute("aria-expanded", String(open));
+}
+function closeChatSettingsMenu() {
+  const menu = $("chat-settings-menu");
+  const button = $("chat-settings-toggle");
+  if (!menu || !button || menu.classList.contains("is-hidden")) return;
+  menu.classList.add("is-hidden");
+  button.setAttribute("aria-expanded", "false");
+}
 async function loadEditReference() {
   if (!state.editPersona) return;
   const info = await api(fetch(`/api/tts/personas/${state.editPersona.id}/reference`, { headers: { "X-PersonaLive-Request": "web" } }));
@@ -1486,7 +1629,7 @@ function openSettingsConfirmation(action) {
   const isSave = action === "save";
   $("settings-confirm-title").textContent = isSave ? "保存前确认" : "确认重置配置";
   $("settings-confirm-detail").textContent = isSave
-    ? `对话：${$("llm-provider").selectedOptions[0].textContent} · ${$("openai-model").value.trim() || "未填写模型"}\nEmbedding：${$("embedding-provider").selectedOptions[0].textContent} · ${$("embedding-model").value.trim() || "未填写模型"} · ${$("embedding-dimensions").value || "未填写维度"} 维\n文档切分：${$("chunk-size").value} / ${$("chunk-overlap").value}\n联网搜索：${$("web-search-enabled").checked ? `开启 · ${$("web-search-provider").selectedOptions[0].textContent}` : "关闭"}\n将更新：${["openai-api-key", "embedding-api-key", "web-search-api-key"].filter((id) => $(id).value.trim()).length || "模型与连接配置"}`
+    ? buildConfigDetail()
     : "将清除本机前端保存的 LLM、Embedding、联网搜索配置和 Key。不会影响 .env 中的 MySQL、Milvus 或端口配置。";
   $("settings-confirm-submit").textContent = isSave ? "确认保存" : "确认重置";
   $("settings-confirm-dialog").showModal();
