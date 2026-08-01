@@ -565,6 +565,18 @@ input:focus, textarea:focus, select:focus { border-color: var(--primary); box-sh
 .chat-process-panel .audio-status, .chat-process-panel .question-status, .chat-process-panel .chat-error { font-size: 12px; line-height: 1.5; margin-right: 0; margin-left: 0; }
 .chat-process-panel .chat-error { color: var(--danger); }
 
+/* RAG 评测板块 */
+.eval-panel { margin-top: 24px; }
+.eval-metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-top: 14px; }
+.eval-metric { padding: 10px 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface-soft); display: grid; gap: 4px; }
+.eval-metric span { color: var(--muted); font-size: 11px; }
+.eval-metric b { font-size: 15px; color: var(--ink); }
+.eval-cases { display: grid; gap: 8px; margin-top: 8px; }
+.eval-case { padding: 10px 12px; border: 1px solid var(--line); border-radius: 4px; }
+.eval-case b { font-size: 12px; color: var(--ink-soft); }
+.eval-case p { margin: 6px 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.eval-case span { font-size: 11px; color: var(--subtle); }
+
 /* Desktop feel: slim, semi-transparent overlay scrollbars (macOS-like) */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }

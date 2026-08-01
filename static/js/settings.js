@@ -10,6 +10,7 @@ function initSettings() {
   loadEmbeddingStatus();
   loadAsrStatus();
   loadTtsStatus();
+  loadEvalPersonas();
 }
 
 function bindSettingsEvents() {
@@ -49,6 +50,7 @@ function bindSettingsEvents() {
     const label = section.querySelector(".section-toggle-label");
     if (label) label.textContent = section.open ? "收起" : "展开";
   }));
+  bindEvalEvents();
 }
 function setApiKeyVisibilityIcon(inputId, visible) {
   const button = $(`toggle-${inputId}`);
@@ -577,4 +579,101 @@ async function resetSettings() {
     setText("settings-status", "配置已重置"); await loadSettings();
   } catch (reason) { setText("settings-status", reason); }
   finally { $("reset-settings").disabled = false; }
+}
+
+async function loadEvalPersonas() {
+  const list = await api(fetch("/api/personas"));
+  const select = $("eval-persona");
+  select.innerHTML = '<option value="">请选择角色</option>' + list
+    .map((persona) => `<option value="${persona.id}">${persona.name}</option>`)
+    .join("");
+}
+
+const EVAL_METRIC_LABELS = {
+  recall_at_k: "检索召回率 recall@k",
+  precision_at_k: "检索精确率 precision@k",
+  mrr: "MRR",
+  hit_at_1: "首位命中 hit@1",
+  mean_latency_ms: "平均检索延迟 (ms)",
+  p95_latency_ms: "P95 检索延迟 (ms)",
+  grounded_rate: "事实接地率 grounded",
+  useful_rate: "问题解决率 useful",
+  cases_checked: "已检用例数",
+};
+
+function renderEvalMetrics(metrics) {
+  const rows = Object.entries(EVAL_METRIC_LABELS)
+    .filter(([key]) => metrics[key] !== undefined && metrics[key] !== null)
+    .map(([key, label]) => {
+      const value = typeof metrics[key] === "number" ? Number(metrics[key]).toFixed(3) : String(metrics[key]);
+      return `<div class="eval-metric"><span>${label}</span><b>${value}</b></div>`;
+    });
+  $("eval-metrics").innerHTML = `<div class="eval-metric-grid">${rows.join("")}</div>`;
+  $("eval-metrics").classList.remove("is-hidden");
+}
+
+function renderEvalCases(cases) {
+  const list = cases.map((caseItem, index) => {
+    const answer = (caseItem.answer || "").slice(0, 120);
+    return `<div class="eval-case"><b>${index + 1}. ${caseItem.question}</b><p>${answer}</p><span>grounded=${caseItem.grounded ?? "—"} · useful=${caseItem.useful ?? "—"}</span></div>`;
+  });
+  $("eval-cases").innerHTML = list.join("");
+  $("eval-details").classList.remove("is-hidden");
+}
+
+async function pollEvalResult() {
+  const button = $("eval-run");
+  button.disabled = true;
+  button.textContent = "评测中…";
+  const progress = $("eval-progress");
+  progress.classList.remove("is-hidden");
+  for (let i = 0; i < 1200; i += 1) {
+    const status = await api(fetch("/api/eval/status"));
+    $("eval-state").textContent = status.state === "running" ? "评测中" : status.state;
+    $("eval-state-pill").textContent = status.state === "running" ? "进行中" : status.state;
+    if (status.total > 0) {
+      progress.value = Math.round((status.progress / status.total) * 100);
+      $("eval-status").textContent = `已完成 ${status.progress} / ${status.total} 条`;
+    }
+    if (status.state === "done") {
+      const results = await api(fetch("/api/eval/results"));
+      renderEvalMetrics(results.metrics);
+      renderEvalCases(results.cases);
+      $("eval-status").textContent = "评测完成";
+      $("eval-state-pill").textContent = "已完成";
+      break;
+    }
+    if (status.state === "error") {
+      $("eval-status").textContent = status.error || "评测失败";
+      $("eval-state-pill").textContent = "失败";
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  progress.classList.add("is-hidden");
+  button.disabled = false;
+  button.textContent = "开始评测";
+}
+
+function bindEvalEvents() {
+  $("eval-run").addEventListener("click", () => {
+    const personaId = $("eval-persona").value;
+    if (!personaId) {
+      $("eval-status").textContent = "请先选择评测角色";
+      return;
+    }
+    $("eval-status").textContent = "";
+    $("eval-metrics").classList.add("is-hidden");
+    $("eval-details").classList.add("is-hidden");
+    api(fetch("/api/eval/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ persona_id: personaId }),
+    }))
+      .then(() => pollEvalResult())
+      .catch((reason) => {
+        $("eval-status").textContent = reason.message || reason;
+        $("eval-state-pill").textContent = "失败";
+      });
+  });
 }

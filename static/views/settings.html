@@ -56,4 +56,11 @@
         <div class="settings-actions"><p id="settings-status" class="inline-status"></p><button id="reset-settings" class="button button-secondary" type="button">重置配置</button><button id="save-settings" class="button button-primary" type="submit">保存配置</button></div>
         </div>
       </form>
+      <section class="eval-panel panel" aria-labelledby="eval-title">
+        <div class="panel-heading"><div><h2 id="eval-title">RAG 评测</h2><p class="panel-subtitle">对所选角色资料跑离线评测：检索质量 + 生成质量（grounded / useful）。</p></div><span id="eval-state-pill" class="status-pill">未运行</span></div>
+        <div class="settings-grid one-column"><label class="field"><span>评测角色</span><select id="eval-persona"><option value="">请选择角色</option></select></label></div>
+        <div class="asr-resource-bar"><div><strong id="eval-state">未运行</strong><p id="eval-status" class="inline-status"></p><progress id="eval-progress" class="is-hidden" max="100"></progress></div><div class="asr-actions"><button id="eval-run" class="button button-primary" type="button">开始评测</button></div></div>
+        <div id="eval-metrics" class="eval-metrics is-hidden"></div>
+        <details id="eval-details" class="settings-help is-hidden"><summary>逐条详情</summary><div id="eval-cases" class="eval-cases"></div></details>
+      </section>
     </section>
