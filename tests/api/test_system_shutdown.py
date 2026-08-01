@@ -42,4 +42,4 @@ def test_shutdown_with_stop_docker_runs_compose_down(client, monkeypatch):
 
     response = client.post("/api/system/shutdown", json={"stop_docker": True})
     assert response.status_code == 200
-    assert commands and commands[0] == ["docker", "compose", "down"]
+    assert commands and commands[0] == ["docker", "compose", "stop"]

@@ -19,7 +19,7 @@ def shutdown(
     request: Request = ...,
 ) -> dict:
     """仅本机可用：延迟退出当前 PersonaLive 进程（桌面版连同窗口一起退出）。
-    stop_docker=True 时先执行 docker compose down（保留数据卷）再退出。"""
+    stop_docker=True 时先执行 docker compose stop（暂停容器、不删除）再退出。"""
     require_local(request)
 
     def stop() -> None:
@@ -27,7 +27,7 @@ def shutdown(
         if payload.stop_docker:
             try:
                 subprocess.run(
-                    ["docker", "compose", "down"],
+                    ["docker", "compose", "stop"],
                     cwd=Settings.load().project_root,
                     capture_output=True,
                     text=True,
