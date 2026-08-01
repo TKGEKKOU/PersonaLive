@@ -5,6 +5,7 @@ window.PL.modules.settings = { init: initSettings };
 function initSettings() {
   bindSettingsEvents();
   prepareSettingsSections();
+  loadStatus();
   loadSettings();
   loadEmbeddingStatus();
   loadAsrStatus();

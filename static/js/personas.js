@@ -125,10 +125,14 @@ function resetDraft() { clearTimeout(state.poller); state.draft = null; $("batch
 async function loadPersonas(selectId = "") {
   try {
     state.personas = await api(fetch("/api/personas"));
-    fillPersonaSelect($("edit-persona-select"), "请选择");
-    renderPersonaList();
+    const editSelect = $("edit-persona-select");
+    if (editSelect) fillPersonaSelect(editSelect, "请选择");
+    if ($("persona-list")) renderPersonaList();
     if (selectId) await selectPersona(selectId);
-  } catch (reason) { setText("chat-error", reason); }
+  } catch (reason) {
+    const node = $("chat-error");
+    if (node) setText("chat-error", reason);
+  }
 }
 function fillPersonaSelect(select, placeholder) {
   const current = select.value;
@@ -137,7 +141,9 @@ function fillPersonaSelect(select, placeholder) {
   if (state.personas.some((persona) => persona.id === current)) select.value = current;
 }
 function renderPersonaList() {
-  $("persona-list").replaceChildren();
+  const list = $("persona-list");
+  if (!list) return;
+  list.replaceChildren();
   for (const persona of state.personas) {
     const button = document.createElement("button"); button.type = "button"; button.className = "persona-item";
     button.classList.toggle("is-active", state.activePersona?.id === persona.id); button.textContent = persona.name;

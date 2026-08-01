@@ -84,7 +84,8 @@ async function loadStatus() {
   } catch {
     renderServiceStatus("mysql", "MySQL", "unavailable");
     renderServiceStatus("milvus", "Milvus", "unavailable");
-    setText("system-status-detail", "无法获取详细状态，请稍后重试。");
+    const detail = $("system-status-detail");
+    if (detail) detail.textContent = "无法获取详细状态，请稍后重试。";
   }
 }
 function refreshSystemStatus() {
