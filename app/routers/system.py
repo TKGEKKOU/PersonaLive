@@ -24,6 +24,11 @@ def shutdown(
 
     def stop() -> None:
         time.sleep(0.5)
+        callback = getattr(request.app.state, "shutdown_callback", None)
+        if callback is not None:
+            # 桌面模式：停服务（可选暂停 Docker），窗口回到启动页，不退出进程
+            callback(stop_docker=payload.stop_docker)
+            return
         if payload.stop_docker:
             try:
                 subprocess.run(

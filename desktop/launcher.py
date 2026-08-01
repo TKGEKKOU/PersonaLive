@@ -5,6 +5,7 @@ import sys
 
 from app.main import create_app
 from desktop.docker_manager import DesktopStartupError, DockerManager
+from desktop.launcher_api import LauncherApi
 from desktop.server_manager import ServerManager
 from voice.asr.local_worker import shutdown_asr_workers
 
@@ -25,15 +26,24 @@ def run(project_root: Path | None = None) -> int:
     root = (project_root or default_root).resolve()
     docker = DockerManager(root)
     server = ServerManager(create_app)
+    api = LauncherApi(root, docker, server)
     try:
-        if not server.is_running():
-            ensure_local_env(root)
-            docker.ensure_ready()
-            docker.compose_up()
-        server.start()
+        ensure_local_env(root)
         import webview
 
-        window = webview.create_window("PersonaLive", f"{server.url}/static/index.html", width=1280, height=820, min_size=(960, 640))
+        if server.is_running():
+            initial_url = f"{server.url}/static/index.html"
+        else:
+            initial_url = api.onboarding_url()
+        window = webview.create_window(
+            "PersonaLive",
+            initial_url,
+            width=1280,
+            height=820,
+            min_size=(960, 640),
+            js_api=api,
+        )
+        api.bind_window(window)
         window.events.closed += lambda: (server.stop(), shutdown_asr_workers())
         webview.start(gui="edgechromium", debug=False, private_mode=False)
         return 0

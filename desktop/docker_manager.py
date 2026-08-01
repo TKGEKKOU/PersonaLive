@@ -67,3 +67,14 @@ class DockerManager:
         except subprocess.CalledProcessError as exc:
             detail = (exc.stderr or exc.stdout or "").strip()
             raise DesktopStartupError(f"Docker 服务启动失败：{detail}") from exc
+
+    def compose_stop(self) -> None:
+        """暂停容器（不删除），数据卷保留；下次 compose start/up -d 快速恢复。"""
+        compose = self.project_root / "docker-compose.yml"
+        if not compose.is_file():
+            raise DesktopStartupError("缺少 docker-compose.yml。")
+        try:
+            self._run([self.docker, "compose", "-f", str(compose), "stop"], check=True)
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or exc.stdout or "").strip()
+            raise DesktopStartupError(f"Docker 服务停止失败：{detail}") from exc

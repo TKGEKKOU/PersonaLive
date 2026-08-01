@@ -10,10 +10,19 @@ const MODULES = {
 
 function bindShellEvents() {
   $("sidebar-toggle").addEventListener("click", () => setSidebarPinned(!document.body.classList.contains("sidebar-pinned")));
+  $("open-guide")?.addEventListener("click", openGuide);
   $("shutdown-project")?.addEventListener("click", requestProjectShutdown);
   $("settings-confirm-cancel").addEventListener("click", () => $("settings-confirm-dialog").close());
   $("settings-confirm-submit").addEventListener("click", confirmSettingsAction);
   document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
+}
+
+function openGuide() {
+  if (window.pywebview?.api?.show_launcher) {
+    window.pywebview.api.show_launcher();
+  } else {
+    window.location.href = "/static/onboarding.html";
+  }
 }
 
 function requestProjectShutdown() {

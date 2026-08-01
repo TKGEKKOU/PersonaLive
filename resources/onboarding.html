@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PersonaLive 启动</title>
+  <style>
+    :root { --bg: #f5f6f8; --card: #fff; --line: #dfe3e8; --ink: #1f2328; --muted: #6b7280; --primary: #1f6feb; --success: #137333; --warn: #b06000; --danger: #d1242f; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Microsoft YaHei", "Segoe UI", sans-serif; }
+    .shell { max-width: 760px; margin: 0 auto; padding: 48px 24px 64px; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand .logo { width: 44px; height: 44px; border-radius: 10px; background: var(--primary); color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 18px; }
+    h1 { margin: 0; font-size: 24px; }
+    .subtitle { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+    .status-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 28px 0 20px; }
+    .status-card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+    .status-card b { display: block; font-size: 13px; margin-bottom: 6px; }
+    .status-card span { font-size: 12px; color: var(--muted); }
+    .status-card .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #c3c8ce; margin-right: 6px; vertical-align: 1px; }
+    .status-card.ok .dot { background: var(--success); }
+    .status-card.fail .dot { background: var(--danger); }
+    .actions { display: flex; gap: 12px; margin: 8px 0 20px; }
+    button { font: inherit; border-radius: 8px; padding: 11px 20px; cursor: pointer; }
+    .primary { background: var(--primary); color: #fff; border: 1px solid var(--primary); }
+    .primary:disabled { opacity: .55; cursor: default; }
+    .ghost { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+    .hint { color: var(--muted); font-size: 12px; margin: 0 0 28px; }
+    details { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+    summary { cursor: pointer; font-weight: 700; font-size: 14px; }
+    .guide ol { margin: 12px 0 0; padding-left: 20px; font-size: 13px; line-height: 1.9; color: #374151; }
+    .guide code { background: #eef1f4; border-radius: 4px; padding: 1px 6px; font-size: 12px; }
+    .footer { margin-top: 28px; color: var(--muted); font-size: 12px; text-align: center; }
+    .error { color: var(--danger); font-size: 13px; margin: 0 0 12px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="brand"><div class="logo">PL</div><div><h1>PersonaLive</h1><p class="subtitle">本地角色化 RAG 语音助手 · 桌面版</p></div></div>
+
+    <div class="status-grid">
+      <div class="status-card" id="docker-card"><b><span class="dot"></span>Docker 引擎</b><span id="docker-text">检测中…</span></div>
+      <div class="status-card" id="service-card"><b><span class="dot"></span>项目服务</b><span id="service-text">未启动</span></div>
+    </div>
+
+    <p class="error" id="start-error"></p>
+
+    <div class="actions">
+      <button class="primary" id="start-btn" type="button">启动系统</button>
+      <button class="ghost" id="skip-btn" type="button">跳过，直接启动</button>
+    </div>
+    <p class="hint">首次启动需要准备 Docker（MySQL/Milvus），点击后自动拉起并进入主界面。</p>
+
+    <details class="guide" open>
+      <summary>启动后怎么做（简版手册）</summary>
+      <ol>
+        <li><b>设置页</b>：配置 LLM API Key（必填）、Embedding、联网搜索、本地语音 ASR/TTS（可选）。</li>
+        <li><b>资料页</b>：创建角色，上传资料并生成入库，之后角色就有专属知识。</li>
+        <li><b>对话页</b>：选择角色开始聊天，可发语音消息。</li>
+        <li><b>接入页</b>：可选配置 QQ（OneBot 11 / NapCat）。</li>
+        <li><b>结束项目</b>：侧边栏左下角按钮，可只停服务或同时暂停 Docker 容器。</li>
+      </ol>
+    </details>
+
+    <div class="footer" id="footer-info"></div>
+  </div>
+
+  <script>
+    "use strict";
+    const $ = (id) => document.getElementById(id);
+
+    function renderStatus(status) {
+      const dockerCard = $("docker-card");
+      dockerCard.classList.toggle("ok", status.docker_ready);
+      dockerCard.classList.toggle("fail", !status.docker_ready);
+      $("docker-text").textContent = status.docker_ready ? "已就绪" : "未检测到（需安装/启动 Docker）";
+
+      const serviceCard = $("service-card");
+      serviceCard.classList.toggle("ok", status.service_running);
+      $("service-text").textContent = status.service_running ? `运行中（端口 ${status.port}）` : "未启动";
+      if (status.service_running) {
+        $("start-btn").textContent = "进入系统";
+        $("skip-btn").classList.add("is-hidden");
+      }
+      $("footer-info").textContent = `服务地址 http://127.0.0.1:${status.port} · 页面 /static/index.html`;
+    }
+
+    async function start() {
+      $("start-btn").disabled = true;
+      $("skip-btn").disabled = true;
+      $("start-error").textContent = "";
+      try {
+        const result = await window.pywebview.api.start();
+        if (result && result.ok) window.pywebview.api.show_main();
+        else $("start-error").textContent = (result && result.error) || "启动失败";
+      } catch (reason) {
+        $("start-error").textContent = String(reason);
+      } finally {
+        $("start-btn").disabled = false;
+        $("skip-btn").disabled = false;
+      }
+    }
+
+    $("start-btn").addEventListener("click", start);
+    $("skip-btn").addEventListener("click", start);
+
+    window.pywebview.api.status().then(renderStatus).catch(() => {
+      $("docker-text").textContent = "无法连接桌面端";
+    });
+  </script>
+</body>
+</html>

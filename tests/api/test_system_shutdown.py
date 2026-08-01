@@ -43,3 +43,25 @@ def test_shutdown_with_stop_docker_runs_compose_down(client, monkeypatch):
     response = client.post("/api/system/shutdown", json={"stop_docker": True})
     assert response.status_code == 200
     assert commands and commands[0] == ["docker", "compose", "stop"]
+
+
+def test_shutdown_in_desktop_mode_calls_callback_without_exit(client, monkeypatch):
+    from app.routers import system as system_router
+
+    calls = []
+    client.app.state.shutdown_callback = lambda stop_docker=False: calls.append(stop_docker)
+
+    class FakeThread:
+        def __init__(self, target, daemon=False, name=""):
+            self.target = target
+
+        def start(self):
+            self.target()
+
+    monkeypatch.setattr(system_router.threading, "Thread", FakeThread)
+    monkeypatch.setattr(system_router.os, "_exit", lambda code: calls.append(("exit", code)))
+
+    response = client.post("/api/system/shutdown", json={"stop_docker": True})
+    assert response.status_code == 200
+    assert calls == [True]
+    del client.app.state.shutdown_callback
