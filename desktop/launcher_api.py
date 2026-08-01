@@ -1,3 +1,5 @@
+import threading
+import time
 from pathlib import Path
 
 from desktop.docker_manager import DockerManager
@@ -58,7 +60,21 @@ class LauncherApi:
 
     def request_exit_confirm(self) -> None:
         if self._window is not None:
-            self._window.evaluate_js("window.showExitConfirm && window.showExitConfirm()")
+            try:
+                self._window.evaluate_js("window.showExitConfirm && window.showExitConfirm()")
+            except Exception:
+                pass
+
+    def on_closing(self) -> bool:
+        """pywebview closing 回调：阻止直接关闭，改由确认框决定。"""
+        if self._exiting:
+            return True
+        threading.Thread(target=self._delayed_exit_confirm, daemon=True).start()
+        return False
+
+    def _delayed_exit_confirm(self) -> None:
+        time.sleep(0.1)
+        self.request_exit_confirm()
 
     def do_exit(self) -> None:
         self._exiting = True
@@ -69,6 +85,15 @@ class LauncherApi:
         shutdown_asr_workers()
         if self._window is not None:
             self._window.destroy()
+
+    def get_exit_policy(self) -> dict:
+        try:
+            from extensions.storage import read_json
+
+            values = read_json(self.project_root / "data" / "docker_settings.json")
+            return {"on_exit": values.get("on_exit", "keep")}
+        except Exception:
+            return {"on_exit": "keep"}
 
     def _apply_exit_policy(self) -> None:
         policy = "keep"

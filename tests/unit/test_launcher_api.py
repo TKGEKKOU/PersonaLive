@@ -89,3 +89,10 @@ def test_do_exit_remove_policy_runs_down(tmp_path: Path):
     api._window = type("W", (), {"destroy": lambda self: None})()
     api.do_exit()
     assert docker.actions == ["down"]
+
+
+def test_on_closing_blocks_until_exit_confirmed(tmp_path: Path):
+    api = LauncherApi(tmp_path, FakeDocker(True), FakeServer(True))
+    assert api.on_closing() is False
+    api._exiting = True
+    assert api.on_closing() is True

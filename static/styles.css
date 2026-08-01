@@ -458,3 +458,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--primary); box-sh
 .plugin-config .settings-grid { margin-top: 8px; }
 .status-pill-ok { background: #e6f4ea; color: #137333; }
 .status-pill-warn { background: #fef7e0; color: #b06000; }
+.exit-confirm-detail { color: var(--muted); font-size: 13px; line-height: 1.7; }
+.exit-confirm-detail ul { margin: 6px 0 10px; padding-left: 18px; }
+.exit-confirm-detail p { margin: 4px 0; }
+.exit-policy-hint { margin: 4px 0 0; font-size: 12px; }

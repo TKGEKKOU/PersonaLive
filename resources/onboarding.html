@@ -35,6 +35,8 @@
     dialog.exit-confirm { border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; max-width: 380px; }
     dialog.exit-confirm h2 { margin: 0 0 8px; font-size: 16px; }
     dialog.exit-confirm p { margin: 0 0 16px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+    dialog.exit-confirm ul { margin: 0 0 12px; padding-left: 18px; color: var(--muted); font-size: 13px; line-height: 1.8; }
+    dialog.exit-confirm .exit-policy-hint { margin: 0 0 16px; font-size: 12px; }
     dialog.exit-confirm .exit-actions { display: flex; justify-content: flex-end; gap: 10px; }
   </style>
 </head>
@@ -70,7 +72,14 @@
     <dialog id="exit-confirm-dialog" class="exit-confirm">
       <form method="dialog">
         <h2>退出 PersonaLive？</h2>
-        <p>将停止项目服务；Docker 容器按设置页【退出时】的策略处理。</p>
+        <p>确认后将依次：</p>
+        <ul>
+          <li>停止 FastAPI 服务</li>
+          <li>停止 ASR / Embedding 后台进程</li>
+          <li>关闭窗口并退出程序</li>
+        </ul>
+        <p>Docker 容器按【退出时】策略处理：<b id="exit-policy-label">保持运行</b></p>
+        <p class="exit-policy-hint" id="exit-policy-hint">容器继续运行，下次启动最快。</p>
         <div class="exit-actions">
           <button type="button" id="exit-cancel">取消</button>
           <button type="button" id="exit-confirm">确认退出</button>
@@ -83,7 +92,24 @@
     "use strict";
     const $ = (id) => document.getElementById(id);
 
+    const EXIT_POLICY_NAMES = { keep: "保持运行", pause: "暂停", remove: "删除" };
+    const EXIT_POLICY_HINTS = {
+      keep: "容器继续运行，下次启动最快。",
+      pause: "容器停止但保留，下次启动自动恢复。",
+      remove: "移除容器，数据卷保留，下次启动需重建。",
+    };
+
+    function renderExitPolicy(policy) {
+      const label = document.getElementById("exit-policy-label");
+      const hint = document.getElementById("exit-policy-hint");
+      if (label) label.textContent = EXIT_POLICY_NAMES[policy] || "保持运行";
+      if (hint) hint.textContent = EXIT_POLICY_HINTS[policy] || EXIT_POLICY_HINTS.keep;
+    }
+
     window.showExitConfirm = function showExitConfirm() {
+      if (window.pywebview?.api?.get_exit_policy) {
+        window.pywebview.api.get_exit_policy().then((settings) => renderExitPolicy(settings.on_exit)).catch(() => {});
+      }
       document.getElementById("exit-confirm-dialog").showModal();
     };
     document.getElementById("exit-cancel").addEventListener("click", () => document.getElementById("exit-confirm-dialog").close());
