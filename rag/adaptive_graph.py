@@ -25,6 +25,23 @@ from rag.web_search import web_search_documents
 settings = Settings.load()
 
 
+# ===== RAG 主流程（Adaptive / Corrective RAG）=====
+#
+#   route_query ─► retrieve ─► batch_grade_documents ─► generate ─► quality_gate ─► 结束
+#                     │              │                    ▲              │
+#                     ▼              ▼                    │              ▼
+#              （无候选）      （无相关片段）         correction_feedback   regenerate /
+#              rewrite_query ─►             │              ▲        retrieve_again /
+#                                           └──────────────┘        web_search / no_answer
+#
+# 设计要点：
+# 1. 证据先"批量化评分"再生成：一次 LLM 调用对全部候选片段打标（相关/不相关 +
+#    confidence），避免逐片段调用放大成本，同时滤掉仅有词面重合的干扰片段。
+# 2. 生成结果统一过"质量门"：只有 grounded（事实接地点）与 useful（解决问题）
+#    同时为真才放行；confidence 达到阈值时跳过 LLM 门检，直接按高置信通过。
+# 3. 纠错回路有硬边界：rewrite_count / generation_retry_count / web 兜底都受
+#    配置限制，模型无法制造无限循环；最终兜底是保守的 no_answer。
+# 4. trace 只记录可公开的摘要（节点名、片段数、置信度、是否有答案），不落 prompt。
 class AdaptiveRagState(TypedDict, total=False):
     """图节点共享状态；计数器限制循环，trace 仅记录可公开的运行摘要。"""
 
@@ -110,6 +127,8 @@ def capability_node(state: AdaptiveRagState) -> AdaptiveRagState:
     return _complete(state, "capability", answer=answer, useful=True)
 
 
+# 检索节点：以 query（可能是改写后的）发起 Dense+BM25 RRF 混合检索，k=4。
+# 作用域过滤在 Milvus 服务端下推（见 rag/retriever.py），先过滤再排序。
 def retrieve_node(state: AdaptiveRagState) -> AdaptiveRagState:
     query = state.get("query") or state["question"]
     documents = build_retriever(state["context"], k=4).invoke(query)
@@ -124,6 +143,9 @@ def retrieve_node(state: AdaptiveRagState) -> AdaptiveRagState:
     )
 
 
+# 批量证据评分：对全部候选片段一次打分（相关/不相关 + 整体置信度），
+# 只保留 relevant_ids 指向的片段；confidence 低于阈值时置 needs_quality_check，
+# 让质量门在生成后做 LLM 级校验（高置信则跳过，省一次 LLM 调用）。
 def batch_grade_documents_node(state: AdaptiveRagState) -> AdaptiveRagState:
     documents = state.get("documents", [])
     score = grade_retrieved_documents(state["question"], documents)
@@ -138,6 +160,9 @@ def batch_grade_documents_node(state: AdaptiveRagState) -> AdaptiveRagState:
     )
 
 
+# 候选为空时的退避顺序（固定）：
+#   有效片段 → generate；否则改写重试（受限）→ 联网兜底（受限）→ 保守拒答。
+# 先改写而不是直接联网，优先利用本地知识库。
 def decide_after_batch_grade(
     state: dict,
     max_rewrite_count: int | None = None,
@@ -155,6 +180,8 @@ def decide_after_batch_grade(
     return "no_answer"
 
 
+# 查询改写：把口语化问题改写成更适合向量/关键词检索的短查询；
+# 每次改写都清空旧证据，避免脏证据参与下一轮评分。次数受 max_rewrite_count 限制。
 def rewrite_query_node(state: AdaptiveRagState) -> AdaptiveRagState:
     rewritten = rewrite_query(state.get("query") or state["question"])
     return _complete(
@@ -168,6 +195,8 @@ def rewrite_query_node(state: AdaptiveRagState) -> AdaptiveRagState:
     )
 
 
+# 联网兜底：仅在 allow_web_fallback 且本轮尚未用过时触发（见 decide_* 路由），
+# 结果同样要过批量评分与质量门，不因其来源是网络而降低校验标准。
 def web_search_node(state: AdaptiveRagState) -> AdaptiveRagState:
     documents = web_search_documents(
         state.get("query") or state["question"],
@@ -188,6 +217,8 @@ def decide_after_web_search(state: dict) -> str:
     return "generate" if state.get("documents") else "no_answer"
 
 
+# 生成节点：结合证据与上一轮质量门的纠错反馈生成答案；
+# 只接收可操作的 missing_points / unsupported_claims，不携带隐藏推理。
 def generate_node(state: AdaptiveRagState) -> AdaptiveRagState:
     answer = generate_answer(
         state["question"],
@@ -205,6 +236,9 @@ def decide_after_generation(state: dict) -> str:
     return "quality_gate"
 
 
+# 质量门：高置信度（≥ confidence_threshold）且有证据时直接放行（省 LLM 调用）；
+# 否则调用 LLM 检查 grounded/useful，并让模型给出 correction_action，
+# 该动作仍受外层计数器与 web 开关约束（见 decide_quality）。
 def quality_gate_node(state: AdaptiveRagState) -> AdaptiveRagState:
     documents = state.get("documents", [])
     answer = (state.get("answer") or "").strip()
@@ -234,6 +268,9 @@ def quality_gate_node(state: AdaptiveRagState) -> AdaptiveRagState:
     )
 
 
+# 纠错路由：grounded 与 useful 同时为真才结束；否则按 correction_action
+# 决定走 web_search / rewrite_query / prepare_correction（重生成）/ no_answer，
+# 每一路都有次数上限，杜绝无限循环。
 def decide_quality(
     state: dict,
     max_generation_retry: int | None = None,
@@ -259,6 +296,8 @@ def decide_quality(
     return "no_answer"
 
 
+# 纠错反馈：把上一轮答案与"缺失点/无证据结论"汇总成下一轮生成的校正输入，
+# 只传递可操作信息，避免模型依据自己的旧草稿自证。
 def prepare_correction_node(state: AdaptiveRagState) -> AdaptiveRagState:
     # 只把可操作的缺失点和无证据结论反馈给下一轮生成，不传递隐藏推理。
     missing = "；".join(state.get("missing_points", [])) or "无"

@@ -1,0 +1,3 @@
+{"question": "角色的核心设定是什么？", "expected_chunk_ids": [], "reference_answer": null}
+{"question": "如何上传知识资料？", "expected_chunk_ids": [], "reference_answer": null}
+{"question": "本地的语音识别模型需要多少显存？", "expected_chunk_ids": [], "reference_answer": "请把 expected_chunk_ids 换成真实 Milvus chunk_id 后重跑"}

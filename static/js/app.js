@@ -13,13 +13,23 @@ function bindShellEvents() {
   $("settings-confirm-cancel").addEventListener("click", () => $("settings-confirm-dialog").close());
   $("settings-confirm-submit").addEventListener("click", confirmSettingsAction);
   $("exit-confirm-cancel").addEventListener("click", () => $("exit-confirm-dialog").close());
-  $("exit-confirm-submit").addEventListener("click", () => {
+  $("exit-confirm-submit").addEventListener("click", async () => {
     const btn = $("exit-confirm-submit");
     btn.classList.add("is-loading");
     btn.disabled = true;
     const label = $("exit-confirm-label");
     if (label) label.textContent = "正在退出…";
-    if (window.pywebview?.api?.do_exit) window.pywebview.api.do_exit();
+    const selected = document.querySelector('input[name="exit-policy"]:checked')?.value || "pause";
+    if (window.pywebview?.api?.do_exit) {
+      try {
+        await fetch("/api/system/docker-settings", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ on_exit: selected }),
+        });
+      } catch (e) {}
+      window.pywebview.api.do_exit();
+    }
   });
   document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
 }

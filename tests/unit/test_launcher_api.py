@@ -1,4 +1,5 @@
 from pathlib import Path
+import time
 
 from desktop.launcher_api import LauncherApi
 
@@ -64,8 +65,17 @@ def test_status_reports_components(tmp_path: Path):
 def test_start_boots_server_and_registers_shutdown_callback(tmp_path: Path):
     server = FakeServer(False)
     api = LauncherApi(tmp_path, FakeDocker(True), server)
+    api._wait_port = lambda port, timeout=120: True  # fake ports as ready
+    api._wait_http = lambda timeout=15: True  # fake service health as ready
     result = api.start()
     assert result["ok"] is True
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline and not api.progress()["done"]:
+        time.sleep(0.02)
+    progress = api.progress()
+    assert progress["done"] is True
+    assert progress["ok"] is True
+    assert all(step["state"] == "ok" for step in progress["steps"])
     assert server.started is True
     assert callable(server.app.state.shutdown_callback)
 

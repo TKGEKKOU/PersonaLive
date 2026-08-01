@@ -63,7 +63,7 @@ class DockerManager:
         if not compose.is_file():
             raise DesktopStartupError("缺少 docker-compose.yml。")
         try:
-            self._run([self.docker, "compose", "-f", str(compose), "up", "-d", "--wait"], check=True)
+            self._run([self.docker, "compose", "-f", str(compose), "up", "-d"], check=True)
         except subprocess.CalledProcessError as exc:
             detail = (exc.stderr or exc.stdout or "").strip()
             raise DesktopStartupError(f"Docker 服务启动失败：{detail}") from exc

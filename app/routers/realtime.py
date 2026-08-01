@@ -40,11 +40,11 @@ def chunk_text(text: str, max_chars: int = 80) -> list[str]:
 
 
 def voice_limited_answer(answer: str, persona_profile: dict) -> str:
-    """Keep TTS-enabled replies short enough that speech can catch up with text."""
+    """Keep TTS input bounded (display is not truncated); chunked synthesis plays it sentence by sentence."""
     tts = persona_profile.get("tts") or {}
     if not tts.get("enabled"):
         return answer
-    limit = 50
+    limit = 300
     if len(answer) <= limit:
         return answer
     shortened = answer[:limit]

@@ -23,6 +23,9 @@ def _invoke_text(prompt: ChatPromptTemplate, values: dict) -> str:
     return chain.invoke(values)
 
 
+# 批量证据评分（默认路径）：一次 LLM 调用同时评估所有候选片段。
+# 相比逐片段调用，显著降低 token 与延迟；单片段截断 4000 字符防止上下文膨胀。
+# 输出 JSON：relevant_ids（直接支持答案的片段下标）+ confidence（0~1）。
 def grade_retrieved_documents(question: str, documents: list) -> BatchDocumentScore:
     """一次调用筛选候选片段并评估证据置信度。"""
 
@@ -51,6 +54,10 @@ def grade_retrieved_documents(question: str, documents: list) -> BatchDocumentSc
     return parse_batch_document_score(raw_score, len(documents))
 
 
+# 回答质量门：检查 grounded（回答是否完全由资料支持）与 useful（是否真正
+# 解决问题），并让模型给出 correction_action（regenerate / retrieve_again /
+# web_search / no_answer）。该动作只作为建议，是否执行由外层计数器决定
+# （见 adaptive_graph.decide_quality），防止模型自导自演无限循环。
 def grade_answer_quality(question: str, documents_text: str, answer: str) -> AnswerQualityScore:
     """检查事实接地、问题覆盖和下一步纠错动作。"""
 

@@ -16,7 +16,7 @@ def test_compose_up_uses_project_compose_file(tmp_path):
     manager = DockerManager(tmp_path, runner=runner, docker_executable="docker")
     manager.compose_up()
 
-    assert calls[-1] == ["docker", "compose", "-f", str(tmp_path / "docker-compose.yml"), "up", "-d", "--wait"]
+    assert calls[-1] == ["docker", "compose", "-f", str(tmp_path / "docker-compose.yml"), "up", "-d"]
 
 
 def test_missing_docker_cli_has_actionable_error(tmp_path):

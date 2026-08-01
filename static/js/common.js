@@ -4,20 +4,11 @@ window.PL = window.PL || { modules: {} };
 window.showExitConfirm = function showExitConfirm() {
   const dialog = $("exit-confirm-dialog");
   if (!dialog) return;
-  const policyNames = { keep: "保持运行", pause: "暂停", remove: "删除" };
-  const policyHints = {
-    keep: "容器继续运行，下次启动最快。",
-    pause: "容器停止但保留，下次启动自动恢复。",
-    remove: "移除容器，数据卷保留，下次启动需重建。",
-  };
   fetch("/api/system/docker-settings")
     .then((response) => response.json())
     .then((settings) => {
-      const name = policyNames[settings.on_exit] || "保持运行";
-      const label = $("exit-policy-label");
-      if (label) label.textContent = name;
-      const hint = $("exit-policy-hint");
-      if (hint) hint.textContent = policyHints[settings.on_exit] || policyHints.keep;
+      const radio = document.querySelector(`input[name="exit-policy"][value="${settings.on_exit}"]`);
+      if (radio) radio.checked = true;
     })
     .catch(() => {});
   dialog.showModal();

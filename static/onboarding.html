@@ -5,33 +5,30 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PersonaLive · 使用指南</title>
   <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/js/theme.js"></script>
   <style>
-    body { background: #0b0e11; }
-    .guide-page { width: min(980px, calc(100% - 48px)); margin: 0 auto; padding: 42px 0 56px; }
-    .guide-hero { padding: 26px 0 22px; border-bottom: 1px solid var(--line); }
-    .guide-hero .kicker { color: var(--primary-dark); font-size: 10px; font-weight: 700; letter-spacing: .28em; }
-    .guide-hero h1 { margin: 12px 0 0; font-size: clamp(30px, 5vw, 48px); font-weight: 800; letter-spacing: .05em; }
-    .guide-hero h1 em { font-style: normal; margin-left: 12px; color: var(--muted); font-size: 14px; font-weight: 550; letter-spacing: .22em; vertical-align: 24%; }
-    .guide-hero p { margin: 12px 0 0; color: var(--muted); font-size: 12px; line-height: 1.8; }
-    .guide-section { margin-top: 26px; }
-    .guide-section > h2 { margin: 0 0 12px; color: var(--primary-dark); font-size: 12px; font-weight: 700; letter-spacing: .2em; }
-    .guide-section > h2::before { content: "// "; color: var(--subtle); }
+    body { background: var(--bg); color: var(--ink); }
+    .guide-page { width: min(880px, calc(100% - 48px)); margin: 0 auto; padding: 44px 0 60px; }
+    .guide-hero { padding: 30px 0 24px; border-bottom: 1px solid var(--line); }
+    .guide-hero h1 { margin: 0; font-size: 30px; font-weight: 750; letter-spacing: .02em; }
+    .guide-hero p { margin: 12px 0 0; color: var(--muted); font-size: 14px; line-height: 1.8; }
+    .guide-section { margin-top: 28px; }
+    .guide-section > h2 { margin: 0 0 12px; color: var(--ink-soft); font-size: 15px; font-weight: 700; }
     .guide-block { border: 1px solid var(--line); background: var(--surface); }
-    .guide-block summary { min-height: 46px; padding: 0 16px; list-style: none; display: flex; align-items: center; gap: 10px; color: var(--ink); font-size: 13px; font-weight: 650; cursor: pointer; }
+    .guide-block summary { min-height: 48px; padding: 0 16px; list-style: none; display: flex; align-items: center; gap: 10px; color: var(--ink); font-size: 14px; font-weight: 650; cursor: pointer; }
     .guide-block summary::-webkit-details-marker { display: none; }
     .guide-block summary::after { content: "+"; margin-left: auto; color: var(--muted); }
     .guide-block[open] summary::after { content: "−"; }
-    .guide-block .guide-body { padding: 4px 18px 16px; color: var(--muted); font-size: 12px; line-height: 1.8; }
-    .guide-block code { padding: 1px 6px; border: 1px solid var(--line); border-radius: 2px; background: var(--surface-strong); color: var(--ink-soft); }
-    .guide-status { margin: 14px 0 0; display: flex; flex-wrap: wrap; gap: 8px; }
+    .guide-block .guide-body { padding: 4px 18px 18px; color: var(--muted); font-size: 13px; line-height: 1.8; }
+    .guide-block code { padding: 1px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface-strong); color: var(--ink-soft); }
+    .guide-status { margin: 16px 0 0; display: flex; flex-wrap: wrap; gap: 8px; }
     .status-pill { border-radius: 999px; }
   </style>
 </head>
 <body>
   <main class="guide-page">
     <header class="guide-hero">
-      <p class="kicker">QUICK GUIDE // 使用指南</p>
-      <h1>PERSONALIVE<em>本地启动</em></h1>
+      <h1>使用指南</h1>
       <p>这是一个只读指南页。桌面版启动页负责环境检查与一键启动；浏览器里请按下方命令手动启动。</p>
       <div class="guide-status" id="guide-status"><span class="status-pill">服务状态检测中…</span></div>
     </header>

@@ -80,7 +80,7 @@ def test_persona_chat_prompt_limits_ordinary_reply_length():
 def test_rag_generation_prompt_limits_answer_length():
     from rag.generate import PROMPT
 
-    assert "80" in PROMPT.template
+    assert "300" in PROMPT.template
 
 
 def test_web_worker_prompt_requires_structured_evidence_handoff():

@@ -5,6 +5,14 @@ from ingestion.milvus_store import MilvusRagStore
 from settings import Settings
 
 
+"""文档入库流程（Markdown 知识 → Milvus 分块向量）。
+
+流程：解析 Markdown → 按 chunk_size/chunk_overlap 分块 → 计算 source_hash
+去重 → 变更时先删除旧文档再写入新块 → flush 保证立即可见。
+
+幂等：同一文档内容（source_hash）已存在时直接跳过；内容变化时整体替换，
+避免残留旧分块造成检索脏数据。
+"""
 def ingest_markdown_file(
     path: Path,
     scope: DocumentScope,

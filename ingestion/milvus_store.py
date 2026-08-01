@@ -41,6 +41,22 @@ def knowledge_space_filter(scope: KnowledgeSpaceScope) -> str:
     )
 
 
+"""Milvus 存储层：集合结构、写入、删除与连接。
+
+集合设计（见 create_collection）：
+- text：VARCHAR + jieba 中文分词（cnalphanumonly 过滤），作为 BM25 稀疏向量
+  的输入字段；BM25 由 Milvus 内置函数（FunctionType.BM25）在写入时自动生成。
+- dense：FLOAT_VECTOR，HNSW 索引（IP 内积），负责语义检索。
+- sparse：SPARSE_FLOAT_VECTOR，SPARSE_INVERTED_INDEX（DAAT_MAXSCORE），
+  负责关键词精确匹配；两路在检索时由 RRF 融合（见 rag/retriever.py）。
+- 标量字段：source/filename/title/section 等用于展示与引用；
+  workspace_id / knowledge_space_id / document_id / source_hash 用于
+  强制数据隔离、增量去重与按文档删除。
+- category == "content" 区分知识正文与其他元数据行，检索过滤表达式会强制带上。
+
+一致性：写入后显式 flush（add_documents），保证随后的检索立即可见；
+检索连接按配置缓存复用（rag/retriever.py 的 _cached_store），避免热路径重复建连。
+"""
 class MilvusRagStore:
     """Milvus adapter retaining dense, BM25 sparse, and RRF retrieval support."""
 
@@ -156,6 +172,9 @@ class MilvusRagStore:
             index_params=index_params,
         )
 
+    # 构建 langchain_milvus 包装对象。连接本身懒建立，但对象初始化含一次
+    # describe_collection 维度校验；调用方应通过 rag/retriever.py 的缓存
+    # 复用本 store，避免每个查询都重建。
     def connect(self) -> Milvus:
         self.validate_collection_dimensions()
         self.vector_store = Milvus(
@@ -169,6 +188,8 @@ class MilvusRagStore:
         )
         return self.vector_store
 
+    # 写入后立即 flush：BM25 稀疏向量由 Milvus 内置函数异步生成，flush 保证
+    # 索引任务结束后第一次检索能同时看到 dense 与 sparse 两路数据。
     def add_documents(self, documents: Iterable[Document]) -> None:
         if self.vector_store is None:
             self.connect()

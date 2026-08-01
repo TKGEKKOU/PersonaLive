@@ -8,6 +8,13 @@ from rag.contracts import RagEvidenceResult, RagQueryContext
 from rag.service import RagRequest, RagService, create_rag_service
 
 
+"""Agent 侧 RAG 入口。
+
+search_persona_knowledge 是知识 Worker 暴露给 supervisor 的唯一检索工具：
+- 强制走知识链（force_knowledge=True），避免 RAG 内部再把同一问题误分派；
+- 统一经 RagService 选择 adaptive 管线，返回的 RagEvidenceResult 只暴露
+  通过质量门的证据与引用，未通过的草稿不会上抛给上层模型。
+"""
 def run_persona_knowledge_search(
     query: str,
     context: PersonaAgentContext,

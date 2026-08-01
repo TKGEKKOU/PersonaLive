@@ -56,6 +56,9 @@ class RagService:
         return self._runner(request)
 
 
+# 管线工厂：按配置选择 simple（纯检索生成）或 adaptive（纠正式 RAG）。
+# 延迟导入避免 simple 模式下初始化 Adaptive 图及其模型依赖；调用方只需
+# RagService.query(RagRequest)，无需关心内部图实现。
 def create_rag_service(settings: Settings | None = None) -> RagService:
     """在应用启动时选择 Pipeline，调用方无需了解具体图实现。"""
 

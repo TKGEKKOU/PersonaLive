@@ -17,9 +17,9 @@ DOCKER_SETTINGS_PATH = Settings.load().project_root / "data" / "docker_settings.
 
 def _docker_settings() -> dict:
     values = read_json(DOCKER_SETTINGS_PATH)
-    on_exit = values.get("on_exit")
+    on_exit = values.get("on_exit", "pause")
     if on_exit not in {"keep", "pause", "remove"}:
-        on_exit = "keep"
+        on_exit = "pause"
     return {"on_exit": on_exit}
 
 
