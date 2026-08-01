@@ -81,7 +81,11 @@ def summarize_retrieval(cases: list[dict]) -> dict:
         precision.append(precision_at_k(retrieved, expected))
         mrr_values.append(mrr(retrieved, expected))
         hit1.append(hit_at_k(retrieved, expected))
-    latencies = [case["latency_ms"] for case in cases if case.get("latency_ms") is not None]
+    latencies = [
+        case["retrieval_latency_ms"]
+        for case in cases
+        if case.get("retrieval_latency_ms") is not None
+    ]
     return {
         "recall_at_k": average(recall),
         "precision_at_k": average(precision),

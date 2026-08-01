@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -92,13 +93,15 @@ def run_eval(
     conversation_id: str = "eval",
     max_cases: int | None = None,
     run_quality_gate: bool = True,
+    progress: Callable[[int, int], None] | None = None,
 ) -> list[EvalCaseResult]:
-    """对数据集逐条运行检索阶段与完整管线，返回逐条结果。"""
+    """对数据集逐条运行检索阶段与完整管线；progress(done, total) 供前端轮询。"""
 
     service = create_rag_service()
     cases = dataset[:max_cases] if max_cases else dataset
+    total = len(cases)
     results: list[EvalCaseResult] = []
-    for row in cases:
+    for index, row in enumerate(cases, start=1):
         question = row["question"]
         context = _context(persona_id, workspace_id, knowledge_space_ids, conversation_id)
 
@@ -117,14 +120,14 @@ def run_eval(
 
         grounded: bool | None = None
         useful: bool | None = None
-        if run_quality_gate and result.answer:
+        if run_quality_gate and result.answer_draft:
             score = grade_answer_quality(
                 question,
                 "\n\n".join(
                     str(getattr(document, "page_content", ""))[:4000]
                     for document in result.evidence
                 ),
-                result.answer,
+                result.answer_draft,
             )
             grounded, useful = score.grounded, score.useful
 
@@ -135,10 +138,12 @@ def run_eval(
                 retrieved_ids=retrieved_ids,
                 retrieval_latency_ms=retrieval_latency,
                 total_latency_ms=total_latency,
-                answer=result.answer,
+                answer=result.answer_draft,
                 grounded=grounded,
                 useful=useful,
                 trace=list(result.trace),
             )
         )
+        if progress is not None:
+            progress(index, total)
     return results
