@@ -74,7 +74,7 @@ async function api(request) {
   if (!response.ok) throw new Error(typeof data?.detail === "string" ? data.detail : `请求失败 (${response.status})`);
   return data;
 }
-function setText(id, value = "") { $(id).textContent = value?.message || value; }
+function setText(id, value = "") { const node = $(id); if (node) node.textContent = value?.message || value; }
 async function loadStatus() {
   try {
     const status = await api(fetch("/api/status"));

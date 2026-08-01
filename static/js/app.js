@@ -21,7 +21,10 @@ function setSidebarPinned(pinned) {
 }
 
 async function switchView(view) {
-  if (view !== "chat" && (state.audioStarting || state.audioMode !== "idle")) cancelAudioActivity();
+  if (view !== "chat") {
+    if (state.audioStarting || state.audioMode !== "idle") cancelAudioActivity();
+    closeRealtime();
+  }
   const entry = MODULES[view];
   if (!entry) return;
   document.querySelectorAll("[data-view]").forEach((button) => button.classList.toggle("is-active", button.dataset.view === view));

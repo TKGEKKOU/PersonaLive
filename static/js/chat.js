@@ -15,6 +15,10 @@ function initChat() {
   bindChatEvents();
   bindChatGlobalEvents();
   renderPersonaList();
+  if (state.activePersona) {
+    loadConversationMessages();
+    connectRealtime();
+  }
 }
 
 function bindChatEvents() {
@@ -83,6 +87,7 @@ function closeRealtime() {
 function setRealtimeBusy(busy) {
   state.realtimeBusy = busy;
   setText("question-status", busy ? "角色正在生成回复…" : "");
+  if (!$("question-form")) return;
   $("question-form").classList.toggle("is-generating", busy);
   $("cancel-generation").classList.toggle("is-hidden", !busy);
   $("cancel-generation").disabled = !busy;
@@ -103,6 +108,7 @@ function resetChatProcess() {
   $("chat-process-content").replaceChildren();
 }
 function renderChatProcess(result) {
+  if (!$("chat-process-panel")) return;
   const traces = result?.trace || [];
   const toolCalls = result?.tool_calls || [];
   if (!traces.length && !toolCalls.length) return;
@@ -230,6 +236,7 @@ function cancelRealtimeTurn() {
   if (state.realtimeTurnId) sendRealtime({ type: "generation.cancel" });
 }
 function updateComposerControls() {
+  if (!$("question-form")) return;
   const conversationBusy = isConversationBusy();
   const audioActive = state.audioStarting || state.audioMode !== "idle";
   $("question-form").classList.toggle("is-audio-active", audioActive && !state.realtimeBusy);
@@ -517,6 +524,7 @@ async function clearConversation() {
   } catch (reason) { setText("chat-error", reason); }
 }
 function handleAgentResult(result) {
+  if (!$("chat-log")) return;
   state.pendingAction = result.status === "pending_confirmation" ? { action: result.pending_action, specialist: result.specialist } : null;
   renderConfirmation(); $("send-question").disabled = Boolean(state.pendingAction) || !state.activePersona;
   if (result.answer) {
@@ -549,9 +557,21 @@ function playNextVoiceAudio() {
   audio.play().catch(() => { state.voicePlaybackActive = false; playNextVoiceAudio(); });
 }
 async function synthesizeAnswer(text, node, options = {}) {
+  const voice = state.activePersona?.profile?.tts;
+  if (!state.ttsConfigured || !voice?.enabled || !$("assistant-voice-toggle").checked || !text) return;
+  const status = document.createElement("span"); status.className = "voice-bubble-status is-generating"; status.textContent = "正在生成语音…"; node.append(status);
+  try {
+    const message = await api(fetch(`/api/tts/personas/${state.activePersona.id}/conversations/${state.conversationId}/synthesize`, { method: "POST", headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" }, body: JSON.stringify({ text }) }));
+    status.textContent = "语音已生成"; status.classList.remove("is-generating");
+    const audio = document.createElement("audio"); audio.controls = false; audio.preload = "metadata"; audio.src = message.audio_url; audio.className = "voice-audio-source"; appendVoiceControl(node, audio);
+    if (voice.auto_play !== false) options.queued ? enqueueVoiceAudio(audio) : audio.play().catch(() => {});
+  } catch (reason) { status.textContent = "语音生成失败"; status.classList.remove("is-generating"); setText("chat-error", `文字回复正常，语音生成失败：${reason.message || reason}`); }
+}
 function appendResultDetails(node, result) { if (result.evidence?.length) node.append(details("引用", result.evidence)); }
 function renderConfirmation() {
-  $("confirmation-panel").classList.toggle("is-hidden", !state.pendingAction); if (!state.pendingAction) return;
+  const panel = $("confirmation-panel");
+  if (!panel) return;
+  panel.classList.toggle("is-hidden", !state.pendingAction); if (!state.pendingAction) return;
   const action = state.pendingAction.action || {}; $("confirmation-title").textContent = action.title || "确认操作"; $("confirmation-detail").textContent = `${action.target || "当前角色"} · ${JSON.stringify(action.arguments || {})}`;
 }
 async function resumeAgent(approved) {
