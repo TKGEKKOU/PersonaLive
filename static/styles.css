@@ -437,3 +437,18 @@ input:focus, textarea:focus, select:focus { border-color: var(--primary); box-sh
 @media (max-width: 720px) {
   .system-status-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* 接入页与插件页 */
+.integrations-panel .settings-grid { max-width: 720px; }
+.plugin-list { display: grid; gap: 12px; }
+.plugin-card { border: 1px solid #bfc6cc; border-radius: 10px; padding: 14px 16px; background: #fff; }
+.plugin-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.plugin-card-head > div { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.plugin-card-head strong { font-size: 15px; }
+.plugin-card-head span { color: #6b7280; font-size: 12px; }
+.plugin-description { margin: 8px 0 0; color: #374151; font-size: 13px; }
+.plugin-config { margin-top: 10px; }
+.plugin-config summary { cursor: pointer; font-size: 13px; color: #1f6feb; }
+.plugin-config .settings-grid { margin-top: 8px; }
+.status-pill-ok { background: #e6f4ea; color: #137333; }
+.status-pill-warn { background: #fef7e0; color: #b06000; }

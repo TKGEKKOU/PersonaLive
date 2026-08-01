@@ -1,0 +1,17 @@
+<section id="integrations-view" class="view">
+  <div class="panel integrations-panel">
+    <div class="panel-heading"><div><h2>QQ 接入</h2><p class="panel-subtitle">通过 OneBot 11 正向 WebSocket 连接 NapCat 等转发端，在 QQ 中与角色对话。</p></div><span id="integration-status-pill" class="status-pill">未启用</span></div>
+    <form id="onebot-form" class="settings-form">
+      <div class="settings-grid settings-grid-form">
+        <label class="toggle-field settings-feature-toggle"><input id="onebot-enabled" type="checkbox"><span>启用 QQ 接入</span></label>
+        <label class="field base-url-field"><span>连接地址（NapCat 填这个）</span><input id="onebot-ws-path" readonly></label>
+        <label class="field key-field"><span>Access Token（可选）</span><span class="secret-input"><input id="onebot-access-token" type="password" autocomplete="off" placeholder="留空则不鉴权"><span class="secret-actions"><button id="toggle-onebot-token" type="button" title="显示或隐藏" aria-label="显示或隐藏"><i data-lucide="eye"></i></button></span></span></label>
+        <label class="field provider-field"><span>群聊触发</span><select id="onebot-group-trigger"><option value="at">@机器人</option><option value="prefix">关键词前缀</option></select></label>
+        <label id="onebot-prefix-field" class="field is-hidden"><span>触发前缀</span><input id="onebot-prefix" placeholder="例如：机器人，"></label>
+        <label class="field"><span>默认角色</span><select id="onebot-default-persona"><option value="">未设置</option></select></label>
+      </div>
+      <div class="asr-resource-bar"><div><strong id="onebot-state">未启用</strong><p id="onebot-status" class="inline-status"></p></div><div class="asr-actions"><button id="save-onebot" class="button button-primary" type="submit">保存配置</button></div></div>
+      <p id="onebot-save-status" class="inline-status"></p>
+    </form>
+  </div>
+</section>
