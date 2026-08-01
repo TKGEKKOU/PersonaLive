@@ -43,12 +43,12 @@ def voice_limited_answer(answer: str, persona_profile: dict) -> str:
     tts = persona_profile.get("tts") or {}
     if not tts.get("enabled"):
         return answer
-    limit = 80
+    limit = 50
     if len(answer) <= limit:
         return answer
     shortened = answer[:limit]
     boundary = max((shortened.rfind(mark) for mark in "。！？!?；;\n"), default=-1)
-    return shortened[: boundary + 1 if boundary >= 80 else limit].rstrip() + "…"
+    return shortened[: boundary + 1 if boundary >= 0 else limit].rstrip() + "…"
 
 
 @router.websocket("/ws/personas/{persona_id}/conversations/{conversation_id}")

@@ -69,10 +69,13 @@ def _handoff_tool(worker: Worker):
 def _supervisor_prompt(context: PersonaAgentContext) -> str:
     profile = json.dumps(context.persona_profile, ensure_ascii=False, sort_keys=True, default=str)
     tts_enabled = bool((context.persona_profile.get("tts") or {}).get("enabled"))
+    reply_guidance = (
+        "Keep ordinary chat replies around 30 Chinese characters, preferring fewer and never exceeding 50 "
+        "(roughly 20 English words, never exceeding 30). For knowledge, web, or memory answers, lead with the "
+        "direct evidence-backed answer and keep it concise; put citations outside the reply body when possible. "
+    )
     voice_guidance = (
-        "Because voice output is enabled, keep ordinary chat replies to one compact paragraph under 30 Chinese "
-        "characters (or 20 English words). knowledge answers may be under 80 Chinese characters, and citations "
-        "must remain outside the spoken reply. Put the direct answer first. "
+        "The reply may be read aloud by voice synthesis, so keep it short, complete, and accurate in one breath. "
         if tts_enabled
         else ""
     )
@@ -91,7 +94,7 @@ def _supervisor_prompt(context: PersonaAgentContext) -> str:
         "suggestion in the persona's distinctive voice. Do not mention internal workers. Preserve citations and do not "
         "invent unsupported facts. Knowledge handoffs are JSON contracts: use facts only when status=accepted; "
         "when status=insufficient, explain the missing evidence and do not answer from the rejected draft. "
-        f"{voice_guidance}"
+        f"{reply_guidance}{voice_guidance}"
     )
 
 
