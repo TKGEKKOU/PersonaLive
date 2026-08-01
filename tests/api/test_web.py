@@ -16,7 +16,7 @@ def test_web_workbench_exposes_shell_and_module_views(client):
         "nav-settings",
         "nav-integrations",
         "nav-plugins",
-        "open-guide",
+        "theme-toggle",
         "exit-confirm-dialog",
         "view-root",
         "preview-drawer",

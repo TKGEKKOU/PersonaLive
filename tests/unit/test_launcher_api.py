@@ -31,7 +31,11 @@ class FakeDocker:
 class FakeServer:
     def __init__(self, running=False):
         self.running = running
-        self.settings = type("S", (), {"app_port": 17000})()
+        self.settings = type(
+            "S",
+            (),
+            {"app_port": 17000, "mysql_port": 17001, "milvus_uri": "http://127.0.0.1:17002"},
+        )()
         self.url = "http://127.0.0.1:17000"
         self.app = None
         self.started = False

@@ -1,4 +1,6 @@
+import time
 from datetime import datetime
+from itertools import count
 from uuid import uuid4
 
 from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, func
@@ -7,9 +9,19 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 
+_message_seq = count()
+
 
 def new_uuid() -> str:
     return str(uuid4())
+
+
+def new_message_id() -> str:
+    """Time-ordered message id so rows inserted in the same second still
+    sort by insertion order when ordered by (created_at, id). The in-process
+    sequence breaks ties inside the same microsecond deterministically."""
+
+    return f"{int(time.time() * 1_000_000):016d}-{next(_message_seq):06d}-{uuid4().hex[:4]}"
 
 
 class KnowledgeSpace(Base):
@@ -104,7 +116,7 @@ class PersonaMemory(Base):
 class ConversationMessage(Base):
     __tablename__ = "conversation_messages"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_message_id)
     workspace_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     persona_id: Mapped[str] = mapped_column(ForeignKey("personas.id"), nullable=False, index=True)
     conversation_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)

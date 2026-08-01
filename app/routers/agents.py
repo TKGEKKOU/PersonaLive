@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from starlette.requests import HTTPConnection
 
+from app.chat_store import try_persist_text_message
 from agents.context import PersonaAgentContext
 from app.database import get_session
 from app.models import Persona
@@ -55,7 +56,24 @@ def query_agent(
     session: Session = Depends(get_session),
 ) -> AgentTurnResponse:
     context = context_for(request, session, persona_id, payload.conversation_id)
+    try_persist_text_message(
+        request.app.state.session_factory,
+        workspace_id=context.workspace_id,
+        persona_id=persona_id,
+        conversation_id=payload.conversation_id,
+        role="user",
+        content=payload.question,
+    )
     result = request.app.state.agent_service.query(payload.question, context)
+    if result.status == "completed" and result.answer:
+        try_persist_text_message(
+            request.app.state.session_factory,
+            workspace_id=context.workspace_id,
+            persona_id=persona_id,
+            conversation_id=payload.conversation_id,
+            role="assistant",
+            content=result.answer,
+        )
     return response_for(result)
 
 
@@ -72,5 +90,14 @@ def resume_agent(
         payload.specialist,
         payload.approved,
     )
+    if result.status == "completed" and result.answer:
+        try_persist_text_message(
+            request.app.state.session_factory,
+            workspace_id=context.workspace_id,
+            persona_id=persona_id,
+            conversation_id=payload.conversation_id,
+            role="assistant",
+            content=result.answer,
+        )
     return response_for(result)
 

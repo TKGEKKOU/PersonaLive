@@ -185,7 +185,7 @@ def test_chat_process_is_outside_bubbles_and_loading_state_exists():
     assert "appendResultDetails(node, result)" in script
     assert "loading-bubble" in styles
     assert "background: transparent" in styles
-    assert ".chat-panel" in styles and "border: 1px solid #bfc6cc" in styles
+    assert ".chat-panel" in styles and "border: 1px solid var(--line-dark)" in styles
     assert "margin-left: calc(50% - 28px)" in styles
     assert "left: calc(50% + 484px)" in styles
     assert "nodeLabels" in script

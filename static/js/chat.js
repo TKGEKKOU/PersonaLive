@@ -14,6 +14,8 @@ function bindChatGlobalEvents() {
 function initChat() {
   bindChatEvents();
   bindChatGlobalEvents();
+  observeChatStatus();
+  updateChatStatusCard();
   renderPersonaList();
   if (state.activePersona) {
     loadConversationMessages();
@@ -22,12 +24,12 @@ function initChat() {
 }
 
 function bindChatEvents() {
+  ensureVoiceChatButton();
   $("question-form").addEventListener("submit", submitQuestion);
   $("chat-process-toggle").addEventListener("click", toggleChatProcess);
   $("question").addEventListener("input", resizeComposer);
   $("cancel-generation").addEventListener("click", cancelRealtimeTurn);
-  $("record-audio").addEventListener("click", () => state.audioMode === "recording" ? finishAudioRecording() : startAudioRecording());
-  $("cancel-audio").addEventListener("click", cancelAudioActivity);
+  $("voice-chat").addEventListener("click", toggleVoiceChat);
   $("confirm-action").addEventListener("click", () => resumeAgent(true));
   $("cancel-action").addEventListener("click", () => resumeAgent(false));
   $("question").addEventListener("keydown", (event) => {
@@ -81,6 +83,7 @@ function closeRealtime() {
   state.agentRequestPending = false;
   state.realtimePendingQuestion = "";
   state.realtimeAckTimer = null;
+  resetPacing();
   setRealtimeBusy(false);
   if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
 }
@@ -101,7 +104,7 @@ function toggleChatProcess() {
   $("chat-process-toggle").setAttribute("aria-expanded", String(!hidden));
 }
 function resetChatProcess() {
-  $("chat-process-panel").classList.add("is-hidden");
+  updateChatStatusCard();
   $("chat-process-body").classList.add("is-hidden");
   $("chat-process-toggle").setAttribute("aria-expanded", "false");
   $("chat-process-summary").textContent = "等待中";
@@ -113,6 +116,7 @@ function renderChatProcess(result) {
   const toolCalls = result?.tool_calls || [];
   if (!traces.length && !toolCalls.length) return;
   $("chat-process-panel").classList.remove("is-hidden");
+  updateChatStatusCard();
   $("chat-process-summary").textContent = `工具 ${toolCalls.length} · 检索 ${traces.length}`;
   const content = $("chat-process-content"); content.replaceChildren();
   const toolCounts = new Map();
@@ -146,6 +150,7 @@ function handleRealtimeEvent(event) {
   if (event.type === "session.ready") {
     state.realtimeExecutionPending = false;
     setRealtimeBusy(false);
+    flushPendingVoiceQuestion();
     return;
   }
   if (event.type === "session.pong" || event.type === "agent.status") return;
@@ -154,6 +159,7 @@ function handleRealtimeEvent(event) {
     state.realtimeTurnId = event.turn_id;
     state.realtimeAnswerNode = null;
     state.voiceStreamBuffer = "";
+    resetPacing();
     resetChatProcess();
     showReplyLoading();
     setRealtimeBusy(true);
@@ -164,19 +170,20 @@ function handleRealtimeEvent(event) {
     if (!state.realtimeAnswerNode) state.realtimeAnswerNode = showReplyLoading();
     state.realtimeAnswerNode.classList.remove("message-loading");
     state.realtimeAnswerNode.querySelector("p").classList.remove("loading-bubble");
-    state.realtimeAnswerNode.querySelector("p").textContent += event.text;
+    appendPacedText(event.text, state.realtimeAnswerNode);
     collectStreamVoice(event.text, state.realtimeAnswerNode);
   } else if (event.type === "text.final") {
-    if (!state.realtimeAnswerNode && event.answer) state.realtimeAnswerNode = showReplyLoading();
-    if (state.realtimeAnswerNode) {
-      replaceReplyLoading(state.realtimeAnswerNode, event.answer || state.realtimeAnswerNode.querySelector("p").textContent);
-      flushStreamVoice(true, state.realtimeAnswerNode);
+    const target = state.realtimeAnswerNode || (event.answer ? showReplyLoading() : null);
+    state.pendingReplyNode = null;
+    if (target) {
+      finishPacing(target, event.answer || "");
+      flushStreamVoice(true, target);
       renderChatProcess(event);
+      drainPacedText(() => { if (state.realtimeAnswerNode === target) state.realtimeAnswerNode = null; });
     }
     state.pendingAction = null;
     renderConfirmation();
     state.realtimeTurnId = null;
-    state.realtimeAnswerNode = null;
     state.voiceStreamBuffer = "";
     setRealtimeBusy(false);
   } else if (event.type === "confirmation.required") {
@@ -184,9 +191,11 @@ function handleRealtimeEvent(event) {
     state.realtimeTurnId = null;
     state.realtimeAnswerNode = null;
     state.voiceStreamBuffer = "";
+    resetPacing();
     renderConfirmation();
     setRealtimeBusy(false);
   } else if (event.type === "turn.cancelled") {
+    resetPacing();
     state.realtimeTurnId = null;
     state.realtimeAnswerNode = null;
     state.realtimeExecutionPending = true;
@@ -233,158 +242,220 @@ function awaitRealtimeAcknowledgement(question) {
   updateComposerControls();
 }
 function cancelRealtimeTurn() {
+  stopVoicePlayback();
   if (state.realtimeTurnId) sendRealtime({ type: "generation.cancel" });
+}
+function stopVoicePlayback() {
+  const current = state.voicePlayingAudio;
+  if (current) { try { current.pause(); } catch {} }
+  state.voicePlayingAudio = null;
+  state.voicePlaybackActive = false;
+  state.voicePlaybackQueue = [];
+  state.voicePlaybackEpoch += 1;
+}
+const PACE_INTERVAL_MS = 80;
+let paceTimer = null;
+let paceDone = null;
+function appendPacedText(text, node) {
+  if (!text) return;
+  state.textPaceBuffer += text;
+  if (node) state.paceNode = node;
+  ensurePacer(null);
+}
+function ensurePacer(done) {
+  if (paceDone) return;
+  paceDone = done || null;
+  if (paceTimer) return;
+  paceTimer = setInterval(() => {
+    const node = state.paceNode || state.realtimeAnswerNode;
+    const buffer = state.textPaceBuffer;
+    if (!node || !buffer) {
+      clearInterval(paceTimer); paceTimer = null;
+      state.paceCharsPerTick = 1;
+      const callback = paceDone; paceDone = null;
+      if (callback) callback();
+      return;
+    }
+    const step = Math.min(buffer.length, state.paceCharsPerTick);
+    node.querySelector("p").textContent += buffer.slice(0, step);
+    state.textPaceBuffer = buffer.slice(step);
+    if (!state.textPaceBuffer) {
+      clearInterval(paceTimer); paceTimer = null;
+      state.paceCharsPerTick = 1;
+      const callback = paceDone; paceDone = null;
+      if (callback) callback();
+    }
+  }, PACE_INTERVAL_MS);
+}
+function drainPacedText(done) {
+  state.paceCharsPerTick = 5;
+  ensurePacer(done);
+}
+function finishPacing(node, fullAnswer) {
+  if (fullAnswer && !node.querySelector("p").textContent && !state.textPaceBuffer) {
+    state.textPaceBuffer = fullAnswer;
+  }
+}
+function resetPacing() {
+  if (paceTimer) { clearInterval(paceTimer); paceTimer = null; }
+  paceDone = null;
+  state.textPaceBuffer = "";
+  state.paceCharsPerTick = 1;
+  state.paceNode = null;
+}
+function updateChatStatusCard() {
+  const panel = $("chat-process-panel");
+  if (!panel) return;
+  const hasStatus = ["audio-status", "question-status", "chat-error"].some((id) => $(id)?.textContent.trim());
+  const hasProcess = Boolean($("chat-process-content")?.children.length);
+  panel.classList.toggle("is-hidden", !(hasStatus || hasProcess));
+}
+function observeChatStatus() {
+  const targets = ["audio-status", "question-status", "chat-error"].map((id) => $(id)).filter(Boolean);
+  if (!targets.length) return;
+  const observer = new MutationObserver(() => updateChatStatusCard());
+  targets.forEach((node) => observer.observe(node, { childList: true, characterData: true, subtree: true }));
 }
 function updateComposerControls() {
   if (!$("question-form")) return;
   const conversationBusy = isConversationBusy();
-  const audioActive = state.audioStarting || state.audioMode !== "idle";
-  $("question-form").classList.toggle("is-audio-active", audioActive && !state.realtimeBusy);
-  $("record-audio").classList.toggle("is-hidden", state.realtimeBusy);
-  $("record-audio").disabled = state.audioMode === "transcribing" || !state.asrConfigured || !state.activePersona || conversationBusy;
-  $("cancel-audio").classList.toggle("is-hidden", !audioActive);
-  $("send-question").disabled = conversationBusy || audioActive || !state.activePersona;
-  $("confirm-action").disabled = state.realtimeBusy || audioActive;
-  $("cancel-action").disabled = state.realtimeBusy || audioActive;
+  const voiceActive = state.voiceActive;
+  $("question-form").classList.toggle("is-voice-active", voiceActive);
+  if ($("voice-chat")) {
+    $("voice-chat").disabled = !state.asrConfigured || !state.activePersona;
+  }
+  $("send-question").classList.toggle("is-hidden", voiceActive);
+  $("send-question").disabled = conversationBusy || !state.activePersona;
+  $("confirm-action").disabled = state.realtimeBusy || voiceActive;
+  $("cancel-action").disabled = state.realtimeBusy || voiceActive;
 }
 function isConversationBusy() {
   return state.realtimeBusy || state.agentRequestPending || state.realtimeSubmissionPending || state.realtimeExecutionPending || Boolean(state.pendingAction);
 }
-function setAudioButton(iconName, title, className = "") {
-  const button = $("record-audio");
+function ensureVoiceChatButton() {
+  if ($("voice-chat") || !$("send-question")) return;
+  const button = document.createElement("button");
+  button.id = "voice-chat";
+  button.type = "button";
+  button.className = "icon-button";
+  button.title = "语音模式";
+  button.setAttribute("aria-label", "语音模式");
+  button.disabled = true;
   const icon = document.createElement("i");
-  icon.dataset.lucide = iconName;
-  button.replaceChildren(icon);
-  button.title = title;
-  button.setAttribute("aria-label", title);
-  button.classList.toggle("is-recording", className === "recording");
-  button.classList.toggle("is-transcribing", className === "transcribing");
+  icon.dataset.lucide = "audio-lines";
+  button.append(icon);
+  $("send-question").insertAdjacentElement("beforebegin", button);
   icons();
 }
-function renderAudioState() {
-  clearInterval(state.audioClock);
-  state.audioClock = null;
-  if (state.audioStarting) {
-    setAudioButton("loader-circle", "正在请求麦克风权限", "transcribing");
-    setText("audio-status", "正在请求麦克风权限");
-  } else if (state.audioMode === "recording") {
-    setAudioButton("square", "完成录音", "recording");
-    updateAudioClock();
-    state.audioClock = setInterval(updateAudioClock, 1000);
-  } else if (state.audioMode === "transcribing") {
-    setAudioButton("loader-circle", "正在识别语音", "transcribing");
-    setText("audio-status", "正在识别语音");
-  } else {
-    setAudioButton("mic", state.asrConfigured ? "开始录音" : "请先配置语音识别");
-    setText("audio-status");
+function renderVoiceChatButton() {
+  const button = $("voice-chat");
+  if (!button) return;
+  const active = state.voiceActive;
+  button.classList.toggle("is-active", active);
+  button.title = active ? "停止语音模式" : "语音模式";
+  button.setAttribute("aria-label", button.title);
+  const input = $("question");
+  if (input) {
+    input.readOnly = active;
+    input.placeholder = active ? "语音模式：随时说话，说完自动发送" : "输入消息，Enter 发送";
   }
+}
+async function toggleVoiceChat() {
+  if (state.voiceActive) {
+    stopVoiceChat();
+    return;
+  }
+  await startVoiceChat();
+}
+async function startVoiceChat() {
+  if (state.voiceActive || !state.asrConfigured || !state.activePersona || isConversationBusy()) return;
+  setText("chat-error");
+  const stream = new window.PLVoiceStream({
+    onState: (voiceState) => {
+      if (voiceState === "speaking") {
+        stopVoicePlayback();
+        setText("audio-status", "正在听…");
+      }
+      else if (voiceState === "ready") setText("audio-status", "就绪，请说话");
+      else setText("audio-status", "正在准备语音识别…");
+    },
+    onPartial: (text) => {
+      $("question").value = text;
+      resizeComposer();
+    },
+    onFinal: (message) => {
+      const text = (message.text || "").trim();
+      if (text) submitVoiceFinal(text);
+    },
+    onError: (message, code) => {
+      if (code === "empty") {
+        setText("audio-status", "没听清，请再说一次");
+        return;
+      }
+      setText("chat-error", message);
+      stopVoiceChat();
+    },
+    onClosed: () => {
+      state.voiceStream = null;
+      state.voiceActive = false;
+      renderVoiceChatButton();
+      updateComposerControls();
+    },
+  });
+  state.voiceStream = stream;
+  const started = await stream.start();
+  if (!started) {
+    state.voiceStream = null;
+    renderVoiceChatButton();
+    updateComposerControls();
+    return;
+  }
+  state.voiceActive = true;
+  setText("audio-status", "正在准备语音识别…");
+  renderVoiceChatButton();
   updateComposerControls();
 }
-function updateAudioClock() {
-  const elapsed = Math.max(0, Math.floor((Date.now() - state.audioStartedAt) / 1000));
-  const minutes = String(Math.floor(elapsed / 60)).padStart(2, "0");
-  const seconds = String(elapsed % 60).padStart(2, "0");
-  setText("audio-status", `正在录音 ${minutes}:${seconds}`);
+function stopVoiceChat() {
+  clearTimeout(state.voiceFlushTimer);
+  state.voiceFlushTimer = null;
+  const stream = state.voiceStream;
+  state.voiceStream = null;
+  state.voiceActive = false;
+  if (stream) stream.stop();
+  const input = $("question");
+  if (input) input.value = "";
+  resizeComposer();
+  setText("audio-status");
+  renderVoiceChatButton();
+  updateComposerControls();
 }
-function audioErrorMessage(error) {
-  if (error?.name === "NotAllowedError") return "麦克风权限被拒绝，请在浏览器中允许访问后重试";
-  if (error?.name === "NotFoundError") return "未检测到可用麦克风";
-  if (error?.message === "Audio recording is not supported") return "当前浏览器不支持录音";
-  return error?.message || "录音失败，请重试";
-}
-async function startAudioRecording() {
-  if (!state.asrConfigured || !state.activePersona || isConversationBusy() || state.audioMode !== "idle" || state.audioStarting) return;
-  const operationId = ++state.audioOperationId;
-  state.audioStarting = true;
-  setText("chat-error");
-  const recorder = new window.BrowserAudioRecorder({
-    maxDurationMs: 120000,
-    onLimit: () => { if (state.audioRecorder === recorder && state.audioMode === "recording") void finishAudioRecording(); },
-    onError: (error) => handleUnexpectedAudioStop(recorder, error),
-    onUnexpectedStop: () => handleUnexpectedAudioStop(recorder, new Error("录音意外停止，请重试")),
-  });
-  state.audioRecorder = recorder;
-  renderAudioState();
-  try {
-    await recorder.start();
-    if (operationId !== state.audioOperationId) return void recorder.cancel();
-    state.audioStarting = false;
-    state.audioMode = "recording";
-    state.audioStartedAt = Date.now();
-    renderAudioState();
-  } catch (error) {
-    if (operationId !== state.audioOperationId) return;
-    state.audioStarting = false;
-    state.audioRecorder = null;
-    state.audioMode = "idle";
-    setText("chat-error", audioErrorMessage(error));
-    renderAudioState();
+function submitVoiceFinal(text) {
+  $("question").value = "";
+  resizeComposer();
+  if (isConversationBusy()) {
+    state.pendingVoiceQuestion = text;
+    cancelRealtimeTurn();
+    setText("audio-status", "正在打断上一轮回复…");
+    schedulePendingVoiceFlush();
+    return;
   }
+  sendQuestionText(text);
 }
-function handleUnexpectedAudioStop(recorder, error) {
-  if (state.audioRecorder !== recorder) return;
-  state.audioOperationId += 1;
-  state.audioRecorder = null;
-  state.audioStarting = false;
-  state.audioMode = "idle";
-  setText("chat-error", audioErrorMessage(error));
-  renderAudioState();
+function schedulePendingVoiceFlush() {
+  clearTimeout(state.voiceFlushTimer);
+  state.voiceFlushTimer = setTimeout(() => {
+    state.voiceFlushTimer = null;
+    if (!state.pendingVoiceQuestion) return;
+    if (isConversationBusy()) { schedulePendingVoiceFlush(); return; }
+    flushPendingVoiceQuestion();
+  }, 400);
 }
-async function finishAudioRecording() {
-  if (state.audioMode !== "recording" || !state.audioRecorder) return;
-  const operationId = state.audioOperationId;
-  const recorder = state.audioRecorder;
-  state.audioMode = "transcribing";
-  renderAudioState();
-  try {
-    const blob = await recorder.finish();
-    state.audioRecorder = null;
-    if (operationId !== state.audioOperationId || !blob) return;
-    const extension = audioExtension(blob.type);
-    const form = new FormData();
-    form.append("file", blob, `recording-${Date.now()}.${extension}`);
-    const controller = new AbortController();
-    state.audioAbortController = controller;
-    const message = await api(fetch(`/api/personas/${state.activePersona.id}/conversations/${state.conversationId}/voice-messages`, { method: "POST", headers: { "X-PersonaLive-Request": "web" }, body: form, signal: controller.signal }));
-    if (operationId !== state.audioOperationId) return;
-    appendAudioMessage(message);
-    const result = await api(fetch(`/api/voice-messages/${message.id}/transcribe`, { method: "POST", headers: { "X-PersonaLive-Request": "web" }, signal: controller.signal }));
-    updateAudioMessage(result.message);
-    handleAgentResult(result.turn);
-  } catch (error) {
-    if (operationId === state.audioOperationId && error?.name !== "AbortError") {
-      setText("chat-error", audioErrorMessage(error));
-      await loadConversationMessages();
-    }
-  } finally {
-    if (operationId === state.audioOperationId) {
-      state.audioAbortController = null;
-      state.audioMode = "idle";
-      renderAudioState();
-    }
-  }
-}
-function audioExtension(contentType) {
-  if (contentType.includes("ogg")) return "ogg";
-  if (contentType.includes("mp4") || contentType.includes("m4a")) return "m4a";
-  if (contentType.includes("mpeg")) return "mp3";
-  if (contentType.includes("wav")) return "wav";
-  return "webm";
-}
-function cancelAudioActivity() {
-  const wasActive = state.audioStarting || state.audioMode !== "idle";
-  state.audioOperationId += 1;
-  state.audioAbortController?.abort();
-  state.audioAbortController = null;
-  const recorder = state.audioRecorder;
-  state.audioRecorder = null;
-  state.audioStarting = false;
-  state.audioMode = "idle";
-  if (recorder) void recorder.cancel().catch(() => {});
-  renderAudioState();
-  if (wasActive) setText("audio-status", "录音已取消");
-}
-function togglePersonaDrawer() {
+function flushPendingVoiceQuestion() {
+  const question = state.pendingVoiceQuestion;
+  if (!question) return;
+  state.pendingVoiceQuestion = "";
+  sendQuestionText(question);
+}function togglePersonaDrawer() {
   const menu = $("chat-persona-menu");
   const open = menu.classList.toggle("is-hidden");
   $("chat-persona-toggle").setAttribute("aria-expanded", String(!open));
@@ -405,7 +476,9 @@ function closeChatSettingsMenu() {
   button.setAttribute("aria-expanded", "false");
 }
 async function selectPersona(personaId = "") {
-  cancelAudioActivity();
+  stopVoiceChat();
+  stopVoicePlayback();
+  resetPacing();
   setText("audio-status");
   closeRealtime();
   state.activePersona = state.personas.find((item) => item.id === personaId) || null;
@@ -425,8 +498,13 @@ async function selectPersona(personaId = "") {
 }
 async function submitQuestion(event) {
   event.preventDefault(); if (!state.activePersona) return;
-  if (state.realtimeTurnId || state.realtimeExecutionPending || state.audioStarting || state.audioMode !== "idle") return;
+  if (state.realtimeTurnId || state.realtimeExecutionPending || state.voiceActive) return;
   const question = $("question").value.trim(); if (!question) return;
+  sendQuestionText(question);
+}
+function sendQuestionText(question) {
+  stopVoicePlayback();
+  resetPacing();
   state.agentRequestPending = true;
   appendMessage("user", question); resetChatProcess(); showReplyLoading(); setText("chat-error"); updateComposerControls();
   if (sendRealtime({ type: "text.submit", question })) {
@@ -434,11 +512,13 @@ async function submitQuestion(event) {
     $("question-form").reset(); resizeComposer();
     return;
   }
-  try {
-    const result = await api(fetch(`/api/personas/${state.activePersona.id}/agent/query`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question, conversation_id: state.conversationId }) }));
-    handleAgentResult(result); $("question-form").reset(); resizeComposer();
-  } catch (reason) { setText("chat-error", reason); }
-  finally { state.agentRequestPending = false; updateComposerControls(); }
+  void (async () => {
+    try {
+      const result = await api(fetch(`/api/personas/${state.activePersona.id}/agent/query`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question, conversation_id: state.conversationId }) }));
+      handleAgentResult(result); $("question-form").reset(); resizeComposer();
+    } catch (reason) { setText("chat-error", reason); }
+    finally { state.agentRequestPending = false; updateComposerControls(); }
+  })();
 }
 function resizeComposer() {
   const input = $("question");
@@ -534,7 +614,7 @@ function handleAgentResult(result) {
     synthesizeAnswer(result.answer, node);
   } else if (state.pendingReplyNode) { state.pendingReplyNode.remove(); state.pendingReplyNode = null; }
 }
-function appendAnswer(result) { const node = replaceReplyLoading(state.pendingReplyNode, result.answer); renderChatProcess(result); synthesizeAnswer(result.answer, node); }
+function appendAnswer(result) { const node = replaceReplyLoading(state.pendingReplyNode, ""); renderChatProcess(result); appendPacedText(result.answer, node); synthesizeAnswer(result.answer, node); }
 function collectStreamVoice(text, node) {
   if (!state.activePersona?.profile?.tts?.enabled || !$("assistant-voice-toggle").checked) return;
   state.voiceStreamBuffer += text;
@@ -553,15 +633,18 @@ function playNextVoiceAudio() {
   if (state.voicePlaybackActive || !state.voicePlaybackQueue.length) return;
   state.voicePlaybackActive = true;
   const audio = state.voicePlaybackQueue.shift();
-  audio.addEventListener("ended", () => { state.voicePlaybackActive = false; playNextVoiceAudio(); }, { once: true });
-  audio.play().catch(() => { state.voicePlaybackActive = false; playNextVoiceAudio(); });
+  state.voicePlayingAudio = audio;
+  audio.addEventListener("ended", () => { if (state.voicePlayingAudio === audio) state.voicePlayingAudio = null; state.voicePlaybackActive = false; playNextVoiceAudio(); }, { once: true });
+  audio.play().catch(() => { if (state.voicePlayingAudio === audio) state.voicePlayingAudio = null; state.voicePlaybackActive = false; playNextVoiceAudio(); });
 }
 async function synthesizeAnswer(text, node, options = {}) {
   const voice = state.activePersona?.profile?.tts;
   if (!state.ttsConfigured || !voice?.enabled || !$("assistant-voice-toggle").checked || !text) return;
+  const epoch = state.voicePlaybackEpoch;
   const status = document.createElement("span"); status.className = "voice-bubble-status is-generating"; status.textContent = "正在生成语音…"; node.append(status);
   try {
     const message = await api(fetch(`/api/tts/personas/${state.activePersona.id}/conversations/${state.conversationId}/synthesize`, { method: "POST", headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" }, body: JSON.stringify({ text }) }));
+    if (epoch !== state.voicePlaybackEpoch) { status.remove(); return; }
     status.textContent = "语音已生成"; status.classList.remove("is-generating");
     const audio = document.createElement("audio"); audio.controls = false; audio.preload = "metadata"; audio.src = message.audio_url; audio.className = "voice-audio-source"; appendVoiceControl(node, audio);
     if (voice.auto_play !== false) options.queued ? enqueueVoiceAudio(audio) : audio.play().catch(() => {});

@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>语音流式识别测试</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <style>
+    body { background: var(--bg); color: var(--ink); display: flex; min-height: 100vh; margin: 0; }
+    .lab { width: 100%; max-width: 720px; margin: auto; padding: 32px 20px; box-sizing: border-box; }
+    h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: .02em; }
+    .hint { color: var(--muted); font-size: 13px; margin: 0 0 24px; }
+    .card { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 20px; }
+    .row { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
+    button { border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); color: var(--ink);
+             padding: 10px 18px; font-size: 14px; cursor: pointer; }
+    button.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+    button.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .pill { font-size: 13px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+    .pill.speaking { color: var(--primary); border-color: var(--primary); background: var(--primary-soft); }
+    .label { color: var(--muted); font-size: 12px; margin: 14px 0 6px; }
+    .text { min-height: 56px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft);
+            padding: 12px; font-size: 15px; line-height: 1.6; white-space: pre-wrap; }
+    .text.final { color: var(--ink-soft); }
+    #finals { max-height: 200px; overflow: auto; }
+    .error { color: var(--danger); font-size: 13px; margin-top: 10px; min-height: 18px; }
+  </style>
+</head>
+<body>
+  <div class="lab">
+    <h1>语音流式识别</h1>
+    <p class="hint">直接说话即可：服务端 VAD 自动判停，说话途中显示部分结果，说完给出最终文字。</p>
+    <div class="card">
+      <div class="row">
+        <button id="start-btn" class="primary" type="button">开始</button>
+        <button id="stop-btn" class="danger" type="button" disabled>停止</button>
+        <span id="status" class="pill">未连接</span>
+      </div>
+      <div class="label">实时识别</div>
+      <div id="partial" class="text"></div>
+      <div class="label">识别结果</div>
+      <div id="finals" class="text final"></div>
+      <div id="error" class="error"></div>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const startBtn = document.getElementById("start-btn");
+      const stopBtn = document.getElementById("stop-btn");
+      const statusEl = document.getElementById("status");
+      const partialEl = document.getElementById("partial");
+      const finalsEl = document.getElementById("finals");
+      const errorEl = document.getElementById("error");
+
+      let ws = null;
+      let audioContext = null;
+      let source = null;
+      let processor = null;
+      let stream = null;
+
+      function setStatus(text, cls) {
+        statusEl.textContent = text;
+        statusEl.className = "pill" + (cls ? " " + cls : "");
+      }
+
+      function resampleLinear(input, fromRate, toRate) {
+        const ratio = fromRate / toRate;
+        const out = new Float32Array(Math.floor(input.length / ratio));
+        for (let i = 0; i < out.length; i++) {
+          const pos = i * ratio;
+          const i0 = Math.floor(pos);
+          const i1 = Math.min(i0 + 1, input.length - 1);
+          const frac = pos - i0;
+          out[i] = input[i0] * (1 - frac) + input[i1] * frac;
+        }
+        return out;
+      }
+
+      function sendPcm(data) {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        let samples = data;
+        if (audioContext.sampleRate !== 16000) {
+          samples = resampleLinear(data, audioContext.sampleRate, 16000);
+        }
+        const pcm = new Int16Array(samples.length);
+        for (let i = 0; i < samples.length; i++) {
+          const v = Math.max(-1, Math.min(1, samples[i]));
+          pcm[i] = v < 0 ? v * 0x8000 : v * 0x7fff;
+        }
+        ws.send(pcm.buffer);
+      }
+
+      async function start() {
+        errorEl.textContent = "";
+        partialEl.textContent = "";
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+            video: false,
+          });
+        } catch (err) {
+          errorEl.textContent = "无法访问麦克风：" + err.message;
+          return;
+        }
+
+        ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/api/voice/stream/ws");
+        ws.binaryType = "arraybuffer";
+        ws.onopen = () => ws.send(JSON.stringify({ type: "start" }));
+        ws.onclose = () => {
+          setStatus("已断开");
+          if (processor) processor.disconnect();
+          stream && stream.getTracks().forEach((t) => t.stop());
+          processor = null;
+          stream = null;
+        };
+        ws.onmessage = (event) => {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "session.ready") {
+            setStatus("正在准备语音识别…");
+          } else if (msg.type === "started") {
+            setStatus("就绪，请说话");
+          } else if (msg.type === "vad") {
+            setStatus(msg.state === "speaking" ? "正在听…" : "就绪，请说话", msg.state === "speaking" ? "speaking" : "");
+          } else if (msg.type === "partial") {
+            partialEl.textContent = msg.text;
+          } else if (msg.type === "final") {
+            partialEl.textContent = "";
+            const node = document.createElement("div");
+            node.textContent = msg.text;
+            finalsEl.prepend(node);
+            setStatus("就绪，请说话");
+          } else if (msg.type === "error") {
+            errorEl.textContent = msg.message || msg.code;
+          }
+        };
+
+        audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+        source = audioContext.createMediaStreamSource(stream);
+        processor = audioContext.createScriptProcessor(4096, 1, 1);
+        processor.onaudioprocess = (event) => sendPcm(event.inputBuffer.getChannelData(0));
+        source.connect(processor);
+        processor.connect(audioContext.destination);
+
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+      }
+
+      function stop() {
+        if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "cancel" }));
+        if (ws) ws.close();
+        if (processor) processor.disconnect();
+        if (source) source.disconnect();
+        if (audioContext) audioContext.close();
+        if (stream) stream.getTracks().forEach((t) => t.stop());
+        ws = null;
+        source = null;
+        processor = null;
+        audioContext = null;
+        stream = null;
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        setStatus("未连接");
+      }
+
+      startBtn.addEventListener("click", start);
+      stopBtn.addEventListener("click", stop);
+    })();
+  </script>
+</body>
+</html>

@@ -5,7 +5,7 @@ import sys
 
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
-from fastapi.staticfiles import StaticFiles
+from starlette.staticfiles import StaticFiles
 from langgraph.checkpoint.memory import MemorySaver
 
 from agents.checkpoint import create_mysql_checkpointer
@@ -27,6 +27,7 @@ from app.routers.settings import router as settings_router
 from app.routers.system import router as system_router
 from app.routers.tts import router as tts_router
 from app.routers.voice import router as voice_router
+from app.routers.voice_stream import router as voice_stream_router
 from settings import Settings
 from extensions.events import EVENT_MESSAGE, EventBus
 from extensions.manager import PluginManager
@@ -40,23 +41,54 @@ from persona.delete_service import PersonaDeletionService
 from realtime.execution import ConversationExecutionRegistry
 from voice.asr import build_asr_provider
 from voice.asr.install import ASRResourceManager
+from voice.asr.stream_client import WorkerStreamClient
 from voice.tts.install import TTSResourceManager
 from voice.tts.local_worker import LocalTTS
+from voice.vad import build_vad
 
 STATIC_DIR = (Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[1]) / "static"
+
+
+class NoCacheStaticFiles(StaticFiles):
+    """静态资源允许缓存但必须重新验证，避免 WebView2/浏览器启发式缓存导致改了不生效。"""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers.setdefault("Cache-Control", "no-cache")
+        return response
 
 
 def create_app(initialize_database: bool = True) -> FastAPI:
     settings = Settings.load()
     checkpoint_resource = None
 
+    async def warm_asr_worker() -> None:
+        """Preload the local ASR worker in the background so the first voice
+        utterance is not delayed by a cold model load. ASR must already be
+        installed; failures are ignored (the start command retries)."""
+
+        try:
+            if not app.state.asr_resources.status().get("ready"):
+                return
+            provider = app.state.asr_provider_factory(Settings.load())
+            manager = getattr(provider, "manager", None)
+            if manager is not None:
+                await manager.ensure_ready()
+        except Exception:
+            pass
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.embedding_warmup_task = asyncio.create_task(
             asyncio.to_thread(warm_managed_embedding, settings)
         )
+        if initialize_database:
+            app.state.asr_warmup_task = asyncio.create_task(warm_asr_worker())
         yield
         app.state.embedding_warmup_task.cancel()
+        warmup = getattr(app.state, "asr_warmup_task", None)
+        if warmup is not None:
+            warmup.cancel()
         app.state.plugin_manager.unload_all()
         app.state.tts_worker.stop_service()
         resource = getattr(app.state, "checkpoint_resource", None)
@@ -70,6 +102,8 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     app.state.realtime_executions = ConversationExecutionRegistry()
     app.state.asr_provider_factory = build_asr_provider
     app.state.asr_resources = ASRResourceManager(settings.project_root)
+    app.state.vad_factory = build_vad
+    app.state.asr_stream_client_factory = WorkerStreamClient
     app.state.embedding_resources = LocalEmbeddingResourceManager(settings.project_root)
     app.state.tts_resources = TTSResourceManager(settings.project_root)
     app.state.tts_worker = LocalTTS(
@@ -120,6 +154,7 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     app.include_router(system_router)
     app.include_router(tts_router)
     app.include_router(voice_router)
+    app.include_router(voice_stream_router)
 
     @app.get("/api/health")
     def health() -> dict[str, str]:
@@ -133,6 +168,6 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     def web_workbench() -> RedirectResponse:
         return RedirectResponse(url="/static/index.html")
 
-    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    app.mount("/static", NoCacheStaticFiles(directory=STATIC_DIR), name="static")
 
     return app

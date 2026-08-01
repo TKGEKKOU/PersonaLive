@@ -52,13 +52,15 @@ const state = {
   embeddingInstalledModel: "",
   embeddingResourceStatus: null,
   openaiKeyConfigured: false,
-  audioMode: "idle",
-  audioStarting: false,
-  audioRecorder: null,
-  audioAbortController: null,
-  audioOperationId: 0,
-  audioStartedAt: 0,
-  audioClock: null,
+  voiceStream: null,
+  voiceActive: false,
+  pendingVoiceQuestion: "",
+  voiceFlushTimer: null,
+  voicePlayingAudio: null,
+  voicePlaybackEpoch: 0,
+  textPaceBuffer: "",
+  paceCharsPerTick: 1,
+  paceNode: null,
   editReferenceUrl: null,
   voiceStreamBuffer: "",
   voicePlaybackQueue: [],
@@ -99,12 +101,26 @@ async function api(request) {
   return data;
 }
 function setText(id, value = "") { const node = $(id); if (node) node.textContent = value?.message || value; }
+
+// pywebview 内 target=_blank 不会可靠打开外部链接，统一交给桌面端在系统浏览器打开。
+document.addEventListener("click", (event) => {
+  const anchor = event.target.closest?.("a[target='_blank']");
+  if (!anchor || !window.pywebview?.api?.open_external) return;
+  event.preventDefault();
+  window.pywebview.api.open_external(anchor.href);
+});
+
 async function loadStatus() {
   try {
     const status = await api(fetch("/api/status"));
     renderServiceStatus("mysql", "MySQL", status.mysql);
     renderServiceStatus("milvus", "Milvus", status.milvus);
     renderSystemStatusDetail(status);
+    const milvusLink = $("settings-open-milvus");
+    const attuPort = status.ports?.attu;
+    if (milvusLink && attuPort) {
+      milvusLink.href = `http://127.0.0.1:${attuPort}`;
+    }
   } catch {
     renderServiceStatus("mysql", "MySQL", "unavailable");
     renderServiceStatus("milvus", "Milvus", "unavailable");

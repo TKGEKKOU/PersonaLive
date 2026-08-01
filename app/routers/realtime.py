@@ -3,6 +3,7 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Path, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
+from app.chat_store import try_persist_text_message
 from app.routers.agents import context_for, response_for
 from realtime.protocol import (
     CancelEvent,
@@ -98,6 +99,14 @@ async def persona_realtime(
             try:
                 await send_if_current(turn_id, "turn.started")
                 await send_if_current(turn_id, "agent.status", status="thinking")
+                try_persist_text_message(
+                    websocket.app.state.session_factory,
+                    workspace_id=context.workspace_id,
+                    persona_id=persona_id,
+                    conversation_id=conversation_id,
+                    role="user",
+                    content=question,
+                )
                 result = await websocket.app.state.realtime_executions.run(
                     f"{persona_id}:{conversation_id}",
                     lambda: websocket.app.state.agent_service.query(question, context),
@@ -106,6 +115,15 @@ async def persona_realtime(
                     return
                 response = response_for(result).model_dump()
                 response["answer"] = voice_limited_answer(response["answer"], context.persona_profile)
+                if response["status"] == "completed":
+                    try_persist_text_message(
+                        websocket.app.state.session_factory,
+                        workspace_id=context.workspace_id,
+                        persona_id=persona_id,
+                        conversation_id=conversation_id,
+                        role="assistant",
+                        content=response["answer"],
+                    )
                 if response["status"] == "pending_confirmation":
                     await send_if_current(
                         turn_id,
@@ -153,6 +171,15 @@ async def persona_realtime(
                     return
                 response = response_for(result).model_dump()
                 response["answer"] = voice_limited_answer(response["answer"], context.persona_profile)
+                if response["status"] == "completed":
+                    try_persist_text_message(
+                        websocket.app.state.session_factory,
+                        workspace_id=context.workspace_id,
+                        persona_id=persona_id,
+                        conversation_id=conversation_id,
+                        role="assistant",
+                        content=response["answer"],
+                    )
                 for chunk in chunk_text(response["answer"]):
                     await send_if_current(turn_id, "text.delta", text=chunk)
                     await asyncio.sleep(0)

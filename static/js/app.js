@@ -10,22 +10,18 @@ const MODULES = {
 
 function bindShellEvents() {
   $("sidebar-toggle").addEventListener("click", () => setSidebarPinned(!document.body.classList.contains("sidebar-pinned")));
-  $("open-guide")?.addEventListener("click", openGuide);
   $("settings-confirm-cancel").addEventListener("click", () => $("settings-confirm-dialog").close());
   $("settings-confirm-submit").addEventListener("click", confirmSettingsAction);
   $("exit-confirm-cancel").addEventListener("click", () => $("exit-confirm-dialog").close());
   $("exit-confirm-submit").addEventListener("click", () => {
+    const btn = $("exit-confirm-submit");
+    btn.classList.add("is-loading");
+    btn.disabled = true;
+    const label = $("exit-confirm-label");
+    if (label) label.textContent = "正在退出…";
     if (window.pywebview?.api?.do_exit) window.pywebview.api.do_exit();
   });
   document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
-}
-
-function openGuide() {
-  if (window.pywebview?.api?.show_launcher) {
-    window.pywebview.api.show_launcher();
-  } else {
-    window.location.href = "/static/onboarding.html";
-  }
 }
 
 function setSidebarPinned(pinned) {
@@ -35,7 +31,7 @@ function setSidebarPinned(pinned) {
 
 async function switchView(view) {
   if (view !== "chat") {
-    if (state.audioStarting || state.audioMode !== "idle") cancelAudioActivity();
+    if (state.voiceActive) stopVoiceChat();
     closeRealtime();
   }
   const entry = MODULES[view];
@@ -54,6 +50,14 @@ async function switchView(view) {
 document.addEventListener("DOMContentLoaded", async () => {
   bindShellEvents();
   await switchView("chat");
-  await Promise.all([loadStatus(), loadPersonas()]);
+  await Promise.all([loadStatus(), loadPersonas(), loadAsrStatus(), loadTtsStatus()]);
+  if (location.hash === "#docker-exit") {
+    await switchView("settings");
+    const anchor = $("docker-exit-anchor");
+    if (anchor) {
+      anchor.open = true;
+      anchor.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
   icons();
 });

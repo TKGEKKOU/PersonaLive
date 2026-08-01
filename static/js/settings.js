@@ -184,7 +184,7 @@ async function loadSettings() {
     $("web-search-enabled").checked = config.enable_web_fallback;
     $("web-search-provider").value = config.web_search_provider === "off" ? "bocha" : config.web_search_provider;
     state.savedEmbeddingDimensions = config.embedding_dimensions;
-    syncManagedEmbeddingPreset(); renderEmbeddingSettings(); renderEmbeddingInstallAction(); renderEmbeddingWarning(); renderWebSearchSettings(); renderAudioState();
+    syncManagedEmbeddingPreset(); renderEmbeddingSettings(); renderEmbeddingInstallAction(); renderEmbeddingWarning(); renderWebSearchSettings();
   } catch (reason) { setText("settings-status", reason); }
 }
 async function loadEmbeddingStatus() {
@@ -255,11 +255,13 @@ async function openEmbeddingDirectory() {
 async function loadAsrStatus() {
   try {
     const config = await api(fetch("/api/asr/status"));
+    state.asrConfigured = config.ready;
+    updateComposerControls();
+    if (!$("asr-enabled")) return;
     $("asr-enabled").checked = config.enabled;
     $("asr-python-path").value = config.python_path || "";
     $("asr-model-path").value = config.model_path || "";
     $("asr-ffmpeg-path").value = config.ffmpeg_path || "";
-    state.asrConfigured = config.ready;
     const asrState = config.installing ? "installing" : config.ready ? "ready" : config.enabled ? "not_installed" : "disabled";
     $("asr-state").textContent = { installing: "正在安装", ready: "已就绪", not_installed: "尚未安装", disabled: "已关闭" }[asrState];
     renderServiceStatus("asr", "ASR", asrState, asrState);
@@ -277,7 +279,11 @@ async function loadAsrStatus() {
     updateComposerControls();
     if (config.installing) setTimeout(loadAsrStatus, 2000);
   } catch (reason) {
-    state.asrConfigured = false; renderServiceStatus("asr", "ASR", "unavailable"); setText("asr-status", reason); updateComposerControls();
+    state.asrConfigured = false;
+    updateComposerControls();
+    if (!$("asr-enabled")) return;
+    renderServiceStatus("asr", "ASR", "unavailable");
+    setText("asr-status", reason);
   }
 }
 async function saveAsrConfig() {
@@ -326,6 +332,8 @@ async function loadTtsStatus() {
   try {
     const config = await api(fetch("/api/tts/status"));
     state.ttsConfigured = config.ready;
+    updateComposerControls();
+    if (!$("tts-enabled")) return;
     $("tts-enabled").checked = config.enabled;
     $("tts-use-gpu").checked = config.use_gpu;
     $("tts-use-gpu").disabled = config.installing;
@@ -352,7 +360,13 @@ async function loadTtsStatus() {
       syncEditTtsPreview(reference.configured);
     }
     if (config.installing) setTimeout(loadTtsStatus, 2000);
-  } catch (reason) { state.ttsConfigured = false; renderServiceStatus("tts", "TTS", "unavailable"); setText("tts-status", reason); }
+  } catch (reason) {
+    state.ttsConfigured = false;
+    updateComposerControls();
+    if (!$("tts-enabled")) return;
+    renderServiceStatus("tts", "TTS", "unavailable");
+    setText("tts-status", reason);
+  }
 }
 async function saveTtsConfig() {
   try {

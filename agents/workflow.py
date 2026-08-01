@@ -21,6 +21,7 @@ from langgraph.types import Command
 
 from agents.context import PersonaAgentContext
 from agents.registry import tools_for_specialist
+from agents.tools.memory import memories_for_context
 from rag.llm import get_llm
 
 
@@ -68,6 +69,19 @@ def _handoff_tool(worker: Worker):
 
 def _supervisor_prompt(context: PersonaAgentContext) -> str:
     profile = json.dumps(context.persona_profile, ensure_ascii=False, sort_keys=True, default=str)
+    memory_block = ""
+    try:
+        memories = memories_for_context(context)
+        if memories:
+            lines = "\n".join(f"- {memory['content']}" for memory in memories)
+            memory_block = (
+                "\nThe following are the user's durable memories for this persona; "
+                "recall them naturally in conversation whenever relevant:\n"
+                f"<persona_memories>{lines}</persona_memories>\n"
+            )
+    except Exception:
+        # Memory loading must never block or break a turn (e.g. no DB session).
+        memory_block = ""
     tts_enabled = bool((context.persona_profile.get("tts") or {}).get("enabled"))
     reply_guidance = (
         "Keep ordinary chat replies around 30 Chinese characters, preferring fewer and never exceeding 50 "
@@ -86,6 +100,7 @@ def _supervisor_prompt(context: PersonaAgentContext) -> str:
         "Answer in the persona's voice and use delegated results as evidence. "
         "Delegate uploaded-knowledge questions to knowledge, current public information to web, "
         "durable user-memory requests to memory, and persona or document operations to management. "
+        f"{memory_block}"
         "Answer the user's question directly before offering advice. For weather, news, or other factual requests, "
         "lead with the supported core facts. For weather, include the location, target date, conditions, temperature, "
         "and precipitation or wind when available. Do not replace available facts with generic advice. "
