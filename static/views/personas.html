@@ -1,0 +1,50 @@
+    <section id="upload-view" class="view is-hidden">
+      <div class="material-toolbar"><fieldset id="material-action" class="view-switch"><label><input type="radio" name="material-action" value="create" checked><span>新建</span></label><label><input type="radio" name="material-action" value="edit"><span>编辑已有角色</span></label></fieldset></div>
+
+      <div id="create-material-panel">
+        <form id="batch-form" class="panel upload-form">
+          <div class="workspace-heading"><div><h2>导入资料</h2><p>上传文件、图片，或直接粘贴文本内容。</p></div></div>
+          <fieldset id="generation-mode" class="mode-switch">
+            <label><input type="radio" name="mode" value="character" checked><span><i data-lucide="user-round"></i><b>角色</b></span></label>
+            <label><input type="radio" name="mode" value="expert"><span><i data-lucide="search"></i><b>检索助手</b></span></label>
+          </fieldset>
+          <div class="source-grid">
+            <label class="file-drop" for="document-files"><i data-lucide="cloud-upload"></i><b>选择文件或图片</b><output id="file-summary">未选择文件</output><input id="document-files" type="file" multiple></label>
+            <label class="text-source"><span>补充文本</span><textarea id="direct-text" rows="7" placeholder="粘贴资料内容"></textarea></label>
+          </div>
+          <div class="form-footer"><p id="upload-error" class="inline-error" role="alert"></p><button id="reset-batch" class="button button-secondary" type="button"><i data-lucide="rotate-ccw"></i>重置</button><button id="upload-button" class="button button-primary" type="submit"><i data-lucide="sparkles"></i>生成</button></div>
+        </form>
+
+        <section id="draft-editor" class="panel draft-panel is-hidden">
+          <div class="panel-heading"><div><h2>确认角色</h2></div><span id="draft-status" class="status-pill"></span></div>
+          <section id="candidate-picker" class="candidate-picker is-hidden"><b>候选人物</b><div id="candidate-list" class="candidate-list"></div></section>
+          <div class="draft-fields"><label class="field"><span>名称</span><input id="draft-name" maxlength="255"></label><label class="field field-wide"><span>人设</span><textarea id="draft-profile" rows="5"></textarea></label></div>
+          <div class="section-heading"><b>资料</b></div><div id="document-list" class="document-list"></div>
+          <div class="draft-actions"><button id="save-draft" class="button button-secondary" type="button">保存草稿</button><button id="confirm-draft" class="button button-primary" type="button">确认创建并入库</button></div>
+        </section>
+      </div>
+
+      <section id="edit-material-panel" class="is-hidden">
+        <div class="edit-selector"><label class="field"><select id="edit-persona-select"><option value="">请选择角色</option></select></label></div>
+        <div id="edit-persona-workspace" class="edit-persona-workspace is-hidden">
+          <form id="edit-persona-form" class="panel edit-profile-form">
+            <div class="panel-heading"><div><h2>角色信息</h2></div><div class="panel-actions"><button id="delete-persona" class="icon-button icon-button-danger" type="button" title="永久删除当前角色" disabled><i data-lucide="trash-2"></i></button><button class="button button-primary" type="submit">保存修改</button></div></div>
+            <div class="basic-fields"><label class="field"><span>名称</span><input id="edit-persona-name" maxlength="255" required></label><label class="field"><span>人设</span><textarea id="edit-persona-profile" rows="5"></textarea></label></div>
+            <p id="edit-persona-status" class="inline-status"></p>
+          </form>
+          <section id="edit-tts-panel" class="panel edit-tts-panel">
+            <div class="panel-heading"><div><h2>角色声音</h2><p class="panel-subtitle">上传参考音频，再生成示例语音确认效果。</p></div><span id="edit-tts-reference-status" class="status-pill">未配置</span></div>
+            <div class="tts-workflow"><details id="edit-tts-guide" class="inline-guide"><summary>配置说明</summary><p>可选择多条清晰的 WAV，系统会合并同格式文件作为角色参考音色。</p></details><ol id="edit-tts-steps" class="tts-steps"><li data-step="select">选择 WAV 音频</li><li data-step="upload">点击确认上传并处理</li><li data-step="preview">生成示例语音并试听</li></ol><div class="voice-upload-row"><label class="file-compact" for="edit-tts-reference"><i data-lucide="upload"></i><span>选择 WAV 音频</span><input id="edit-tts-reference" type="file" accept="audio/wav,.wav" multiple></label><button id="edit-tts-confirm-upload" class="button button-primary" type="button" disabled>确认上传音色</button></div><div class="voice-reference-actions"><label class="toggle-field"><input id="edit-tts-enabled" type="checkbox"><span>生成语音</span></label><label class="toggle-field"><input id="edit-tts-auto-play" type="checkbox"><span>自动播放</span></label><button id="edit-tts-preview-reference" class="button button-secondary" type="button" disabled>播放参考音频</button><button id="edit-tts-remove-reference" class="button button-secondary" type="button" disabled>移除音色</button></div><div class="voice-sample-row"><label class="field"><span>示例文案</span><input id="edit-tts-preview-text" value="你好，我是这个角色，很高兴和你聊天。" maxlength="200"></label><button id="edit-tts-generate-preview" class="button button-primary" type="button" disabled>生成示例语音</button><audio id="edit-tts-preview-audio" class="is-hidden" controls preload="none"></audio></div><p id="edit-tts-preview-status" class="inline-status"></p><button id="edit-tts-open-settings" class="button button-secondary is-hidden" type="button">前往设置安装 TTS 模型</button></div>
+          </section>
+          <section class="panel edit-documents">
+            <div class="panel-heading"><div><h2>角色资料</h2></div></div><div id="edit-document-list" class="document-list"></div>
+            <form id="edit-upload-form" class="edit-upload-form">
+              <label class="file-compact" for="edit-document-files"><i data-lucide="paperclip"></i><span id="edit-file-summary">添加文件或图片</span><input id="edit-document-files" type="file" multiple></label>
+              <textarea id="edit-direct-text" rows="3" placeholder="或输入补充资料"></textarea>
+              <button id="edit-upload-button" class="button button-primary" type="submit">追加并入库</button>
+            </form>
+            <p id="edit-upload-error" class="inline-error"></p>
+          </section>
+        </div>
+      </section>
+    </section>
