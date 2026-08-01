@@ -29,6 +29,8 @@ async function switchView(view) {
   if (!root) return;
   const response = await fetch(`/static/views/${entry.view}.html`);
   root.innerHTML = await response.text();
+  const viewNode = root.firstElementChild;
+  if (viewNode) viewNode.classList.remove("is-hidden");
   if (entry.init) entry.init();
   icons();
 }
