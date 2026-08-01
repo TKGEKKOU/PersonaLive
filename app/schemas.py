@@ -264,3 +264,9 @@ class ShutdownPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     stop_docker: bool = False
+
+
+class DockerSettingsPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    on_exit: Literal["keep", "pause", "remove"]

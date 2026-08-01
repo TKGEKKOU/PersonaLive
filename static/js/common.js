@@ -1,4 +1,11 @@
 "use strict";
+window.PL = window.PL || { modules: {} };
+
+window.showExitConfirm = function showExitConfirm() {
+  const dialog = $("exit-confirm-dialog");
+  if (dialog) dialog.showModal();
+};
+
 const state = {
   draft: null,
   personas: [],

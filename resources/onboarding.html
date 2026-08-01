@@ -32,6 +32,10 @@
     .guide code { background: #eef1f4; border-radius: 4px; padding: 1px 6px; font-size: 12px; }
     .footer { margin-top: 28px; color: var(--muted); font-size: 12px; text-align: center; }
     .error { color: var(--danger); font-size: 13px; margin: 0 0 12px; white-space: pre-wrap; }
+    dialog.exit-confirm { border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; max-width: 380px; }
+    dialog.exit-confirm h2 { margin: 0 0 8px; font-size: 16px; }
+    dialog.exit-confirm p { margin: 0 0 16px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+    dialog.exit-confirm .exit-actions { display: flex; justify-content: flex-end; gap: 10px; }
   </style>
 </head>
 <body>
@@ -63,11 +67,29 @@
     </details>
 
     <div class="footer" id="footer-info"></div>
+    <dialog id="exit-confirm-dialog" class="exit-confirm">
+      <form method="dialog">
+        <h2>退出 PersonaLive？</h2>
+        <p>将停止项目服务；Docker 容器按设置页【退出时】的策略处理。</p>
+        <div class="exit-actions">
+          <button type="button" id="exit-cancel">取消</button>
+          <button type="button" id="exit-confirm">确认退出</button>
+        </div>
+      </form>
+    </dialog>
   </div>
 
   <script>
     "use strict";
     const $ = (id) => document.getElementById(id);
+
+    window.showExitConfirm = function showExitConfirm() {
+      document.getElementById("exit-confirm-dialog").showModal();
+    };
+    document.getElementById("exit-cancel").addEventListener("click", () => document.getElementById("exit-confirm-dialog").close());
+    document.getElementById("exit-confirm").addEventListener("click", () => {
+      if (window.pywebview?.api?.do_exit) window.pywebview.api.do_exit();
+    });
 
     function renderStatus(status) {
       const dockerCard = $("docker-card");

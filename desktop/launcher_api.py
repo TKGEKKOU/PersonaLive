@@ -14,6 +14,7 @@ class LauncherApi:
         self.server = server
         self.settings = server.settings
         self._window = None
+        self._exiting = False
 
     def bind_window(self, window) -> None:
         self._window = window
@@ -54,6 +55,40 @@ class LauncherApi:
     def show_launcher(self) -> None:
         if self._window is not None:
             self._window.load_url(self.onboarding_url())
+
+    def request_exit_confirm(self) -> None:
+        if self._window is not None:
+            self._window.evaluate_js("window.showExitConfirm && window.showExitConfirm()")
+
+    def do_exit(self) -> None:
+        self._exiting = True
+        self._apply_exit_policy()
+        self.server.stop()
+        from voice.asr.local_worker import shutdown_asr_workers
+
+        shutdown_asr_workers()
+        if self._window is not None:
+            self._window.destroy()
+
+    def _apply_exit_policy(self) -> None:
+        policy = "keep"
+        try:
+            from extensions.storage import read_json
+
+            values = read_json(self.project_root / "data" / "docker_settings.json")
+            policy = values.get("on_exit", "keep")
+        except Exception:
+            pass
+        if policy == "pause":
+            try:
+                self.docker.compose_stop()
+            except Exception:
+                pass
+        elif policy == "remove":
+            try:
+                self.docker.compose_down()
+            except Exception:
+                pass
 
     def _register_shutdown_callback(self) -> None:
         app = self.server.app

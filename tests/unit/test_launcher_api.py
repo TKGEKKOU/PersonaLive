@@ -7,6 +7,7 @@ class FakeDocker:
     def __init__(self, ready=True):
         self.ready = ready
         self.docker = "docker"
+        self.actions = []
 
     def is_ready(self):
         return self.ready
@@ -19,6 +20,12 @@ class FakeDocker:
 
     def compose_up(self):
         pass
+
+    def compose_stop(self):
+        self.actions.append("stop")
+
+    def compose_down(self):
+        self.actions.append("down")
 
 
 class FakeServer:
@@ -37,6 +44,9 @@ class FakeServer:
         self.app = type("A", (), {})()
         self.app.state = type("St", (), {})()
 
+    def stop(self):
+        self.started = False
+
 
 def test_status_reports_components(tmp_path: Path):
     api = LauncherApi(tmp_path, FakeDocker(True), FakeServer(False))
@@ -54,3 +64,28 @@ def test_start_boots_server_and_registers_shutdown_callback(tmp_path: Path):
     assert result["ok"] is True
     assert server.started is True
     assert callable(server.app.state.shutdown_callback)
+
+
+def test_do_exit_pause_policy_stops_containers(tmp_path: Path):
+    docker = FakeDocker(True)
+    server = FakeServer(True)
+    api = LauncherApi(tmp_path, docker, server)
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "docker_settings.json").write_text('{"on_exit": "pause"}', encoding="utf-8")
+    api._window = type("W", (), {"destroy": lambda self: None})()
+    api.do_exit()
+    assert docker.actions == ["stop"]
+    assert api._exiting is True
+
+
+def test_do_exit_remove_policy_runs_down(tmp_path: Path):
+    docker = FakeDocker(True)
+    server = FakeServer(True)
+    api = LauncherApi(tmp_path, docker, server)
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "docker_settings.json").write_text('{"on_exit": "remove"}', encoding="utf-8")
+    api._window = type("W", (), {"destroy": lambda self: None})()
+    api.do_exit()
+    assert docker.actions == ["down"]

@@ -17,8 +17,7 @@ def test_web_workbench_exposes_shell_and_module_views(client):
         "nav-integrations",
         "nav-plugins",
         "open-guide",
-        "shutdown-project",
-        "shutdown-docker-option",
+        "exit-confirm-dialog",
         "view-root",
         "preview-drawer",
         "settings-confirm-dialog",
@@ -66,6 +65,10 @@ def test_web_workbench_exposes_shell_and_module_views(client):
             "web-search-guide",
             "open-asr-directory",
             "open-tts-directory",
+            "docker-exit-policy",
+            "docker-save-exit",
+            "docker-pause-now",
+            "docker-remove-now",
         ),
         "integrations": (
             "integrations-view",
@@ -107,8 +110,9 @@ def test_web_workbench_exposes_shell_and_module_views(client):
             'fetch("/api/settings"',
             'method: "DELETE"',
             '确认重置配置',
-            'body: JSON.stringify({ stop_docker: stopDocker })',
-            "stop_docker",
+            'fetch("/api/system/docker-settings"',
+            'fetch("/api/system/docker/pause", { method: "POST" })',
+            'fetch("/api/system/docker/remove", { method: "POST" })',
         ),
     }
     for path, contracts in scripts.items():

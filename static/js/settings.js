@@ -10,6 +10,7 @@ function initSettings() {
   loadEmbeddingStatus();
   loadAsrStatus();
   loadTtsStatus();
+  loadDockerExitSettings();
 }
 
 function bindSettingsEvents() {
@@ -17,6 +18,9 @@ function bindSettingsEvents() {
   $("collapse-status").addEventListener("click", toggleStatusCards);
   $("settings-form").addEventListener("submit", requestSettingsSave);
   $("reset-settings").addEventListener("click", requestSettingsReset);
+  $("docker-save-exit").addEventListener("click", saveDockerSettings);
+  $("docker-pause-now").addEventListener("click", pauseDockerNow);
+  $("docker-remove-now").addEventListener("click", removeDockerNow);
   $("llm-provider").addEventListener("change", applyLlmPreset);
   ["openai-api-key", "embedding-api-key", "web-search-api-key"].forEach((id) => {
     $(`toggle-${id}`).addEventListener("click", () => toggleApiKeyVisibility(id));
@@ -508,7 +512,6 @@ function requestSettingsReset() { openSettingsConfirmation("reset"); }
 function openSettingsConfirmation(action) {
   if (action === "save" && !validateSettings()) return;
   state.settingsAction = action;
-  $("shutdown-docker-option").classList.add("is-hidden");
   const isSave = action === "save";
   $("settings-confirm-title").textContent = isSave ? "保存前确认" : "确认重置配置";
   $("settings-confirm-detail").textContent = isSave
@@ -543,21 +546,110 @@ async function confirmSettingsAction() {
   const action = state.settingsAction; $("settings-confirm-dialog").close();
   if (action === "save") await saveSettings();
   if (action === "reset") await resetSettings();
-  if (action === "shutdown") await shutdownProject();
 }
 
-async function shutdownProject() {
-  setText("settings-status");
+const DOCKER_EXIT_LABELS = { keep: "保持运行", pause: "暂停容器", remove: "删除容器" };
+
+async function loadDockerExitSettings() {
+  setText("docker-manage-status");
   try {
-    const stopDocker = $("shutdown-docker")?.checked || false;
-    await api(fetch("/api/system/shutdown", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stop_docker: stopDocker }),
-    }));
-    setText("settings-status", "项目已停止，页面即将断开。");
+    const settings = await api(fetch("/api/system/docker-settings"));
+    $("docker-exit-policy").value = settings.on_exit || "keep";
   } catch (reason) {
-    setText("settings-status", reason.message || reason);
+    setText("docker-manage-status", reason.message || reason);
+  }
+}
+
+async function saveDockerSettings() {
+  setText("docker-manage-status");
+  try {
+    const saved = await api(fetch("/api/system/docker-settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ on_exit: $("docker-exit-policy").value }),
+    }));
+    setText("docker-manage-status", `已保存：退出时${DOCKER_EXIT_LABELS[saved.on_exit] || saved.on_exit}。`);
+  } catch (reason) {
+    setText("docker-manage-status", reason.message || reason);
+  }
+}
+
+async function pauseDockerNow() {
+  setText("docker-manage-status", "正在暂停 Docker 容器…");
+  $("docker-pause-now").disabled = true;
+  try {
+    const result = await api(fetch("/api/system/docker/pause", { method: "POST" }));
+    setText("docker-manage-status", result.ok ? "已暂停 Docker 容器。" : (result.error || "操作失败"));
+  } catch (reason) {
+    setText("docker-manage-status", reason.message || reason);
+  } finally {
+    $("docker-pause-now").disabled = false;
+  }
+}
+
+async function removeDockerNow() {
+  if (!window.confirm("确定清除 Docker 容器吗？数据卷会保留，下次启动需重建容器。")) return;
+  setText("docker-manage-status", "正在清除 Docker 容器…");
+  $("docker-remove-now").disabled = true;
+  try {
+    const result = await api(fetch("/api/system/docker/remove", { method: "POST" }));
+    setText("docker-manage-status", result.ok ? "已清除 Docker 容器（数据保留）。" : (result.error || "操作失败"));
+  } catch (reason) {
+    setText("docker-manage-status", reason.message || reason);
+  } finally {
+    $("docker-remove-now").disabled = false;
+  }
+}
+
+async function openDockerManage() {
+  setText("docker-manage-status");
+  try {
+    const settings = await api(fetch("/api/system/docker-settings"));
+    $("docker-exit-policy").value = settings.on_exit || "keep";
+  } catch (reason) {
+    setText("docker-manage-status", reason.message || reason);
+  }
+  $("docker-manage-dialog").showModal();
+}
+
+async function saveDockerSettings() {
+  setText("docker-manage-status");
+  try {
+    const saved = await api(fetch("/api/system/docker-settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ on_exit: $("docker-exit-policy").value }),
+    }));
+    setText("docker-manage-status", `已保存：退出时${DOCKER_EXIT_LABELS[saved.on_exit] || saved.on_exit}。`);
+  } catch (reason) {
+    setText("docker-manage-status", reason.message || reason);
+  }
+}
+
+async function pauseDockerNow() {
+  setText("docker-manage-status", "正在暂停 Docker 容器…");
+  $("docker-pause-now").disabled = true;
+  try {
+    const result = await api(fetch("/api/system/docker/pause", { method: "POST" }));
+    setText("docker-manage-status", result.ok ? "已暂停 Docker 容器。" : (result.error || "操作失败"));
+  } catch (reason) {
+    setText("docker-manage-status", reason.message || reason);
+  } finally {
+    $("docker-pause-now").disabled = false;
+  }
+}
+
+async function removeDockerNow() {
+  if (!window.confirm("确定清除 Docker 容器吗？数据卷会保留，下次启动需重建容器。")) return;
+  setText("docker-manage-status", "正在清除 Docker 容器…");
+  $("docker-remove-now").disabled = true;
+  try {
+    const result = await api(fetch("/api/system/docker/remove", { method: "POST" }));
+    setText("docker-manage-status", result.ok ? "已清除 Docker 容器（数据保留）。" : (result.error || "操作失败"));
+  } catch (reason) {
+    setText("docker-manage-status", reason.message || reason);
+  } finally {
+    $("docker-remove-now").disabled = false;
   }
 }
 async function saveSettings() {

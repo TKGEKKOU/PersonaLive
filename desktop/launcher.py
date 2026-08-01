@@ -44,6 +44,7 @@ def run(project_root: Path | None = None) -> int:
             js_api=api,
         )
         api.bind_window(window)
+        window.events.closing += lambda: api.request_exit_confirm() if not api._exiting else True
         window.events.closed += lambda: (server.stop(), shutdown_asr_workers())
         webview.start(gui="edgechromium", debug=False, private_mode=False)
         return 0

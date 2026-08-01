@@ -11,9 +11,12 @@ const MODULES = {
 function bindShellEvents() {
   $("sidebar-toggle").addEventListener("click", () => setSidebarPinned(!document.body.classList.contains("sidebar-pinned")));
   $("open-guide")?.addEventListener("click", openGuide);
-  $("shutdown-project")?.addEventListener("click", requestProjectShutdown);
   $("settings-confirm-cancel").addEventListener("click", () => $("settings-confirm-dialog").close());
   $("settings-confirm-submit").addEventListener("click", confirmSettingsAction);
+  $("exit-confirm-cancel").addEventListener("click", () => $("exit-confirm-dialog").close());
+  $("exit-confirm-submit").addEventListener("click", () => {
+    if (window.pywebview?.api?.do_exit) window.pywebview.api.do_exit();
+  });
   document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
 }
 
@@ -23,15 +26,6 @@ function openGuide() {
   } else {
     window.location.href = "/static/onboarding.html";
   }
-}
-
-function requestProjectShutdown() {
-  state.settingsAction = "shutdown";
-  $("settings-confirm-title").textContent = "结束项目";
-  $("settings-confirm-detail").textContent = "确定要结束项目吗？将停止本地服务，页面会断开连接。";
-  $("settings-confirm-submit").textContent = "确认结束";
-  $("shutdown-docker-option").classList.remove("is-hidden");
-  $("settings-confirm-dialog").showModal();
 }
 
 function setSidebarPinned(pinned) {

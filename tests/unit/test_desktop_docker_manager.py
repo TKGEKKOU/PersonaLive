@@ -37,3 +37,17 @@ def test_compose_stop_keeps_containers(tmp_path):
     manager.compose_stop()
 
     assert calls[-1] == ["docker", "compose", "-f", str(tmp_path / "docker-compose.yml"), "stop"]
+
+
+def test_compose_down_removes_containers_but_keeps_volumes(tmp_path):
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    (tmp_path / "docker-compose.yml").write_text("services: {}", encoding="utf-8")
+    manager = DockerManager(tmp_path, runner=runner, docker_executable="docker")
+    manager.compose_down()
+
+    assert calls[-1] == ["docker", "compose", "-f", str(tmp_path / "docker-compose.yml"), "down"]
