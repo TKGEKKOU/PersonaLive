@@ -9,24 +9,32 @@ from fastapi.staticfiles import StaticFiles
 from langgraph.checkpoint.memory import MemorySaver
 
 from agents.checkpoint import create_mysql_checkpointer
+from agents.context_factory import build_agent_runner
 from agents.service import PersonaAgentService
 from app.database import Base, build_engine, build_session_factory, upgrade_persona_schema
 from app.routers.agents import router as agents_router
 from app.routers.asr import router as asr_router
 from app.routers.documents import router as documents_router
 from app.routers.embedding import router as embedding_router
+from app.routers.integrations import router as integrations_router
 from app.routers.persona_drafts import router as persona_drafts_router
 from app.routers.messages import router as messages_router
 from app.routers.personas import router as personas_router
+from app.routers.plugins import router as plugins_router
 from app.routers.rag import router as rag_router
 from app.routers.realtime import router as realtime_router
 from app.routers.settings import router as settings_router
 from app.routers.tts import router as tts_router
 from app.routers.voice import router as voice_router
 from settings import Settings
+from extensions.events import EVENT_MESSAGE, EventBus
+from extensions.manager import PluginManager
 from ingestion.status import get_system_status
 from ingestion.local_embedding.resources import LocalEmbeddingResourceManager
 from ingestion.embeddings import warm_managed_embedding
+from integrations.config import onebot_runtime_config
+from integrations.onebot11.router import ImMessageRouter
+from integrations.onebot11.ws_server import OneBotConnectionManager, router as onebot_ws_router
 from persona.delete_service import PersonaDeletionService
 from realtime.execution import ConversationExecutionRegistry
 from voice.asr import build_asr_provider
@@ -48,6 +56,7 @@ def create_app(initialize_database: bool = True) -> FastAPI:
         )
         yield
         app.state.embedding_warmup_task.cancel()
+        app.state.plugin_manager.unload_all()
         app.state.tts_worker.stop_service()
         resource = getattr(app.state, "checkpoint_resource", None)
         if resource is not None:
@@ -76,13 +85,34 @@ def create_app(initialize_database: bool = True) -> FastAPI:
         app.state.agent_service = PersonaAgentService(checkpoint_resource.saver)
     else:
         app.state.agent_service = PersonaAgentService(MemorySaver())
+    app.state.event_bus = EventBus()
+    app.state.onebot = OneBotConnectionManager(
+        lambda: onebot_runtime_config(settings.project_root)
+    )
+    app.state.im_router = ImMessageRouter(
+        app.state.agent_service,
+        app.state.session_factory,
+        settings.project_root / "data" / "im_bindings.json",
+        settings.project_root / "data" / "integrations.json",
+    )
+    app.state.event_bus.subscribe(EVENT_MESSAGE, app.state.im_router.handle)
+    app.state.plugin_manager = PluginManager(
+        settings.project_root / "plugins",
+        settings.project_root / "data",
+        app.state.event_bus,
+        agent_runner=build_agent_runner(app.state.session_factory, app.state.agent_service),
+    )
+    app.state.plugin_manager.load_all()
     app.include_router(agents_router)
     app.include_router(asr_router)
+    app.include_router(onebot_ws_router)
+    app.include_router(integrations_router)
     app.include_router(messages_router)
     app.include_router(personas_router)
     app.include_router(documents_router)
     app.include_router(embedding_router)
     app.include_router(persona_drafts_router)
+    app.include_router(plugins_router)
     app.include_router(rag_router)
     app.include_router(realtime_router)
     app.include_router(settings_router)

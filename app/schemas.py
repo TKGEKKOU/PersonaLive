@@ -226,3 +226,35 @@ class ConversationMessageResponse(BaseModel):
 class VoiceMessageTurnResponse(BaseModel):
     message: ConversationMessageResponse
     turn: AgentTurnResponse
+
+
+class PluginEnablePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+
+
+class PluginConfigPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    config: dict[str, Any]
+
+
+class PluginInfoResponse(BaseModel):
+    name: str
+    version: str
+    description: str
+    author: str
+    enabled: bool
+    config: dict[str, Any]
+    error: str | None = None
+
+
+class OneBotConfigUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool | None = None
+    access_token: str | None = None
+    group_trigger: Literal["at", "prefix"] | None = None
+    prefix: str | None = None
+    default_persona_id: str | None = None

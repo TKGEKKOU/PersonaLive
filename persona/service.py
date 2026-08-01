@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import KnowledgeSpace, Persona
@@ -44,3 +45,12 @@ def resolve_knowledge_scope(session: Session, persona_id: str) -> KnowledgeScope
     if knowledge_space is None or knowledge_space.workspace_id != LOCAL_WORKSPACE_ID:
         raise PersonaNotFound(persona_id)
     return KnowledgeScope(LOCAL_WORKSPACE_ID, (persona.knowledge_space_id,))
+
+
+def find_persona_by_name(session: Session, name: str) -> Persona | None:
+    statement = (
+        select(Persona)
+        .where(Persona.workspace_id == LOCAL_WORKSPACE_ID, Persona.name == name)
+        .order_by(Persona.created_at, Persona.id)
+    )
+    return session.scalars(statement).first()
