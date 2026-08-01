@@ -16,6 +16,7 @@ from app.routers.agents import router as agents_router
 from app.routers.asr import router as asr_router
 from app.routers.documents import router as documents_router
 from app.routers.embedding import router as embedding_router
+from app.routers.eval import router as eval_router
 from app.routers.integrations import router as integrations_router
 from app.routers.persona_drafts import router as persona_drafts_router
 from app.routers.messages import router as messages_router
@@ -146,6 +147,7 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     app.include_router(personas_router)
     app.include_router(documents_router)
     app.include_router(embedding_router)
+    app.include_router(eval_router)
     app.include_router(persona_drafts_router)
     app.include_router(plugins_router)
     app.include_router(rag_router)
