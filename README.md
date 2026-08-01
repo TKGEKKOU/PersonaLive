@@ -280,3 +280,20 @@ GPT-SoVITS/在线 TTS、数字人事件、OBS 与直播平台适配器。
 Windows onedir 包内置 `runtime/tts/Qwen3_TTS_Lunar.exe` 及其 DLL 和许可证文件。
 构建脚本会检查该 Lunar Runtime，并由 `PersonaLive.spec` 将整个 `runtime/tts` 目录打包。
 本地 TTS 已接入设置试听、角色参考音色和聊天回复语音；Live2D 仍未接入。
+
+## RAG 评测
+
+设置页底部【RAG 评测】可对任意角色跑离线评测：先选择角色，再点开始评测，
+完成后展示检索质量（recall@k / precision@k / MRR / hit@1）与生成质量
+（grounded / useful）。
+
+评测数据位于 `rag/eval/sample_questions.jsonl`，可直接编辑增删问题。
+要获得检索类指标，需要为每条问题标注真实 `expected_chunk_ids`：
+
+1. 启动 Docker 与 Milvus 后运行：
+   `.venv\Scripts\python.exe -B scripts/export_chunks.py --workspace-id local
+   --knowledge-space-id <知识空间ID> --out chunks.csv`
+2. 在 CSV 中找出每条问题对应的 `chunk_id`，填入 JSONL 的
+   `expected_chunk_ids` 数组。
+
+未标注的用例会自动跳过检索类指标，只统计生成质量与耗时。
