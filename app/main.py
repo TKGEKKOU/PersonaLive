@@ -24,6 +24,7 @@ from app.routers.plugins import router as plugins_router
 from app.routers.rag import router as rag_router
 from app.routers.realtime import router as realtime_router
 from app.routers.settings import router as settings_router
+from app.routers.system import router as system_router
 from app.routers.tts import router as tts_router
 from app.routers.voice import router as voice_router
 from settings import Settings
@@ -116,6 +117,7 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     app.include_router(rag_router)
     app.include_router(realtime_router)
     app.include_router(settings_router)
+    app.include_router(system_router)
     app.include_router(tts_router)
     app.include_router(voice_router)
 

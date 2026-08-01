@@ -113,7 +113,7 @@ pymysql.err.OperationalError: (1045, "Access denied for user ...")
 1. 将原项目 `.env` 中的 `MYSQL_HOST`、`MYSQL_PORT`、`MYSQL_DATABASE`、
    `MYSQL_USER` 和 `MYSQL_PASSWORD` 填入下载副本的 `.env`。
 2. 不要尝试用下载副本重新初始化同名 MySQL 数据卷。
-3. 如果原 FastAPI 仍占用 `8001`，停止原进程，或把下载副本的 `APP_PORT` 改为
+3. 如果原 FastAPI 仍占用 `17000`，停止原进程，或把下载副本的 `APP_PORT` 改为
    `8002` 等未占用端口。
 
 处理方式二，让下载副本拥有独立的 Docker 数据：
@@ -122,14 +122,14 @@ pymysql.err.OperationalError: (1045, "Access denied for user ...")
 2. 将 MySQL 卷名 `personalive_mysql_data` 改为新的唯一名称。
 3. 修改宿主机端口，避免与原项目冲突，例如：
    - MySQL：`23306:3306`
-   - Milvus：`29530:19530`
+    - Milvus：`17002:19530`
    - Milvus 健康端口：`29091:9091`
    - Attu：`28082:3000`
 4. 同步修改下载副本 `.env`：
 
 ```env
 MYSQL_PORT=23306
-MILVUS_URI=http://127.0.0.1:29530
+MILVUS_URI=http://127.0.0.1:17002
 APP_PORT=8002
 ```
 
@@ -179,15 +179,15 @@ $env:PERSONALIVE_PYTORCH_INDEX = "https://your-mirror.example/pytorch/cu128/"
 生成的助手音频随对话历史保存，并随清空对话删除。源码开发目录若缺少内置 CLI，将明确禁用模型安装；
 维护者可通过 GitHub Actions 的 `Build TTS runtime` 工作流生成固定版本的 Windows 运行库。
 
-API 文档：<http://127.0.0.1:8001/docs>
+API 文档：<http://127.0.0.1:17000/docs>
 
-Web 工作台：<http://127.0.0.1:8001/static/index.html>
+Web 工作台：<http://127.0.0.1:17000/static/index.html>
 
 工作台提供角色切换、资料 Markdown 预览与确认入库、RAG 问答、引用和 trace 展示。
 
-组件状态：<http://127.0.0.1:8001/api/status>
+组件状态：<http://127.0.0.1:17000/api/status>
 
-Attu：<http://127.0.0.1:18082>
+Attu：<http://127.0.0.1:17003>
 
 ## 主要接口
 
@@ -245,19 +245,19 @@ RAG_PIPELINE=simple
 查看当前监听 PID：
 
 ```powershell
-Get-NetTCPConnection -LocalPort 8001 -State Listen |
+Get-NetTCPConnection -LocalPort 17000 -State Listen |
     Select-Object LocalAddress, LocalPort, OwningProcess
 ```
 
 停止 FastAPI：
 
 ```powershell
-$conn = Get-NetTCPConnection -LocalPort 8001 -State Listen -ErrorAction SilentlyContinue
+$conn = Get-NetTCPConnection -LocalPort 17000 -State Listen -ErrorAction SilentlyContinue
 if ($conn) {
     Stop-Process -Id $conn.OwningProcess
     Write-Host "Stopped process PID:" $conn.OwningProcess
 } else {
-    Write-Host "No service is listening on port 8001"
+    Write-Host "No service is listening on port 17000"
 }
 ```
 

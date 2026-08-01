@@ -10,7 +10,18 @@ const MODULES = {
 
 function bindShellEvents() {
   $("sidebar-toggle").addEventListener("click", () => setSidebarPinned(!document.body.classList.contains("sidebar-pinned")));
+  $("shutdown-project")?.addEventListener("click", requestProjectShutdown);
+  $("settings-confirm-cancel").addEventListener("click", () => $("settings-confirm-dialog").close());
+  $("settings-confirm-submit").addEventListener("click", confirmSettingsAction);
   document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
+}
+
+function requestProjectShutdown() {
+  state.settingsAction = "shutdown";
+  $("settings-confirm-title").textContent = "结束项目";
+  $("settings-confirm-detail").textContent = "确定要结束项目吗？将停止本地服务，页面会断开连接。";
+  $("settings-confirm-submit").textContent = "确认结束";
+  $("settings-confirm-dialog").showModal();
 }
 
 function setSidebarPinned(pinned) {

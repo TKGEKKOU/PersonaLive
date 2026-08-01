@@ -21,8 +21,8 @@ from voice.tts.install import TTSResourceManager
 
 _STARTED_AT = time.monotonic()
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
-_ASR_PORT = 8765
-_ATTU_PORT = 18082
+_ASR_PORT = 17004
+_ATTU_PORT = 17003
 
 
 def _app_version() -> str:

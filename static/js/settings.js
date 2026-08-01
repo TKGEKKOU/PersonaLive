@@ -17,8 +17,6 @@ function bindSettingsEvents() {
   $("collapse-status").addEventListener("click", toggleStatusCards);
   $("settings-form").addEventListener("submit", requestSettingsSave);
   $("reset-settings").addEventListener("click", requestSettingsReset);
-  $("settings-confirm-cancel").addEventListener("click", () => $("settings-confirm-dialog").close());
-  $("settings-confirm-submit").addEventListener("click", confirmSettingsAction);
   $("llm-provider").addEventListener("change", applyLlmPreset);
   ["openai-api-key", "embedding-api-key", "web-search-api-key"].forEach((id) => {
     $(`toggle-${id}`).addEventListener("click", () => toggleApiKeyVisibility(id));
@@ -544,6 +542,17 @@ async function confirmSettingsAction() {
   const action = state.settingsAction; $("settings-confirm-dialog").close();
   if (action === "save") await saveSettings();
   if (action === "reset") await resetSettings();
+  if (action === "shutdown") await shutdownProject();
+}
+
+async function shutdownProject() {
+  setText("settings-status");
+  try {
+    await api(fetch("/api/system/shutdown", { method: "POST" }));
+    setText("settings-status", "项目已停止，页面即将断开。");
+  } catch (reason) {
+    setText("settings-status", reason.message || reason);
+  }
 }
 async function saveSettings() {
   $("save-settings").disabled = true; setText("settings-status");

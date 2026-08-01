@@ -55,4 +55,4 @@ async def transcribe(request: Request, x_audio_filename: str = Header(default="r
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8765)
+    uvicorn.run(app, host="127.0.0.1", port=17004)

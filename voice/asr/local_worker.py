@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from settings import Settings
 
 
-WORKER_URL = "http://127.0.0.1:8765"
+WORKER_URL = "http://127.0.0.1:17004"
 _managers: dict[Path, "LocalASRManager"] = {}
 
 

@@ -15,7 +15,7 @@ def test_local_qwen_asr_returns_transcript():
 
     transport = httpx.MockTransport(handler)
     async def run():
-        async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1:8765") as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1:17004") as client:
             provider = LocalQwenASR(client=client)
             return await provider.transcribe("recording.webm", "audio/webm", b"audio")
 
