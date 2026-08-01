@@ -17,6 +17,7 @@ def test_web_workbench_exposes_shell_and_module_views(client):
         "nav-integrations",
         "nav-plugins",
         "shutdown-project",
+        "shutdown-docker-option",
         "view-root",
         "preview-drawer",
         "settings-confirm-dialog",
@@ -105,7 +106,8 @@ def test_web_workbench_exposes_shell_and_module_views(client):
             'fetch("/api/settings"',
             'method: "DELETE"',
             '确认重置配置',
-            'fetch("/api/system/shutdown", { method: "POST" })',
+            'body: JSON.stringify({ stop_docker: stopDocker })',
+            "stop_docker",
         ),
     }
     for path, contracts in scripts.items():

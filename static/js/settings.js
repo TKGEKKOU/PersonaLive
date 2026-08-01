@@ -508,6 +508,7 @@ function requestSettingsReset() { openSettingsConfirmation("reset"); }
 function openSettingsConfirmation(action) {
   if (action === "save" && !validateSettings()) return;
   state.settingsAction = action;
+  $("shutdown-docker-option").classList.add("is-hidden");
   const isSave = action === "save";
   $("settings-confirm-title").textContent = isSave ? "保存前确认" : "确认重置配置";
   $("settings-confirm-detail").textContent = isSave
@@ -548,7 +549,12 @@ async function confirmSettingsAction() {
 async function shutdownProject() {
   setText("settings-status");
   try {
-    await api(fetch("/api/system/shutdown", { method: "POST" }));
+    const stopDocker = $("shutdown-docker")?.checked || false;
+    await api(fetch("/api/system/shutdown", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stop_docker: stopDocker }),
+    }));
     setText("settings-status", "项目已停止，页面即将断开。");
   } catch (reason) {
     setText("settings-status", reason.message || reason);

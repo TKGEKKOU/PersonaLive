@@ -258,3 +258,9 @@ class OneBotConfigUpdate(BaseModel):
     group_trigger: Literal["at", "prefix"] | None = None
     prefix: str | None = None
     default_persona_id: str | None = None
+
+
+class ShutdownPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    stop_docker: bool = False

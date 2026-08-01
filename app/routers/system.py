@@ -1,22 +1,40 @@
 import os
+import subprocess
 import threading
 import time
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Body, Request
 
 from app.routers.settings import require_local
+from app.schemas import ShutdownPayload
+from settings import Settings
 
 
 router = APIRouter(prefix="/api/system", tags=["system"])
 
 
 @router.post("/shutdown")
-def shutdown(request: Request) -> dict:
-    """仅本机可用：延迟退出当前 PersonaLive 进程（桌面版连同窗口一起退出）。"""
+def shutdown(
+    payload: ShutdownPayload = Body(default=ShutdownPayload()),
+    request: Request = ...,
+) -> dict:
+    """仅本机可用：延迟退出当前 PersonaLive 进程（桌面版连同窗口一起退出）。
+    stop_docker=True 时先执行 docker compose down（保留数据卷）再退出。"""
     require_local(request)
 
     def stop() -> None:
         time.sleep(0.5)
+        if payload.stop_docker:
+            try:
+                subprocess.run(
+                    ["docker", "compose", "down"],
+                    cwd=Settings.load().project_root,
+                    capture_output=True,
+                    text=True,
+                    timeout=90,
+                )
+            except Exception:
+                pass
         os._exit(0)
 
     threading.Thread(target=stop, daemon=True, name="personalive-shutdown").start()

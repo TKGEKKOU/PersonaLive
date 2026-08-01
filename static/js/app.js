@@ -21,6 +21,7 @@ function requestProjectShutdown() {
   $("settings-confirm-title").textContent = "结束项目";
   $("settings-confirm-detail").textContent = "确定要结束项目吗？将停止本地服务，页面会断开连接。";
   $("settings-confirm-submit").textContent = "确认结束";
+  $("shutdown-docker-option").classList.remove("is-hidden");
   $("settings-confirm-dialog").showModal();
 }
 
