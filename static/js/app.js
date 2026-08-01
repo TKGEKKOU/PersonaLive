@@ -10,8 +10,6 @@ const MODULES = {
 
 function bindShellEvents() {
   $("sidebar-toggle").addEventListener("click", () => setSidebarPinned(!document.body.classList.contains("sidebar-pinned")));
-  $("refresh-status")?.addEventListener("click", refreshSystemStatus);
-  $("collapse-status")?.addEventListener("click", toggleStatusCards);
   document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
 }
 

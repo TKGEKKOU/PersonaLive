@@ -13,6 +13,8 @@ function initSettings() {
 }
 
 function bindSettingsEvents() {
+  $("refresh-status").addEventListener("click", refreshSystemStatus);
+  $("collapse-status").addEventListener("click", toggleStatusCards);
   $("settings-form").addEventListener("submit", requestSettingsSave);
   $("reset-settings").addEventListener("click", requestSettingsReset);
   $("settings-confirm-cancel").addEventListener("click", () => $("settings-confirm-dialog").close());
