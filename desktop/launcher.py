@@ -50,10 +50,6 @@ def run(project_root: Path | None = None) -> int:
         ensure_local_env(root)
         import webview
 
-        # 无边框窗口拖动：只有前端 .titlebar-drag 区域可拖动，
-        # 不影响页面其他交互（WebView2 不支持 CSS app-region）。
-        webview.DRAG_REGION_SELECTOR = ".titlebar-drag"
-
         if server.is_running():
             initial_url = f"{server.url}/static/index.html"
         else:
@@ -65,8 +61,6 @@ def run(project_root: Path | None = None) -> int:
             height=820,
             min_size=(960, 640),
             js_api=api,
-            frameless=True,
-            easy_drag=False,  # 拖动由前端标题栏 CSS app-region 负责
         )
         api.bind_window(window)
         api.auto_start_if_needed()

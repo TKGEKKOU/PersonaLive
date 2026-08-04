@@ -77,9 +77,6 @@ const VIEW_NODES = {};
 
 function bindShellEvents() {
   $("sidebar-toggle").addEventListener("click", () => setSidebarPinned(!document.body.classList.contains("sidebar-pinned")));
-  $("titlebar-minimize")?.addEventListener("click", () => window.pywebview?.api?.window_minimize?.());
-  $("titlebar-maximize")?.addEventListener("click", () => window.pywebview?.api?.window_toggle_maximize?.());
-  $("titlebar-close")?.addEventListener("click", () => window.showExitConfirm && window.showExitConfirm());
   $("settings-confirm-cancel").addEventListener("click", () => $("settings-confirm-dialog").close());
   $("settings-confirm-submit").addEventListener("click", confirmSettingsAction);
   $("exit-confirm-cancel").addEventListener("click", () => $("exit-confirm-dialog").close());
