@@ -528,7 +528,7 @@ async function syncEditLive2dModel() {
 }
 async function loadEditReference() {
   if (!state.editPersona) return;
-  const info = await api(fetch(`/api/tts/personas/${state.editPersona.id}/reference`, { headers: { "X-PersonaLive-Request": "web" } }));
+  const info = await api(fetch(`/api/tts/personas/${state.editPersona.id}/reference`, { headers: { "X-YUMENO-Request": "web" } }));
   const duration = info.duration_seconds ? ` · 约 ${Math.round(info.duration_seconds)} 秒` : "";
   setText("edit-tts-reference-status", info.configured ? `已配置：${info.name}${info.count > 1 ? `（已合并 ${info.count} 条${duration}）` : duration}` : "未配置参考音色");
   $("edit-tts-preview-reference").disabled = !info.configured;
@@ -551,7 +551,7 @@ function syncEditTtsPreview(referenceConfigured) {
 async function playEditReference() {
   if (!state.editPersona) return;
   try {
-    const response = await fetch(`/api/tts/personas/${state.editPersona.id}/reference/audio`, { headers: { "X-PersonaLive-Request": "web" } });
+    const response = await fetch(`/api/tts/personas/${state.editPersona.id}/reference/audio`, { headers: { "X-YUMENO-Request": "web" } });
     if (!response.ok) throw new Error("参考音色尚未配置");
     if (state.editReferenceUrl) URL.revokeObjectURL(state.editReferenceUrl);
     state.editReferenceUrl = URL.createObjectURL(await response.blob());
@@ -564,7 +564,7 @@ async function playEditReference() {
 async function removeEditReference() {
   if (!state.editPersona || !window.confirm("移除当前角色的参考音色？")) return;
   try {
-    await api(fetch(`/api/tts/personas/${state.editPersona.id}/reference`, { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
+    await api(fetch(`/api/tts/personas/${state.editPersona.id}/reference`, { method: "DELETE", headers: { "X-YUMENO-Request": "web" } }));
     state.editPersona.profile = { ...(state.editPersona.profile || {}), tts: { ...(state.editPersona.profile?.tts || {}) } };
     delete state.editPersona.profile.tts.reference_audio;
     moduleMessage("edit-tts-message", "参考音色已移除"); await loadEditReference();
@@ -577,7 +577,7 @@ async function generateEditPreview() {
   if (!text) return setText("edit-tts-preview-status", "请输入示例文案");
   const button = $("edit-tts-generate-preview"); button.disabled = true; setText("edit-tts-preview-status", "正在生成示例语音…");
   try {
-    const response = await fetch(`/api/tts/personas/${state.editPersona.id}/reference/preview`, { method: "POST", headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" }, body: JSON.stringify({ text }) });
+    const response = await fetch(`/api/tts/personas/${state.editPersona.id}/reference/preview`, { method: "POST", headers: { "Content-Type": "application/json", "X-YUMENO-Request": "web" }, body: JSON.stringify({ text }) });
     if (!response.ok) { const data = await response.json().catch(() => null); if (response.status === 409) { setText("edit-tts-preview-status", "请先安装 TTS 模型"); return openTtsSettings(); } throw new Error(data?.detail || `请求失败 (${response.status})`); }
     const audio = $("edit-tts-preview-audio"); if (audio.src) URL.revokeObjectURL(audio.src); audio.src = URL.createObjectURL(await response.blob()); audio.classList.remove("is-hidden"); setText("edit-tts-preview-status", "示例语音已生成");
     if (window.PL && window.PL.unlockAudio) window.PL.unlockAudio();
@@ -686,7 +686,7 @@ async function saveEditVoice(fromAll = false) {
       moduleMessage("edit-tts-message", `正在上传 ${pending.length} 条参考音频…`);
       const form = new FormData();
       pending.forEach((file) => form.append("files", file));
-      state.editPersona = await api(fetch(`/api/tts/personas/${state.editPersona.id}/reference`, { method: "POST", headers: { "X-PersonaLive-Request": "web" }, body: form }));
+      state.editPersona = await api(fetch(`/api/tts/personas/${state.editPersona.id}/reference`, { method: "POST", headers: { "X-YUMENO-Request": "web" }, body: form }));
       state.editSelectedAudio = [];
       renderSelectedChips("edit-tts-selected", "audio");
     }

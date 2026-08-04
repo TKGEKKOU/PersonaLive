@@ -13,7 +13,7 @@ from fastapi import FastAPI, Header, HTTPException, Request, WebSocket, WebSocke
 from voice.asr.streaming import SAMPLE_RATE, StreamSession
 
 MANAGED_MODEL = Path(__file__).resolve().parents[2] / "models" / "Qwen3-ASR-0.6B"
-MODEL_ID = os.getenv("PERSONALIVE_ASR_MODEL") or str(MANAGED_MODEL)
+MODEL_ID = os.getenv("YUMENO_ASR_MODEL") or str(MANAGED_MODEL)
 INFER_LOCK = asyncio.Lock()
 MAX_PCM_BYTES_PER_MESSAGE = 1 << 20
 

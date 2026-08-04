@@ -183,5 +183,5 @@ def shutdown(
                 pass
         os._exit(0)
 
-    threading.Thread(target=stop, daemon=True, name="personalive-shutdown").start()
+    threading.Thread(target=stop, daemon=True, name="yumeno-shutdown").start()
     return {"status": "stopping"}

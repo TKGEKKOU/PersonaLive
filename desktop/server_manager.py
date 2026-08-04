@@ -35,7 +35,7 @@ class ServerManager:
         self.app = app
         config = uvicorn.Config(app, host="127.0.0.1", port=self.settings.app_port, log_level="info")
         self.server = uvicorn.Server(config)
-        self.thread = threading.Thread(target=self.server.run, daemon=True, name="personalive-api")
+        self.thread = threading.Thread(target=self.server.run, daemon=True, name="yumeno-api")
         self.thread.start()
         self.owns_server = True
         deadline = time.monotonic() + timeout

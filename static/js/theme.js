@@ -1,7 +1,7 @@
 "use strict";
 (function () {
-  const STORAGE_KEY = "personalive:theme";
-  const COOKIE_KEY = "personalive_theme";
+  const STORAGE_KEY = "yumeno:theme";
+  const COOKIE_KEY = "yumeno_theme";
 
   function readCookie(name) {
     try {
@@ -41,7 +41,7 @@
       btn.title = title;
       btn.setAttribute("aria-label", title);
     }
-    document.dispatchEvent(new CustomEvent("personalive:themechange", { detail: { theme: next } }));
+    document.dispatchEvent(new CustomEvent("yumeno:themechange", { detail: { theme: next } }));
   }
 
   function toggle() {

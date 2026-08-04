@@ -250,11 +250,11 @@ RAG_PIPELINE=default                 # default(自适应纠错) | simple(检索�
 MAX_REWRITE_COUNT=2                  # 查询改写次数上限
 MAX_GENERATION_RETRY=2               # 生成纠错次数上限
 DEFAULT_CONFIDENCE_THRESHOLD=0.75    # 高置信度直通阈值
-COLLECTION_NAME=personalive_content  # Milvus 集合名（更换 Embedding 维度时需换新集合）
+COLLECTION_NAME=yumeno_content  # Milvus 集合名（更换 Embedding 维度时需换新集合）
 ```
 
 > **多副本注意**：`docker-compose.yml` 使用固定容器名与全局数据卷
-> `personalive_mysql_data`，同一台机器运行第二个副本时请按 README 末尾的
+> `yumeno_mysql_data`，同一台机器运行第二个副本时请按 README 末尾的
 > "下载副本与 Docker 重名冲突"一节调整容器名、卷名与宿主机端口，不要删除数据卷。
 
 ## 主要接口

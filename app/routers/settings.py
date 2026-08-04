@@ -133,10 +133,10 @@ def reveal_api_key(
     payload: ApiKeyRevealRequest,
     request: Request,
     response: Response,
-    x_personalive_request: str = Header(default=""),
+    x_yumeno_request: str = Header(default=""),
 ) -> ApiKeyRevealResponse:
     require_local(request)
-    if x_personalive_request != "web":
+    if x_yumeno_request != "web":
         raise HTTPException(status_code=403, detail="Missing same-origin request header")
     response.headers["Cache-Control"] = "no-store"
     values = read_settings(SETTINGS_PATH)

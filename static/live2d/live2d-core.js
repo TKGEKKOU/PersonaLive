@@ -21,19 +21,19 @@
  *   PLLive2D.setVoiceState("listening" | "idle" | "connecting")
  *   PLLive2D.setLipSyncText(text, language?)
  *   PLLive2D.destroy()
- * Events (CustomEvent "personalive:live2d" on document):
+ * Events (CustomEvent "yumeno:live2d" on document):
  *   { type: "state", state } | { type: "models", models, current } |
  *   { type: "model", name, id } | { type: "config", ... } |
  *   { type: "status", level, message }
  */
 window.PLLive2D = (function () {
   const LS = {
-    model: "personalive:live2d:model",
-    flip: "personalive:live2d:flip",
-    scale: "personalive:live2d:scale",
-    mode: "personalive:live2d:mode",
-    posX: "personalive:live2d:posx",
-    posY: "personalive:live2d:posy",
+    model: "yumeno:live2d:model",
+    flip: "yumeno:live2d:flip",
+    scale: "yumeno:live2d:scale",
+    mode: "yumeno:live2d:mode",
+    posX: "yumeno:live2d:posx",
+    posY: "yumeno:live2d:posy",
   };
 
   const LIP_IDS = ["ParamMouthOpenY", "ParamMouthForm"];
@@ -584,7 +584,7 @@ window.PLLive2D = (function () {
     /* ---------- events ---------- */
 
     _emit(payload) {
-      document.dispatchEvent(new CustomEvent("personalive:live2d", { detail: payload }));
+      document.dispatchEvent(new CustomEvent("yumeno:live2d", { detail: payload }));
     }
   }
 

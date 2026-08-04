@@ -90,7 +90,7 @@ async function ensureApiKeyValue(inputId) {
   }
   const result = await api(fetch("/api/settings/reveal-key", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" },
+    headers: { "Content-Type": "application/json", "X-YUMENO-Request": "web" },
     body: JSON.stringify({ field: config.field }),
   }));
   input.value = result.value || "";
@@ -242,14 +242,14 @@ async function installEmbedding() {
   const installButton = $("install-embedding");
   if (installButton) installButton.textContent = "安装中";
   try {
-    await api(fetch("/api/embedding/install", { method: "POST", headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" }, body: JSON.stringify(embeddingResourcePayload()) }));
+    await api(fetch("/api/embedding/install", { method: "POST", headers: { "Content-Type": "application/json", "X-YUMENO-Request": "web" }, body: JSON.stringify(embeddingResourcePayload()) }));
     await loadEmbeddingStatus();
   } catch (reason) { setText("embedding-status", `安装失败：${friendlyError(reason)}`); setDisabled("install-embedding", false); }
 }
 async function cancelEmbedding() {
   setDisabled("cancel-embedding", true);
   try {
-    await api(fetch("/api/embedding/install/cancel", { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
+    await api(fetch("/api/embedding/install/cancel", { method: "DELETE", headers: { "X-YUMENO-Request": "web" } }));
     await loadEmbeddingStatus();
   } catch (reason) { setText("embedding-status", `取消失败：${friendlyError(reason)}`); setDisabled("cancel-embedding", false); }
 }
@@ -257,14 +257,14 @@ async function removeEmbedding() {
   if (!confirm("删除当前本地 Embedding 模型？Milvus 中的资料不会被删除。")) return;
   setDisabled("remove-embedding", true);
   try {
-    await api(fetch("/api/embedding/model", { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
+    await api(fetch("/api/embedding/model", { method: "DELETE", headers: { "X-YUMENO-Request": "web" } }));
     await loadEmbeddingStatus();
   } catch (reason) { setText("embedding-status", `删除失败：${friendlyError(reason)}`); setDisabled("remove-embedding", false); }
 }
 async function openEmbeddingDirectory() {
   setDisabled("open-embedding-directory", true);
   try {
-    const result = await api(fetch("/api/embedding/model-directory", { method: "POST", headers: { "X-PersonaLive-Request": "web" } }));
+    const result = await api(fetch("/api/embedding/model-directory", { method: "POST", headers: { "X-YUMENO-Request": "web" } }));
     setText("embedding-status", `已打开：${result.opened_directory}`);
   } catch (reason) { setText("embedding-status", `打开失败：${friendlyError(reason)}`); }
   finally { setDisabled("open-embedding-directory", false); }
@@ -306,7 +306,7 @@ async function loadAsrStatus() {
 async function saveAsrConfig() {
   setDisabled("save-asr", true);
   try {
-    await api(fetch("/api/asr/config", { method: "PATCH", headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" }, body: JSON.stringify({ enabled: $("asr-enabled").checked, python_path: $("asr-python-path").value.trim(), model_path: $("asr-model-path").value.trim(), ffmpeg_path: $("asr-ffmpeg-path").value.trim() }) }));
+    await api(fetch("/api/asr/config", { method: "PATCH", headers: { "Content-Type": "application/json", "X-YUMENO-Request": "web" }, body: JSON.stringify({ enabled: $("asr-enabled").checked, python_path: $("asr-python-path").value.trim(), model_path: $("asr-model-path").value.trim(), ffmpeg_path: $("asr-ffmpeg-path").value.trim() }) }));
     await loadAsrStatus();
   } catch (reason) { setText("asr-status", `保存失败：${friendlyError(reason)}`); }
   finally { setDisabled("save-asr", false); }
@@ -318,7 +318,7 @@ async function installAsr() {
   if (installButton) installButton.textContent = "安装中";
   try {
     await saveAsrConfig();
-    await api(fetch("/api/asr/install", { method: "POST", headers: { "X-PersonaLive-Request": "web" } }));
+    await api(fetch("/api/asr/install", { method: "POST", headers: { "X-YUMENO-Request": "web" } }));
     await loadAsrStatus();
   } catch (reason) { setText("asr-status", `安装失败：${friendlyError(reason)}`); setDisabled("install-asr", false); }
 }
@@ -326,14 +326,14 @@ async function removeAsr() {
   if (!confirm("删除项目自动下载的 ASR 环境和模型？外部目录不会被删除。")) return;
   setDisabled("remove-asr", true);
   try {
-    await api(fetch("/api/asr/install", { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
+    await api(fetch("/api/asr/install", { method: "DELETE", headers: { "X-YUMENO-Request": "web" } }));
     await loadAsrStatus();
   } catch (reason) { setText("asr-status", `删除失败：${friendlyError(reason)}`); setDisabled("remove-asr", false); }
 }
 async function cancelAsr() {
   setDisabled("cancel-asr", true);
   try {
-    await api(fetch("/api/asr/install/cancel", { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
+    await api(fetch("/api/asr/install/cancel", { method: "DELETE", headers: { "X-YUMENO-Request": "web" } }));
     await loadAsrStatus();
   } catch (reason) { setText("asr-status", `取消失败：${friendlyError(reason)}`); setDisabled("cancel-asr", false); }
 }
@@ -342,7 +342,7 @@ async function openAsrDirectory() {
   if (!button) return;
   button.disabled = true;
   try {
-    const result = await api(fetch("/api/asr/model-directory", { method: "POST", headers: { "X-PersonaLive-Request": "web" } }));
+    const result = await api(fetch("/api/asr/model-directory", { method: "POST", headers: { "X-YUMENO-Request": "web" } }));
     setText("asr-status", `已打开：${result.opened_directory}`);
   } catch (reason) { setText("asr-status", `打开失败：${friendlyError(reason)}`); }
   finally { button.disabled = false; }
@@ -377,7 +377,7 @@ async function loadTtsStatus() {
     setDisabled("open-tts-directory", config.installing);
     setDisabled("preview-tts", !config.ready);
     if (state.editPersona) {
-      const reference = await api(fetch(`/api/tts/personas/${state.editPersona.id}/reference`, { headers: { "X-PersonaLive-Request": "web" } }));
+      const reference = await api(fetch(`/api/tts/personas/${state.editPersona.id}/reference`, { headers: { "X-YUMENO-Request": "web" } }));
       syncEditTtsPreview(reference.configured);
     }
     if (config.installing) setTimeout(loadTtsStatus, 2000);
@@ -391,7 +391,7 @@ async function loadTtsStatus() {
 }
 async function saveTtsConfig() {
   try {
-    await api(fetch("/api/tts/config", { method: "PATCH", headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" }, body: JSON.stringify({ enabled: $("tts-enabled").checked, use_gpu: $("tts-use-gpu").checked }) }));
+    await api(fetch("/api/tts/config", { method: "PATCH", headers: { "Content-Type": "application/json", "X-YUMENO-Request": "web" }, body: JSON.stringify({ enabled: $("tts-enabled").checked, use_gpu: $("tts-use-gpu").checked }) }));
     await loadTtsStatus();
   } catch (reason) { setText("tts-status", `保存失败：${friendlyError(reason)}`); }
 }
@@ -401,7 +401,7 @@ async function installTts() {
   const installTtsButton = $("install-tts");
   if (installTtsButton) installTtsButton.textContent = "安装中";
   try {
-    await api(fetch("/api/tts/install", { method: "POST", headers: { "X-PersonaLive-Request": "web" } }));
+    await api(fetch("/api/tts/install", { method: "POST", headers: { "X-YUMENO-Request": "web" } }));
     await loadTtsStatus();
   } catch (reason) { setText("tts-status", `安装失败：${friendlyError(reason)}`); setDisabled("install-tts", false); }
 }
@@ -409,21 +409,21 @@ async function removeTts() {
   if (!confirm("删除已下载的 TTS 模型？内置运行库和角色参考声音不会删除。")) return;
   setDisabled("remove-tts", true);
   try {
-    await api(fetch("/api/tts/install", { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
+    await api(fetch("/api/tts/install", { method: "DELETE", headers: { "X-YUMENO-Request": "web" } }));
     await loadTtsStatus();
   } catch (reason) { setText("tts-status", `删除失败：${friendlyError(reason)}`); setDisabled("remove-tts", false); }
 }
 async function cancelTts() {
   setDisabled("cancel-tts", true);
   try {
-    await api(fetch("/api/tts/install/cancel", { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
+    await api(fetch("/api/tts/install/cancel", { method: "DELETE", headers: { "X-YUMENO-Request": "web" } }));
     await loadTtsStatus();
   } catch (reason) { setText("tts-status", `取消失败：${friendlyError(reason)}`); setDisabled("cancel-tts", false); }
 }
 async function openTtsDirectory() {
   setDisabled("open-tts-directory", true);
   try {
-    const result = await api(fetch("/api/tts/model-directory", { method: "POST", headers: { "X-PersonaLive-Request": "web" } }));
+    const result = await api(fetch("/api/tts/model-directory", { method: "POST", headers: { "X-YUMENO-Request": "web" } }));
     setText("tts-status", `已打开：${result.opened_directory}`);
   } catch (reason) { setText("tts-status", `打开失败：${friendlyError(reason)}`); }
   finally { setDisabled("open-tts-directory", false); }
@@ -436,7 +436,7 @@ async function previewTts() {
   button.disabled = true;
   setText("tts-preview-status", "正在生成试听");
   try {
-    const response = await fetch("/api/tts/preview", { method: "POST", headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" }, body: JSON.stringify({ text }) });
+    const response = await fetch("/api/tts/preview", { method: "POST", headers: { "Content-Type": "application/json", "X-YUMENO-Request": "web" }, body: JSON.stringify({ text }) });
     if (!response.ok) {
       const data = await response.json().catch(() => null);
       throw new Error(data?.detail || `请求失败 (${response.status})`);

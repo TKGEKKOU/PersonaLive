@@ -28,6 +28,7 @@ class LocalASRManager:
         self.requirements = project_root / "voice" / "asr" / "requirements-local.txt"
         self.resources = ASRResourceManager(project_root)
         self.process: subprocess.Popen | None = None
+        self.watchdog: subprocess.Popen | None = None
         self._lock = asyncio.Lock()
 
     @property
@@ -46,7 +47,7 @@ class LocalASRManager:
             resolved = self.resources.resolve()
             env = os.environ.copy()
             env["HF_HOME"] = str(self.project_root / "data" / "models")
-            env["PERSONALIVE_ASR_MODEL"] = str(resolved.model)
+            env["YUMENO_ASR_MODEL"] = str(resolved.model)
             if resolved.ffmpeg:
                 env["PATH"] = f"{resolved.ffmpeg.parent}{os.pathsep}{env.get('PATH', '')}"
             self.process = subprocess.Popen(
@@ -55,11 +56,36 @@ class LocalASRManager:
                 env=env,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
+            self._spawn_watchdog()
             for _ in range(180):
                 if await self._healthy():
                     return
                 await asyncio.sleep(1)
             raise ASRUpstreamError("Local ASR worker did not become ready")
+
+    def _spawn_watchdog(self) -> None:
+        """父进程退出后自动结束 ASR worker，防止遗留孤儿进程。"""
+        try:
+            if self.watchdog is not None and self.watchdog.poll() is None:
+                self.watchdog.terminate()
+            watchdog_script = self.project_root / "voice" / "child_watchdog.py"
+            if not watchdog_script.is_file() or self.process is None:
+                self.watchdog = None
+                return
+            self.watchdog = subprocess.Popen(
+                [
+                    str(self.python),
+                    "-B",
+                    str(watchdog_script),
+                    "--parent",
+                    str(os.getpid()),
+                    "--child",
+                    str(self.process.pid),
+                ],
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            )
+        except Exception:  # pragma: no cover - 守护失败不影响主流程
+            self.watchdog = None
 
     async def _healthy(self) -> bool:
         try:
@@ -118,6 +144,10 @@ def build_asr_provider(settings: Settings) -> LocalQwenASR:
 
 def shutdown_asr_workers() -> None:
     for manager in _managers.values():
+        watchdog = manager.watchdog
+        if watchdog is not None and watchdog.poll() is None:
+            watchdog.terminate()
+        manager.watchdog = None
         process = manager.process
         if process is not None and process.poll() is None:
             process.terminate()
@@ -125,3 +155,4 @@ def shutdown_asr_workers() -> None:
                 process.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 process.kill()
+        manager.process = None

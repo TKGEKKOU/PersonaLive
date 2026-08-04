@@ -71,7 +71,7 @@ async def replay_body(body: bytes):
     openapi_extra={
         "parameters": [
             {
-                "name": "X-PersonaLive-Request",
+                "name": "X-YUMENO-Request",
                 "in": "header",
                 "required": True,
                 "schema": {"type": "string", "enum": ["web"]},
@@ -93,7 +93,7 @@ async def replay_body(body: bytes):
 )
 async def transcribe_audio(request: Request) -> TranscriptionResponse:
     require_local(request)
-    if request.headers.get("x-personalive-request") != "web":
+    if request.headers.get("x-yumeno-request") != "web":
         raise HTTPException(status_code=403, detail="Missing same-origin request header")
     raw_content_type = request.headers.get("content-type", "")
     media_type, parameters = parse_options_header(raw_content_type)

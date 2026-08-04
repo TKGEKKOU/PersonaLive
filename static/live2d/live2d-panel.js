@@ -8,7 +8,7 @@
  * (BroadcastChannel).
  */
 (function () {
-  const LS_ENABLED = "personalive:live2d:enabled";
+  const LS_ENABLED = "yumeno:live2d:enabled";
   const HEAVY_SCRIPTS = [
     "/static/vendor/live2d/pixi.min.js",
     "/static/vendor/live2d/live2d.min.js",
@@ -35,8 +35,8 @@
   let focusMode = false;
   let focusHintTimer = 0;
 
-  const STAGE_HEIGHT_KEY = "personalive:live2d:stageh";
-  const FOCUS_KEY = "personalive:live2d:focus";
+  const STAGE_HEIGHT_KEY = "yumeno:live2d:stageh";
+  const FOCUS_KEY = "yumeno:live2d:focus";
   const FOCUS_THRESHOLD = 6;
 
   const $ = (id) => document.getElementById(id);
@@ -399,7 +399,7 @@
         if (node && !node.hidden) closeDock();
       }
     });
-    document.addEventListener("personalive:live2d", (event) => {
+    document.addEventListener("yumeno:live2d", (event) => {
       const detail = event.detail || {};
       if (detail.type === "state") setStatus(detail.state);
       if (detail.type === "models") renderModelSelect();

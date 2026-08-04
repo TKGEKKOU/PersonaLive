@@ -45,7 +45,7 @@ function bindChatEvents() {
   $("chat-persona-toggle").addEventListener("click", togglePersonaDrawer);
   $("chat-settings-toggle").addEventListener("click", (event) => { event.stopPropagation(); toggleChatSettingsMenu(); });
   document.querySelectorAll("#chat-settings-menu button").forEach((button) => button.addEventListener("click", closeChatSettingsMenu));
-  $("assistant-voice-toggle").addEventListener("change", () => localStorage.setItem("personalive:assistant-voice", $("assistant-voice-toggle").checked ? "on" : "off"));
+  $("assistant-voice-toggle").addEventListener("change", () => localStorage.setItem("yumeno:assistant-voice", $("assistant-voice-toggle").checked ? "on" : "off"));
 }
 function connectRealtime() {
   if (!state.activePersona) return;
@@ -508,7 +508,7 @@ async function selectPersona(personaId = "") {
   closeRealtime();
   state.activePersona = state.personas.find((item) => item.id === personaId) || null;
   if (state.activePersona) {
-    const key = `personalive:conversation:${state.activePersona.id}`;
+    const key = `yumeno:conversation:${state.activePersona.id}`;
     state.conversationId = localStorage.getItem(key) || crypto.randomUUID();
     localStorage.setItem(key, state.conversationId);
   } else state.conversationId = crypto.randomUUID();
@@ -650,7 +650,7 @@ function updateAudioMessage(message) {
 }
 async function retryVoiceMessage(messageId) {
   try {
-    const result = await api(fetch(`/api/voice-messages/${messageId}/transcribe`, { method: "POST", headers: { "X-PersonaLive-Request": "web" } }));
+    const result = await api(fetch(`/api/voice-messages/${messageId}/transcribe`, { method: "POST", headers: { "X-YUMENO-Request": "web" } }));
     updateAudioMessage(result.message); handleAgentResult(result.turn);
   } catch (reason) { setText("chat-error", reason); await loadConversationMessages(); }
 }
@@ -666,10 +666,10 @@ async function loadConversationMessages() {
 async function clearConversation() {
   if (!state.activePersona || !confirm("永久删除当前对话、转写和音频？")) return;
   try {
-    await api(fetch(`/api/personas/${state.activePersona.id}/conversations/${state.conversationId}`, { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
+    await api(fetch(`/api/personas/${state.activePersona.id}/conversations/${state.conversationId}`, { method: "DELETE", headers: { "X-YUMENO-Request": "web" } }));
     closeRealtime();
     state.conversationId = crypto.randomUUID();
-    localStorage.setItem(`personalive:conversation:${state.activePersona.id}`, state.conversationId);
+    localStorage.setItem(`yumeno:conversation:${state.activePersona.id}`, state.conversationId);
     $("chat-log").replaceChildren(empty("开始对话")); connectRealtime();
   } catch (reason) { setText("chat-error", reason); }
 }
@@ -763,7 +763,7 @@ async function synthesizeAnswer(text, node, options = {}) {
   try {
     const response = await fetch(`/api/tts/personas/${state.activePersona.id}/conversations/${state.conversationId}/synthesize/stream`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" },
+      headers: { "Content-Type": "application/json", "X-YUMENO-Request": "web" },
       body: JSON.stringify({ text }),
       signal: controller.signal,
     });

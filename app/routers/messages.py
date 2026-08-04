@@ -56,10 +56,10 @@ async def create_voice_message(
     persona_id: str,
     conversation_id: str,
     file: UploadFile = File(),
-    x_personalive_request: str = Header(default=""),
+    x_yumeno_request: str = Header(default=""),
     session: Session = Depends(get_session),
 ):
-    if x_personalive_request != "web":
+    if x_yumeno_request != "web":
         raise HTTPException(status_code=403, detail="Missing same-origin request header")
     local_persona_or_404(session, persona_id)
     content_type = (file.content_type or "").split(";", 1)[0].lower()
@@ -122,10 +122,10 @@ def clear_conversation(
     persona_id: str,
     conversation_id: str,
     request: Request,
-    x_personalive_request: str = Header(default=""),
+    x_yumeno_request: str = Header(default=""),
     session: Session = Depends(get_session),
 ):
-    if x_personalive_request != "web":
+    if x_yumeno_request != "web":
         raise HTTPException(status_code=403, detail="Missing same-origin request header")
     local_persona_or_404(session, persona_id)
     statement = select(ConversationMessage).where(
@@ -182,10 +182,10 @@ def get_audio(message_id: str, range: str | None = Header(default=None), session
 async def transcribe_message(
     message_id: str,
     request: Request,
-    x_personalive_request: str = Header(default=""),
+    x_yumeno_request: str = Header(default=""),
     session: Session = Depends(get_session),
 ):
-    if x_personalive_request != "web":
+    if x_yumeno_request != "web":
         raise HTTPException(status_code=403, detail="Missing same-origin request header")
     message = session.get(ConversationMessage, message_id)
     if message is None or message.kind != "audio" or not message.audio_path:

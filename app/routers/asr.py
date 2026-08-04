@@ -27,32 +27,32 @@ def get_status(request: Request):
 
 
 @router.patch("/config")
-def update_config(payload: ASRConfigUpdate, request: Request, x_personalive_request: str = Header(default="")):
-    protected(request, x_personalive_request)
+def update_config(payload: ASRConfigUpdate, request: Request, x_yumeno_request: str = Header(default="")):
+    protected(request, x_yumeno_request)
     return request.app.state.asr_resources.configure(**payload.model_dump(exclude_unset=True))
 
 
 @router.post("/install", status_code=status.HTTP_202_ACCEPTED)
-def install(request: Request, x_personalive_request: str = Header(default="")):
-    protected(request, x_personalive_request)
+def install(request: Request, x_yumeno_request: str = Header(default="")):
+    protected(request, x_yumeno_request)
     request.app.state.asr_resources.start_install()
     return request.app.state.asr_resources.status()
 
 
 @router.delete("/install")
-def remove(request: Request, x_personalive_request: str = Header(default="")):
-    protected(request, x_personalive_request)
+def remove(request: Request, x_yumeno_request: str = Header(default="")):
+    protected(request, x_yumeno_request)
     return request.app.state.asr_resources.remove_managed()
 
 
 @router.delete("/install/cancel", status_code=status.HTTP_202_ACCEPTED)
-def cancel_install(request: Request, x_personalive_request: str = Header(default="")):
-    protected(request, x_personalive_request)
+def cancel_install(request: Request, x_yumeno_request: str = Header(default="")):
+    protected(request, x_yumeno_request)
     request.app.state.asr_resources.cancel_install()
     return request.app.state.asr_resources.status()
 
 
 @router.post("/model-directory")
-def open_model_directory(request: Request, x_personalive_request: str = Header(default="")):
-    protected(request, x_personalive_request)
+def open_model_directory(request: Request, x_yumeno_request: str = Header(default="")):
+    protected(request, x_yumeno_request)
     return request.app.state.asr_resources.open_model_directory()

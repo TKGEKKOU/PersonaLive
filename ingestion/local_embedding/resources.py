@@ -58,7 +58,7 @@ class LocalEmbeddingResourceManager:
 
     @staticmethod
     def _metadata_path(directory: Path) -> Path:
-        return directory / ".personalive-model.json"
+        return directory / ".yumeno-model.json"
 
     def _read_metadata(self, directory: Path) -> dict:
         path = self._metadata_path(directory)
@@ -191,8 +191,8 @@ class LocalEmbeddingResourceManager:
         marker = self.runtime_dir / ".requirements-ready"
         if marker.is_file():
             return
-        pypi = os.getenv("PERSONALIVE_PYPI_INDEX", "https://mirrors.aliyun.com/pypi/simple/")
-        pytorch = os.getenv("PERSONALIVE_PYTORCH_INDEX", "https://mirrors.aliyun.com/pytorch-wheels/cu128/")
+        pypi = os.getenv("YUMENO_PYPI_INDEX", "https://mirrors.aliyun.com/pypi/simple/")
+        pytorch = os.getenv("YUMENO_PYTORCH_INDEX", "https://mirrors.aliyun.com/pytorch-wheels/cu128/")
         pip_command = [
             str(self.runtime_python), "-m", "pip", "install", "--timeout", "60", "--retries", "2",
             "--index-url", pypi, "--extra-index-url", pytorch, "-r", str(self.requirements),
@@ -203,7 +203,7 @@ class LocalEmbeddingResourceManager:
             raise
         except RuntimeError as domestic_error:
             # 国内镜像并不总是同步 CUDA Wheel；仅 PyTorch 源回退，其他依赖继续走国内 PyPI。
-            fallback = os.getenv("PERSONALIVE_PYTORCH_FALLBACK_INDEX", "https://download.pytorch.org/whl/cu128")
+            fallback = os.getenv("YUMENO_PYTORCH_FALLBACK_INDEX", "https://download.pytorch.org/whl/cu128")
             pip_command[pip_command.index(pytorch)] = fallback
             self._current_file = "PyTorch CUDA 12.8（官方备用源）"
             try:

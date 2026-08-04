@@ -153,7 +153,7 @@ class TTSResourceManager:
         try:
             if not self.runtime_path.is_file() or not self.runtime_dll_path.is_file():
                 raise RuntimeError("当前开发目录缺少内置 Lunar TTS 运行库，请使用完整 Windows 发布包")
-            model_base = os.getenv("PERSONALIVE_TTS_MODEL_BASE", MODEL_BASE).rstrip("/")
+            model_base = os.getenv("YUMENO_TTS_MODEL_BASE", MODEL_BASE).rstrip("/")
             for filename, destination in (
                 (self.model_path.name, self.model_path),
                 (self.tokenizer_path.name, self.tokenizer_path),

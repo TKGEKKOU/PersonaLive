@@ -7,7 +7,7 @@
  * Auth token (when VTS has API auth enabled) is stored in localStorage.
  */
 window.PLVTS = (function () {
-  const LS_TOKEN = "personalive:vts:token";
+  const LS_TOKEN = "yumeno:vts:token";
   const DEFAULT_URL = "ws://127.0.0.1:8001/api";
   const SEND_INTERVAL_MS = 33; // ~30 fps cap
 
@@ -134,7 +134,7 @@ window.PLVTS = (function () {
     }
 
     _emitStatus(level, message) {
-      document.dispatchEvent(new CustomEvent("personalive:live2d", {
+      document.dispatchEvent(new CustomEvent("yumeno:live2d", {
         detail: { type: "vts", level, message },
       }));
     }

@@ -87,9 +87,9 @@ class ASRResourceManager:
     def resolve(self) -> ASRResources:
         values = self.config()
         return ASRResources(
-            python=self._file(values["python_path"] or os.getenv("PERSONALIVE_ASR_PYTHON", ""), self.runtime_python),
-            model=self._model(values["model_path"] or os.getenv("PERSONALIVE_ASR_MODEL", ""), self.managed_model),
-            ffmpeg=self._file(values["ffmpeg_path"] or os.getenv("PERSONALIVE_ASR_FFMPEG", ""), self.managed_ffmpeg, "ffmpeg"),
+            python=self._file(values["python_path"] or os.getenv("YUMENO_ASR_PYTHON", ""), self.runtime_python),
+            model=self._model(values["model_path"] or os.getenv("YUMENO_ASR_MODEL", ""), self.managed_model),
+            ffmpeg=self._file(values["ffmpeg_path"] or os.getenv("YUMENO_ASR_FFMPEG", ""), self.managed_ffmpeg, "ffmpeg"),
         )
 
     def status(self) -> dict:
@@ -160,9 +160,9 @@ class ASRResourceManager:
         try:
             if not self.runtime_python.is_file():
                 subprocess.run([sys.executable, "-m", "venv", str(self.runtime_dir)], check=True)
-            pypi_index = os.getenv("PERSONALIVE_PYPI_INDEX", "https://mirrors.aliyun.com/pypi/simple/")
+            pypi_index = os.getenv("YUMENO_PYPI_INDEX", "https://mirrors.aliyun.com/pypi/simple/")
             pytorch_index = os.getenv(
-                "PERSONALIVE_PYTORCH_INDEX",
+                "YUMENO_PYTORCH_INDEX",
                 "https://mirrors.aliyun.com/pytorch-wheels/cu128/",
             )
             pip_command = [
@@ -192,7 +192,7 @@ class ASRResourceManager:
                 except subprocess.CalledProcessError as fallback_error:
                     detail = fallback_error.stderr or domestic_error.stderr or "pip install failed"
                     raise RuntimeError(detail[-2000:]) from fallback_error
-            model_id = os.getenv("PERSONALIVE_ASR_MODEL_ID", "Qwen/Qwen3-ASR-0.6B")
+            model_id = os.getenv("YUMENO_ASR_MODEL_ID", "Qwen/Qwen3-ASR-0.6B")
             script = (
                 "from modelscope import snapshot_download; "
                 f"snapshot_download({model_id!r}, local_dir={str(self.managed_model)!r})"

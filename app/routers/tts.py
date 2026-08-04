@@ -1,12 +1,15 @@
 import hashlib
 import io
 import audioop
+import base64
+import json
 import wave
+from datetime import date, datetime
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
@@ -28,7 +31,15 @@ VOICE_ROOT = Settings.load().project_root / "data" / "tts" / "voices"
 TTS_PREVIEW_ROOT = Settings.load().project_root / "data" / "tts" / "previews"
 MAX_REFERENCE_BYTES = 10 * 1024 * 1024
 REFERENCE_RATE = 24000
-MAX_REFERENCE_SECONDS = 8
+# Qwen3-TTS reference audio: 3s minimum, 10~20s works best; over 30s can degrade.
+# Multiple uploads are concatenated into one reference; this caps the total length.
+MAX_REFERENCE_SECONDS = 20
+
+
+def _json_default(value):
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 
 def normalize_reference_wavs(payloads: list[bytes]) -> bytes:
@@ -95,8 +106,8 @@ def get_status(request: Request):
 
 
 @router.patch("/config")
-def update_config(payload: TTSConfigUpdate, request: Request, x_personalive_request: str = Header(default="")):
-    protected(request, x_personalive_request)
+def update_config(payload: TTSConfigUpdate, request: Request, x_yumeno_request: str = Header(default="")):
+    protected(request, x_yumeno_request)
     values = payload.model_dump(exclude_unset=True)
     if "use_gpu" in values and values["use_gpu"] != request.app.state.tts_resources.config()["use_gpu"]:
         request.app.state.tts_worker.stop_service()
@@ -105,34 +116,34 @@ def update_config(payload: TTSConfigUpdate, request: Request, x_personalive_requ
 
 
 @router.post("/install", status_code=status.HTTP_202_ACCEPTED)
-def install(request: Request, x_personalive_request: str = Header(default="")):
-    protected(request, x_personalive_request)
+def install(request: Request, x_yumeno_request: str = Header(default="")):
+    protected(request, x_yumeno_request)
     request.app.state.tts_resources.start_install()
     return request.app.state.tts_resources.status()
 
 
 @router.delete("/install/cancel", status_code=status.HTTP_202_ACCEPTED)
-def cancel_install(request: Request, x_personalive_request: str = Header(default="")):
-    protected(request, x_personalive_request)
+def cancel_install(request: Request, x_yumeno_request: str = Header(default="")):
+    protected(request, x_yumeno_request)
     request.app.state.tts_resources.cancel_install()
     return request.app.state.tts_resources.status()
 
 
 @router.delete("/install")
-def remove(request: Request, x_personalive_request: str = Header(default="")):
-    protected(request, x_personalive_request)
+def remove(request: Request, x_yumeno_request: str = Header(default="")):
+    protected(request, x_yumeno_request)
     return request.app.state.tts_resources.remove_models()
 
 
 @router.post("/model-directory")
-def open_model_directory(request: Request, x_personalive_request: str = Header(default="")):
-    protected(request, x_personalive_request)
+def open_model_directory(request: Request, x_yumeno_request: str = Header(default="")):
+    protected(request, x_yumeno_request)
     return request.app.state.tts_resources.open_model_directory()
 
 
 @router.post("/preview")
-def preview(payload: TTSSynthesisRequest, request: Request, x_personalive_request: str = Header(default="")):
-    protected(request, x_personalive_request)
+def preview(payload: TTSSynthesisRequest, request: Request, x_yumeno_request: str = Header(default="")):
+    protected(request, x_yumeno_request)
     text = payload.text.strip()
     if not text:
         raise HTTPException(status_code=422, detail="TTS text is empty")
@@ -153,10 +164,10 @@ async def upload_reference(
     request: Request,
     file: UploadFile | None = File(default=None),
     files: list[UploadFile] | None = File(default=None),
-    x_personalive_request: str = Header(default=""),
+    x_yumeno_request: str = Header(default=""),
     session: Session = Depends(get_session),
 ):
-    protected(request, x_personalive_request)
+    protected(request, x_yumeno_request)
     persona = local_persona_or_404(session, persona_id)
     uploads = files or ([file] if file else [])
     if not uploads:
@@ -187,26 +198,35 @@ async def upload_reference(
 def get_reference(
     persona_id: str,
     request: Request,
-    x_personalive_request: str = Header(default=""),
+    x_yumeno_request: str = Header(default=""),
     session: Session = Depends(get_session),
 ):
-    protected(request, x_personalive_request)
+    protected(request, x_yumeno_request)
     persona = local_persona_or_404(session, persona_id)
     path = reference_path(persona)
     if path is None:
-        return {"configured": False, "name": None}
+        return {"configured": False, "name": None, "max_seconds": MAX_REFERENCE_SECONDS}
     count = int((((persona.profile_json or {}).get("tts") or {}).get("reference_audio_count") or 1))
-    return {"configured": True, "name": path.name, "size": path.stat().st_size, "count": count}
+    size = path.stat().st_size
+    duration_seconds = round(max(0.0, (size - 44) / (REFERENCE_RATE * 2)), 1)
+    return {
+        "configured": True,
+        "name": path.name,
+        "size": size,
+        "count": count,
+        "duration_seconds": duration_seconds,
+        "max_seconds": MAX_REFERENCE_SECONDS,
+    }
 
 
 @router.get("/personas/{persona_id}/reference/audio")
 def play_reference(
     persona_id: str,
     request: Request,
-    x_personalive_request: str = Header(default=""),
+    x_yumeno_request: str = Header(default=""),
     session: Session = Depends(get_session),
 ):
-    protected(request, x_personalive_request)
+    protected(request, x_yumeno_request)
     persona = local_persona_or_404(session, persona_id)
     path = reference_path(persona)
     if path is None:
@@ -219,10 +239,10 @@ def preview_reference(
     persona_id: str,
     payload: TTSSynthesisRequest,
     request: Request,
-    x_personalive_request: str = Header(default=""),
+    x_yumeno_request: str = Header(default=""),
     session: Session = Depends(get_session),
 ):
-    protected(request, x_personalive_request)
+    protected(request, x_yumeno_request)
     persona = local_persona_or_404(session, persona_id)
     text = payload.text.strip()
     if not text:
@@ -245,10 +265,10 @@ def preview_reference(
 def remove_reference(
     persona_id: str,
     request: Request,
-    x_personalive_request: str = Header(default=""),
+    x_yumeno_request: str = Header(default=""),
     session: Session = Depends(get_session),
 ):
-    protected(request, x_personalive_request)
+    protected(request, x_yumeno_request)
     persona = local_persona_or_404(session, persona_id)
     profile = dict(persona.profile_json or {})
     tts = dict(profile.get("tts") or {})
@@ -273,10 +293,10 @@ def synthesize(
     conversation_id: str,
     payload: TTSSynthesisRequest,
     request: Request,
-    x_personalive_request: str = Header(default=""),
+    x_yumeno_request: str = Header(default=""),
     session: Session = Depends(get_session),
 ):
-    protected(request, x_personalive_request)
+    protected(request, x_yumeno_request)
     persona = local_persona_or_404(session, persona_id)
     text = payload.text.strip()
     if not text:
@@ -305,3 +325,90 @@ def synthesize(
     session.commit()
     session.refresh(message)
     return message_response(message)
+
+
+@router.post("/personas/{persona_id}/conversations/{conversation_id}/synthesize/stream")
+def synthesize_stream(
+    persona_id: str,
+    conversation_id: str,
+    payload: TTSSynthesisRequest,
+    request: Request,
+    x_yumeno_request: str = Header(default=""),
+    session: Session = Depends(get_session),
+):
+    """流式语音合成：文本按句子切分，逐段合成并推送，最后持久化一条完整消息。
+
+    响应为 NDJSON（application/x-ndjson），每行一个事件：
+      {"type":"segment","index":0,"audio":"<base64 wav>"}
+      {"type":"done","message":{...}}
+      {"type":"error","message":"..."}
+    """
+    protected(request, x_yumeno_request)
+    persona = local_persona_or_404(session, persona_id)
+    text = payload.text.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="TTS text is empty")
+    if not request.app.state.tts_resources.status().get("ready"):
+        raise HTTPException(status_code=409, detail="Local TTS is not ready")
+    directory = AUDIO_ROOT / hashlib.sha256(conversation_id.encode("utf-8")).hexdigest()[:32]
+    directory.mkdir(parents=True, exist_ok=True)
+    TTS_PREVIEW_ROOT.mkdir(parents=True, exist_ok=True)
+    worker = request.app.state.tts_factory()
+    reference = reference_path(persona)
+    segments = worker.stream_segments(text)
+
+    def event_source():
+        parts: list[bytes] = []
+        try:
+            for index, segment in enumerate(segments):
+                temporary = TTS_PREVIEW_ROOT / f"stream-{uuid4()}.wav"
+                try:
+                    worker.synthesize(segment, temporary, reference)
+                    audio = temporary.read_bytes()
+                finally:
+                    temporary.unlink(missing_ok=True)
+                parts.append(audio)
+                yield json.dumps(
+                    {
+                        "type": "segment",
+                        "index": index,
+                        "text": segment,
+                        "audio": base64.b64encode(audio).decode("ascii"),
+                    },
+                    ensure_ascii=False,
+                ) + "\n"
+            merged = worker.merge_wavs(parts)
+            output = directory / f"{uuid4()}.wav"
+            output.write_bytes(merged)
+            db = request.app.state.session_factory()
+            try:
+                message = ConversationMessage(
+                    workspace_id=LOCAL_WORKSPACE_ID,
+                    persona_id=persona_id,
+                    conversation_id=conversation_id,
+                    role="assistant",
+                    kind="audio",
+                    content=text,
+                    audio_path=str(output.relative_to(AUDIO_ROOT)),
+                    audio_content_type="audio/wav",
+                    status="completed",
+                )
+                db.add(message)
+                db.commit()
+                db.refresh(message)
+                payload_message = message_response(message)
+            finally:
+                db.close()
+            yield json.dumps(
+                {"type": "done", "message": payload_message}, ensure_ascii=False, default=_json_default
+            ) + "\n"
+        except TTSGenerationError as exc:
+            yield json.dumps(
+                {"type": "error", "message": str(exc)}, ensure_ascii=False, default=_json_default
+            ) + "\n"
+        except Exception as exc:  # noqa: BLE001 - 流式响应需要把错误推给前端
+            yield json.dumps(
+                {"type": "error", "message": str(exc)}, ensure_ascii=False, default=_json_default
+            ) + "\n"
+
+    return StreamingResponse(event_source(), media_type="application/x-ndjson")

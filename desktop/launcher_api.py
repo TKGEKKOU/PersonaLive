@@ -155,7 +155,7 @@ class LauncherApi:
         self._start_done = False
         self._start_result = None
         self._start_thread = threading.Thread(
-            target=self._start_worker, daemon=True, name="personalive-start"
+            target=self._start_worker, daemon=True, name="yumeno-start"
         )
         self._start_thread.start()
         return {"ok": True, "starting": True}
@@ -266,11 +266,11 @@ class LauncherApi:
             if result.returncode != 0 or not result.stdout.strip():
                 return "容器状态读取中…"
             names = {
-                "personalive-mysql": "MySQL",
-                "personalive-etcd": "etcd",
-                "personalive-minio": "MinIO",
-                "personalive-milvus": "Milvus",
-                "personalive-attu": "Attu",
+                "yumeno-mysql": "MySQL",
+                "yumeno-etcd": "etcd",
+                "yumeno-minio": "MinIO",
+                "yumeno-milvus": "Milvus",
+                "yumeno-attu": "Attu",
             }
             parts = []
             for line in result.stdout.strip().splitlines():

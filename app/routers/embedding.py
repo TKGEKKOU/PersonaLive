@@ -27,8 +27,8 @@ def get_status(request: Request):
 
 
 @router.patch("/config")
-def configure(payload: EmbeddingResourceConfig, request: Request, x_personalive_request: str = Header(default="")):
-    protected(request, x_personalive_request)
+def configure(payload: EmbeddingResourceConfig, request: Request, x_yumeno_request: str = Header(default="")):
+    protected(request, x_yumeno_request)
     try:
         return manager(request).configure(payload.model_id, payload.source, payload.device)
     except ValueError as exc:
@@ -36,8 +36,8 @@ def configure(payload: EmbeddingResourceConfig, request: Request, x_personalive_
 
 
 @router.post("/install", status_code=status.HTTP_202_ACCEPTED)
-def install(payload: EmbeddingResourceConfig, request: Request, x_personalive_request: str = Header(default="")):
-    protected(request, x_personalive_request)
+def install(payload: EmbeddingResourceConfig, request: Request, x_yumeno_request: str = Header(default="")):
+    protected(request, x_yumeno_request)
     try:
         manager(request).start_install(payload.model_id, payload.source, payload.device)
     except ValueError as exc:
@@ -46,15 +46,15 @@ def install(payload: EmbeddingResourceConfig, request: Request, x_personalive_re
 
 
 @router.delete("/install/cancel", status_code=status.HTTP_202_ACCEPTED)
-def cancel(request: Request, x_personalive_request: str = Header(default="")):
-    protected(request, x_personalive_request)
+def cancel(request: Request, x_yumeno_request: str = Header(default="")):
+    protected(request, x_yumeno_request)
     manager(request).cancel_install()
     return manager(request).status()
 
 
 @router.delete("/model")
-def remove(request: Request, x_personalive_request: str = Header(default="")):
-    protected(request, x_personalive_request)
+def remove(request: Request, x_yumeno_request: str = Header(default="")):
+    protected(request, x_yumeno_request)
     try:
         return manager(request).remove_model()
     except RuntimeError as exc:
@@ -62,6 +62,6 @@ def remove(request: Request, x_personalive_request: str = Header(default="")):
 
 
 @router.post("/model-directory")
-def open_model_directory(request: Request, x_personalive_request: str = Header(default="")):
-    protected(request, x_personalive_request)
+def open_model_directory(request: Request, x_yumeno_request: str = Header(default="")):
+    protected(request, x_yumeno_request)
     return manager(request).open_model_directory()
