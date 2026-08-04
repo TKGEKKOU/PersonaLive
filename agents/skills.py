@@ -15,7 +15,8 @@ Skill = 提示词包（instructions）+ 可选工具集（tool_names），解决
 import json
 import os
 import re
-from dataclasses import asdict, dataclass
+import shutil
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from langchain.messages import ToolMessage
@@ -26,6 +27,7 @@ from langgraph.types import Command
 from agents.context import PersonaAgentContext
 from agents.mcp_grants import is_mcp_tool_visible
 from agents.registry import tool_specs
+from agents.skill_parser import parse_skill_dir
 from settings import Settings
 
 
@@ -45,6 +47,8 @@ class SkillSpec:
     tool_names: tuple[str, ...]
     prompt_hint: str = ""
     builtin: bool = False
+    format: str = "json"
+    metadata: dict = field(default_factory=dict)
 
 
 def _scan_dir(directory: Path, known: set[str], builtin: bool) -> dict[str, SkillSpec]:
@@ -69,6 +73,23 @@ def _scan_dir(directory: Path, known: set[str], builtin: bool) -> dict[str, Skil
             tool_names=tool_names,
             prompt_hint=str(data.get("prompt_hint") or ""),
             builtin=builtin,
+            format="json",
+        )
+    for path in sorted(directory.glob("*/SKILL.md")):
+        parsed = parse_skill_dir(path.parent)
+        if parsed is None or parsed["name"] in loaded:
+            continue
+        if not set(parsed["tool_names"]) <= known:
+            continue
+        loaded[parsed["name"]] = SkillSpec(
+            name=parsed["name"],
+            description=parsed["description"],
+            instructions=parsed["instructions"],
+            tool_names=parsed["tool_names"],
+            prompt_hint="",
+            builtin=builtin,
+            format="skillmd",
+            metadata=parsed["metadata"],
         )
     return loaded
 
@@ -151,14 +172,19 @@ def create_skill(
 
 
 def delete_skill(name: str) -> bool:
-    """删除自定义技能；内置技能受保护。"""
+    """删除自定义技能（JSON 文件或标准技能包目录）；内置技能受保护。"""
 
     spec = get_skill(name)
     if spec.builtin:
         raise ValueError("内置技能不可删除")
-    target = USER_SKILL_DIR / f"{name}.json"
-    if target.exists():
-        target.unlink()
+    json_target = USER_SKILL_DIR / f"{name}.json"
+    dir_target = USER_SKILL_DIR / name
+    if json_target.exists():
+        json_target.unlink()
+    elif dir_target.is_dir():
+        shutil.rmtree(dir_target)
+    else:
+        raise KeyError(name)
     refresh_skills()
     return True
 
