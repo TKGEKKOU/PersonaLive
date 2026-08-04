@@ -36,6 +36,57 @@ def local_persona_or_404(session: Session, persona_id: str) -> Persona:
     return persona
 
 
+def _mcp_manager(request: Request):
+    manager = getattr(request.app.state, "mcp_manager", None)
+    if manager is None:
+        raise HTTPException(status_code=503, detail="MCP 管理器尚未就绪")
+    return manager
+
+
+@router.get("/{persona_id}/mcp-grants")
+def get_mcp_grants(persona_id: str, request: Request) -> dict:
+    """返回角色可用的 MCP 服务器及当前授权状态。"""
+
+    manager = _mcp_manager(request)
+    return {
+        "persona_id": persona_id,
+        "servers": [
+            {
+                "name": server.name,
+                "description": server.description,
+                "enabled": server.enabled,
+                "authorized": persona_id in server.allowed_persona_ids,
+            }
+            for server in manager.list_configs()
+        ],
+    }
+
+
+@router.put("/{persona_id}/mcp-grants")
+def put_mcp_grants(persona_id: str, request: Request, payload: dict) -> dict:
+    """保存角色授权并即时刷新可见性（无需重启）。"""
+
+    manager = _mcp_manager(request)
+    wanted = set(str(name) for name in payload.get("server_names") or [])
+    servers = manager.list_configs()
+    for server in servers:
+        ids = set(server.allowed_persona_ids)
+        if server.name in wanted:
+            ids.add(persona_id)
+        else:
+            ids.discard(persona_id)
+        server.allowed_persona_ids = sorted(ids)
+    try:
+        manager.save_configs(servers)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    from agents.mcp_grants import refresh_grants
+
+    refresh_grants()
+    return {"persona_id": persona_id, "server_names": sorted(wanted)}
+
+
 @router.get("/{persona_id}", response_model=PersonaResponse)
 def get_persona(persona_id: str, session: Session = Depends(get_session)) -> Persona:
     return local_persona_or_404(session, persona_id)
