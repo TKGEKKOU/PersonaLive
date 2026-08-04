@@ -40,7 +40,7 @@ def create_worker_app(model_provider: Callable[[], Any] | None = None) -> FastAP
     """Build the ASR worker app; model_provider is injectable for tests."""
 
     provider = model_provider or _default_model_provider
-    app = FastAPI(title="PersonaLive Local ASR")
+    app = FastAPI(title="YUMENO Local ASR")
     state: dict[str, Any] = {"model": None}
 
     @app.on_event("startup")

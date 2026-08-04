@@ -2,7 +2,7 @@
 
 ## Open-LLM-VTuber
 
-PersonaLive's realtime interaction work references selected designs and
+YUMENO's realtime interaction work references selected designs and
 MIT-licensed code from:
 
 - Project: Open-LLM-VTuber
@@ -37,7 +37,7 @@ copyright and license notices.
 
 ## qwen3-tts.cpp
 
-PersonaLive can download a Windows runtime built from the MIT-licensed
+YUMENO can download a Windows runtime built from the MIT-licensed
 qwen3-tts.cpp project:
 
 - Project: qwen3-tts.cpp
@@ -47,3 +47,34 @@ qwen3-tts.cpp project:
 
 The runtime archive includes the upstream license. GGUF model files are
 downloaded separately from ModelScope and are not committed to this repository.
+
+## PixiJS
+
+- Project: PixiJS v7 (`pixi.js`)
+- Repository: <https://github.com/pixijs/pixijs>
+- Version: 7.4.2
+- License: MIT
+
+## pixi-live2d-display
+
+- Project: pixi-live2d-display
+- Repository: <https://github.com/guansss/pixi-live2d-display>
+- Version: 0.4.0
+- License: MIT
+
+## Live2D Cubism Core
+
+The Cubism runtime libraries (`live2d.min.js` for Cubism 2.1 and
+`live2dcubismcore.min.js` for Cubism 3/4) are proprietary software distributed
+by Live2D Inc. under the Live2D Proprietary Software License Agreement
+(<https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html>).
+They are included only for local rendering; review the agreement before
+redistributing this application.
+
+## Live2D Sample Models (Haru / Shizuku)
+
+The bundled demo models under `data/live2d/` are official Live2D sample
+models and are redistributed under the Live2D Free Material License
+(<https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html>).
+They are provided for local evaluation only; replace them with models you are
+licensed to distribute before shipping the application to end users.

@@ -14,13 +14,14 @@ if (-not (Test-Path $ttsRuntime)) {
   --windowed `
   --onedir `
   --contents-directory "." `
-  --name PersonaLive `
+  --name YUMENO `
   --collect-all webview `
   --add-data "static;static" `
   --add-data "resources;resources" `
   --add-data "runtime\tts;runtime\tts" `
+  --add-data "data\live2d;data\live2d" `
   --add-data "docker-compose.yml;." `
   --add-data ".env.example;." `
   desktop_main.py
 
-Write-Host "Built:" (Join-Path $projectRoot "dist\PersonaLive\PersonaLive.exe")
+Write-Host "Built:" (Join-Path $projectRoot "dist\YUMENO\YUMENO.exe")

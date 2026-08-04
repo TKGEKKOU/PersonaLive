@@ -1,6 +1,8 @@
-# PersonaLive
+# YUMENO
 
-PersonaLive 是一个**本地优先、生产级**的角色化多 Agent RAG 平台。它以 LangGraph 1.x 为底层运行时，将
+> 曾用名 PersonaLive；代码、容器名、API 校验头等内部标识仍沿用 `personalive` 前缀，作为工程别名保留。
+
+YUMENO 是一个**本地优先、生产级**的角色化多 Agent RAG 平台。它以 LangGraph 1.x 为底层运行时，将
 **人设驱动的多 Agent 编排**与**自适应纠错式 RAG** 深度耦合：每个角色拥有独立的身份设定、知识空间、
 会话状态与记忆，通过 Supervisor 多 Agent 架构统一调度知识检索、联网查询、长期记忆与角色管理四类
 专业 Worker，通过质量门与有界纠错机制抑制幻觉，最终以角色口吻生成接地、可信、可追溯的回复。

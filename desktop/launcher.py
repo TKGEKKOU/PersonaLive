@@ -12,7 +12,7 @@ from voice.asr.local_worker import shutdown_asr_workers
 
 
 def show_error(message: str) -> None:
-    ctypes.windll.user32.MessageBoxW(0, message, "PersonaLive 启动失败", 0x10)
+    ctypes.windll.user32.MessageBoxW(0, message, "YUMENO 启动失败", 0x10)
 
 
 def apply_window_icon(window, icon_path: Path) -> None:
@@ -52,7 +52,7 @@ def run(project_root: Path | None = None) -> int:
         else:
             initial_url = api.onboarding_url()
         window = webview.create_window(
-            "PersonaLive",
+            "YUMENO",
             initial_url,
             width=1280,
             height=820,

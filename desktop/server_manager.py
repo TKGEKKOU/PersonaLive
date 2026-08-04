@@ -49,7 +49,7 @@ class ServerManager:
                 break
             time.sleep(0.5)
         self.stop()
-        raise RuntimeError("PersonaLive 服务启动失败。")
+        raise RuntimeError("YUMENO 服务启动失败。")
 
     def stop(self) -> None:
         if not self.owns_server:

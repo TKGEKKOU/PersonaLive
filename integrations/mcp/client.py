@@ -78,7 +78,7 @@ def _tool_info(name: str, server: str, tool: BaseTool) -> MCPToolInfo:
 def _make_sync_tool(original: BaseTool) -> BaseTool:
     """把仅支持异步调用的 MCP 工具包装为可在同步 Agent 链路中调用。
 
-    PersonaLive 的 workflow 是同步 invoke，并在工作线程（anyio.to_thread /
+    YUMENO 的 workflow 是同步 invoke，并在工作线程（anyio.to_thread /
     FastAPI 同步端点）中执行，线程内没有运行中的事件循环，因此可以安全地
     用 asyncio.run 桥接异步工具；工具 schema 与 metadata 保持原样。
     """

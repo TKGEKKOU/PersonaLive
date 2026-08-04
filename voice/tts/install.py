@@ -127,7 +127,7 @@ class TTSResourceManager:
         partial = destination.with_suffix(destination.suffix + ".part")
         if self._cancel_requested.is_set():
             raise TTSInstallCancelled()
-        request = urllib.request.Request(url, headers={"User-Agent": "PersonaLive"})
+        request = urllib.request.Request(url, headers={"User-Agent": "YUMENO"})
         self._set_progress(phase, destination.name, 0, 0)
         self._download_started_at = time.monotonic()
         try:

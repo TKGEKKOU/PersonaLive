@@ -1,1 +1,1 @@
-"""HTTP routers for the PersonaLive application."""
+"""HTTP routers for the YUMENO application."""

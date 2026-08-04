@@ -130,7 +130,7 @@ def create_app(initialize_database: bool = True) -> FastAPI:
         if resource is not None:
             resource.close()
 
-    app = FastAPI(title="PersonaLive", lifespan=lifespan)
+    app = FastAPI(title="YUMENO", lifespan=lifespan)
     # 允许 file:// 启动页等本地来源通过 HTTP 轮询（服务仅绑定 127.0.0.1）
     app.add_middleware(
         CORSMiddleware,

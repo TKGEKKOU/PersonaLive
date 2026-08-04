@@ -30,7 +30,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='PersonaLive',
+    name='YUMENO',
     icon='resources/app.ico',
     debug=False,
     bootloader_ignore_signals=False,
@@ -51,5 +51,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='PersonaLive',
+    name='YUMENO',
 )

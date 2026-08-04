@@ -1,1 +1,1 @@
-"""PersonaLive realtime conversation infrastructure."""
+"""YUMENO realtime conversation infrastructure."""

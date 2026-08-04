@@ -3,202 +3,217 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PersonaLive · 启动</title>
+  <title>YUMENO</title>
   <style>
+    /* ============================================================
+       YUMENO 启动页 · 暗夜渐晓
+       THESIS: 启动是一段从暗到明的过程。整页是一条横贯屏幕的 1px
+       细线：线被点亮、数字推进、背景随之由墨色渐白，最后让位给系统。
+       OWN-WORLD: 近黑底 + 中央柔光 + 全宽 1px 细线 + 等宽数字，
+       无装饰字标；右下角仅保留版本署名。
+       STORY: 打开即自检；线生长、数字前进、一行字说明此刻在做什么；
+       完成时页面已接近全白，淡出让位给系统。
+       FINISH: 克制、黑白、留白；深色起步，随进度向接近全白过渡。
+       ============================================================ */
     :root {
-      color-scheme: light;
-      --bg: #ffffff;
-      --ink: #161616;
-      --ink-soft: #3a3a3a;
-      --muted: #717171;
-      --dim: #a7a7a7;
-      --line: #e4e4e4;
-      --ok: #0f9d68;
-      --bad: #d9263a;
-      --bad-bg: #f8ecea;
-      --motion: 220ms cubic-bezier(.2,.7,.2,1);
+      color-scheme: light dark;
+      --bg-top: #101014;
+      --bg: #0d0d10;
+      --bg-bottom: #08080b;
+      --ink: #e9e9ec;
+      --muted: #9b9ba3;
+      --dim: #60606a;
+      --track: #26262c;
+      --line: #e9e9ec;
+      --elapsed: rgba(210, 210, 215, .36);
+      --bad: #ff6b6b;
+      --halo: 0;
+      --halo-r: 18%;
+      --motion: 360ms cubic-bezier(.2, .7, .2, 1);
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
     body {
       margin: 0;
-      background: var(--bg);
-      color: var(--ink);
-      font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
-      display: grid;
-      grid-template-rows: auto 1fr auto;
       overflow: hidden;
+      color: var(--ink);
+      font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
       user-select: none;
       -webkit-user-select: none;
-    }
-    button { font: inherit; letter-spacing: 0; cursor: pointer; }
-    button:disabled { cursor: not-allowed; opacity: .5; }
-    button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-
-    .topbar {
-      height: 52px;
-      padding: 0 24px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      border-bottom: 1px solid var(--line);
-    }
-    .brand {
-      color: var(--muted);
-      font-size: 15px;
-      font-weight: 650;
-    }
-    .version { color: var(--dim); font-size: 12px; }
-
-    .center {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0 24px;
-      min-height: 0;
-    }
-    .launcher {
-      position: relative;
-      width: min(560px, 100%);
-      padding: 58px 44px 48px;
-      border: 1px solid var(--line);
-      text-align: center;
-    }
-    .launcher::before, .launcher::after {
-      content: "";
-      position: absolute;
-      width: 14px; height: 14px;
-      pointer-events: none;
-    }
-    .launcher::before { top: -1px; left: -1px; border-top: 2px solid var(--ink); border-left: 2px solid var(--ink); }
-    .launcher::after { bottom: -1px; right: -1px; border-bottom: 2px solid var(--ink); border-right: 2px solid var(--ink); }
-
-    .start-btn {
-      position: relative;
-      min-height: 58px;
-      width: min(320px, 100%);
-      padding: 0 40px;
-      border: 1px solid var(--ink);
-      background: transparent;
-      color: var(--ink);
-      font-size: 24px;
-      font-weight: 700;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 12px;
-      transition: background-color var(--motion), color var(--motion), border-color var(--motion), transform var(--motion);
-    }
-    .start-btn::before, .start-btn::after {
-      content: "";
-      position: absolute;
-      width: 9px; height: 9px;
-      transition: border-color var(--motion);
-    }
-    .start-btn::before { top: -1px; left: -1px; border-top: 2px solid var(--ink); border-left: 2px solid var(--ink); }
-    .start-btn::after { bottom: -1px; right: -1px; border-bottom: 2px solid var(--ink); border-right: 2px solid var(--ink); }
-    .start-btn:hover:not(:disabled) { background: var(--ink); color: #ffffff; border-color: var(--ink); }
-    .start-btn:hover:not(:disabled)::before, .start-btn:hover:not(:disabled)::after { border-color: #ffffff; }
-    .start-btn:active:not(:disabled) { transform: translateY(1px); }
-    .btn-spinner {
-      width: 16px; height: 16px; flex: none;
-      border: 2px solid currentColor; border-top-color: transparent;
-      border-radius: 50%; display: none;
-      animation: spin .7s linear infinite;
-    }
-    .start-btn.is-loading .btn-spinner { display: inline-block; }
-
-    .error { min-height: 18px; margin: 16px 0 0; color: var(--bad); font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
-    .error:empty { display: none; }
-
-    .steps {
-      margin: 34px 0 0;
-      padding: 0;
-      list-style: none;
-      border-top: 1px solid var(--line);
-      border-bottom: 1px solid var(--line);
       display: grid;
-      text-align: left;
+      place-items: center;
+      background-color: var(--bg);
+      background-image:
+        radial-gradient(ellipse var(--halo-r) 42% at 50% 42%, rgba(255, 255, 255, var(--halo)) 0%, rgba(255, 255, 255, 0) 72%),
+        linear-gradient(180deg, var(--bg-top) 0%, var(--bg) 48%, var(--bg-bottom) 100%);
+      background-attachment: fixed, fixed;
     }
-    .steps li {
-      min-height: 42px;
-      padding: 0 14px;
-      display: grid;
-      grid-template-columns: 16px 92px minmax(0, 1fr);
-      align-items: center;
-      gap: 12px;
-      color: var(--muted);
-      font-size: 15px;
-      border-bottom: 1px solid var(--line);
-    }
-    .steps li:last-child { border-bottom: 0; }
-    .steps .dot { width: 8px; height: 8px; transform: rotate(45deg); background: var(--dim); transition: background-color var(--motion); }
-    .steps .name { color: var(--ink-soft); font-weight: 600; }
-    .steps .detail { margin: 0; color: var(--dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .steps li.is-running .dot { background: var(--ink); animation: blink .8s ease-in-out infinite; }
-    .steps li.is-running .detail { color: var(--ink); }
-    .steps li.is-ok .dot { background: var(--ok); }
-    .steps li.is-ok .detail { color: var(--ok); }
-    .steps li.is-fail { background: var(--bad-bg); }
-    .steps li.is-fail .dot { background: var(--bad); }
-    .steps li.is-fail .detail { color: var(--bad); }
-    .elapsed { min-height: 18px; margin: 14px 0 0; color: var(--dim); font-size: 12px; }
+    button { font: inherit; cursor: pointer; }
+    button:focus-visible { outline: 1px solid var(--ink); outline-offset: 4px; }
 
-    .footer {
-      height: 40px;
-      padding: 0 24px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+    .version {
+      position: fixed;
+      right: 28px;
+      bottom: 22px;
+      z-index: 1;
+      font-size: 10px;
+      letter-spacing: .14em;
       color: var(--dim);
-      font-size: 12px;
-      border-top: 1px solid var(--line);
     }
+
+    .loader {
+      width: 100vw;
+      text-align: center;
+      transform: translateY(-4vh);
+      animation: rise-in 520ms var(--motion) both;
+      transition: opacity 420ms var(--motion);
+      position: relative;
+      z-index: 1;
+    }
+    body.is-done .loader { opacity: 0; }
+
+    .track {
+      position: relative;
+      height: 1px;
+      background: var(--track);
+      overflow: hidden;
+    }
+    .track-fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 100%;
+      transform: scaleX(var(--p, 0));
+      transform-origin: left center;
+      background: var(--line);
+    }
+    .track-tip {
+      position: absolute;
+      left: calc(var(--p, 0) * 100%);
+      top: 50%;
+      width: 4px;
+      height: 4px;
+      transform: translate(50%, -50%) rotate(45deg);
+      background: var(--line);
+    }
+
+    .loadline {
+      margin: 26px 0 0;
+      font-size: 12px;
+      letter-spacing: .28em;
+      color: var(--muted);
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      gap: 6px;
+    }
+    .loadline .label { letter-spacing: .34em; margin-right: 2px; }
+    .loadline b {
+      font-weight: 300;
+      font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
+      font-size: 22px;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: .04em;
+      color: var(--ink);
+    }
+    .loadline .dots {
+      color: var(--dim);
+      letter-spacing: .26em;
+      animation: dots 1.4s steps(1, end) infinite;
+    }
+    .loadline.is-done .dots { animation: none; }
+
+    .phase {
+      margin: 12px 0 0;
+      font-size: 13px;
+      color: var(--muted);
+      letter-spacing: .04em;
+      min-height: 18px;
+      line-height: 1.6;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .phase.is-active { color: var(--ink); }
+    .phase.is-fail { color: var(--bad); }
+    .phase .elapsed {
+      margin-left: 8px;
+      font-size: 11px;
+      color: var(--elapsed);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: .04em;
+    }
+    .phase .phase-dim { opacity: .5; }
+    .phase .retry {
+      margin-left: 12px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+    .phase .retry:hover { color: var(--ink); }
 
     dialog.exit-confirm {
       width: min(440px, calc(100% - 40px));
       padding: 0;
-      border: 1px solid var(--line);
-      border-radius: 4px;
-      background: var(--bg);
-      color: var(--ink);
+      border: 1px solid #e0e0e3;
+      border-radius: 2px;
+      background: #ffffff;
+      color: #1a1a1a;
     }
-    dialog.exit-confirm::backdrop { background: rgba(20,20,20,.45); }
-    dialog.exit-confirm .dialog-body { padding: 22px 24px 20px; }
-    dialog.exit-confirm h2 { margin: 0; font-size: 16px; }
-    dialog.exit-confirm .dialog-sub { margin: 8px 0 0; color: var(--muted); font-size: 15px; line-height: 1.7; }
-    dialog.exit-confirm ul { margin: 14px 0; padding: 0; list-style: none; border: 1px solid var(--line); }
-    dialog.exit-confirm li { padding: 9px 14px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 15px; line-height: 1.6; }
+    dialog.exit-confirm::backdrop { background: rgba(0, 0, 0, .42); }
+    dialog.exit-confirm .dialog-body { padding: 26px 26px 22px; }
+    dialog.exit-confirm h2 { margin: 0; font-size: 18px; font-weight: 500; }
+    dialog.exit-confirm .dialog-sub { margin: 10px 0 0; color: #6f6f76; font-size: 13px; line-height: 1.8; }
+    dialog.exit-confirm ul { margin: 16px 0; padding: 0; list-style: none; border: 1px solid #e0e0e3; }
+    dialog.exit-confirm li { padding: 10px 14px; border-bottom: 1px solid #e0e0e3; color: #6f6f76; font-size: 13px; line-height: 1.7; }
     dialog.exit-confirm li:last-child { border-bottom: 0; }
-    dialog.exit-confirm .exit-policy-title { margin: 14px 0 8px; color: var(--ink-soft); font-size: 15px; font-weight: 600; }
-    dialog.exit-confirm .exit-option { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 2px; cursor: pointer; transition: border-color var(--motion), background-color var(--motion); }
-    dialog.exit-confirm .exit-option + .exit-option { margin-top: 6px; }
-    dialog.exit-confirm .exit-option:hover { border-color: var(--dim); background: #f7f7f7; }
-    dialog.exit-confirm .exit-option:has(input:checked) { border-color: var(--ink); background: #f4f4f4; }
-    dialog.exit-confirm .exit-option input { width: 16px; height: 16px; min-height: 0; margin: 0; flex: none; accent-color: var(--ink); }
-    dialog.exit-confirm .exit-option span { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-    dialog.exit-confirm .exit-option b { font-size: 15px; font-weight: 600; color: var(--ink); }
-    dialog.exit-confirm .exit-option em { font-style: normal; font-size: 12px; color: var(--dim); }
+    dialog.exit-confirm .exit-policy-title { margin: 16px 0 10px; color: #1a1a1a; font-size: 13px; }
+    dialog.exit-confirm .exit-option {
+      display: flex; align-items: center; gap: 12px;
+      min-height: 46px; padding: 0 12px;
+      border: 1px solid #e0e0e3; border-radius: 2px;
+      cursor: pointer;
+      transition: border-color var(--motion), background-color var(--motion);
+    }
+    dialog.exit-confirm .exit-option + .exit-option { margin-top: 8px; }
+    dialog.exit-confirm .exit-option:hover { border-color: #b8b8bd; background: #f7f7f7; }
+    dialog.exit-confirm .exit-option:has(input:checked) { border-color: #1a1a1a; background: #f3f3f3; }
+    dialog.exit-confirm .exit-option input { width: 15px; height: 15px; min-height: 0; margin: 0; flex: none; accent-color: #1a1a1a; }
+    dialog.exit-confirm .exit-option span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    dialog.exit-confirm .exit-option b { font-size: 13px; font-weight: 500; color: #1a1a1a; }
+    dialog.exit-confirm .exit-option em { font-style: normal; font-size: 13px; color: #9c9ca2; }
     .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
     .dialog-btn {
       min-height: 38px; padding: 0 18px;
-      border: 1px solid var(--line);
+      border: 1px solid #e0e0e3;
       border-radius: 2px;
-      background: transparent; color: var(--ink);
-      font-size: 15px;
-      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-      transition: border-color var(--motion), color var(--motion), background-color var(--motion);
+      background: transparent; color: #1a1a1a;
+      font-size: 13px;
+      display: inline-flex; align-items: center; justify-content: center;
+      transition: border-color var(--motion), color var(--motion);
     }
-    .dialog-btn:hover { border-color: var(--ink); color: var(--ink); }
-    .dialog-btn-danger { border-color: var(--bad); color: var(--bad); }
-    .dialog-btn-danger:hover { background: var(--bad-bg); color: var(--bad); }
-    .dialog-btn .btn-spinner { border-color: rgba(0,0,0,.25); border-top-color: var(--ink); }
-    dialog.exit-confirm[open] { animation: dialog-in .22s var(--motion) both; }
-    dialog.exit-confirm::backdrop { animation: backdrop-in .18s ease-out both; }
+    .dialog-btn:hover { border-color: #1a1a1a; }
+    .dialog-btn-danger { border-color: #d9a5a0; color: #d64545; }
+    .dialog-btn-danger:hover { background: #fdf1f0; border-color: #d64545; }
+    dialog.exit-confirm[open] { animation: dialog-in .24s var(--motion) both; }
+    dialog.exit-confirm::backdrop { animation: backdrop-in .2s ease-out both; }
 
-    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    @keyframes dialog-in { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+    @keyframes rise-in {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes dots {
+      0%, 24% { opacity: .25; }
+      50% { opacity: 1; }
+      76%, 100% { opacity: .25; }
+    }
+    @keyframes dialog-in {
+      from { opacity: 0; transform: translateY(10px) scale(.985); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
     @keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
@@ -206,42 +221,24 @@
   </style>
 </head>
 <body>
-  <header class="topbar">
-    <span class="brand">PersonaLive</span>
-    <span class="version" id="version-text"></span>
-  </header>
-
-  <main class="center">
-    <section class="launcher">
-      <button id="start-btn" class="start-btn" type="button">
-        <span class="btn-spinner" aria-hidden="true"></span>
-        <span id="start-label">启动</span>
-      </button>
-      <p class="error" id="start-error"></p>
-      <ol class="steps" id="steps">
-        <li data-step="docker"><i class="dot"></i><span class="name">Docker</span><em class="detail">等待中</em></li>
-        <li data-step="containers"><i class="dot"></i><span class="name">容器</span><em class="detail">等待中</em></li>
-        <li data-step="mysql"><i class="dot"></i><span class="name">MySQL</span><em class="detail">等待中</em></li>
-        <li data-step="milvus"><i class="dot"></i><span class="name">Milvus</span><em class="detail">等待中</em></li>
-        <li data-step="service"><i class="dot"></i><span class="name">本地服务</span><em class="detail">等待中</em></li>
-      </ol>
-      <p class="elapsed" id="elapsed"></p>
-    </section>
+  <main class="loader" aria-live="polite">
+    <div class="track" id="track" aria-hidden="true">
+      <div class="track-fill" id="track-fill"></div>
+      <div class="track-tip" id="track-tip"></div>
+    </div>
+    <p class="loadline" id="loadline"><span class="label">LOADING - </span><b id="percent-text">0</b><span>%</span><span class="dots">......</span></p>
+    <p class="phase" id="phase-text">正在准备环境…</p>
   </main>
-
-  <footer class="footer">
-    <span id="service-info">服务地址 http://127.0.0.1:17000</span>
-    <span>本地启动</span>
-  </footer>
+  <span class="version" id="version-text">YUMENO</span>
 
   <dialog id="exit-confirm-dialog" class="exit-confirm">
     <form method="dialog">
       <div class="dialog-body">
-        <h2>退出 PersonaLive</h2>
+        <h2>退出 YUMENO</h2>
         <p class="dialog-sub">确认后将依次：</p>
         <ul>
           <li>停止 FastAPI 服务（端口 17000）</li>
-          <li>停止 ASR / Embedding 后台进程</li>
+          <li>停止 TTS / ASR / Embedding 后台进程</li>
           <li>关闭窗口并退出程序</li>
         </ul>
         <p class="exit-policy-title">Docker 容器处理方式</p>
@@ -250,7 +247,7 @@
         <label class="exit-option"><input type="radio" name="exit-policy" value="remove"><span><b>完全清除</b><em>数据保留，下次启动需重建</em></span></label>
         <div class="dialog-actions">
           <button id="exit-cancel" class="dialog-btn" type="button">取消</button>
-          <button id="exit-confirm" class="dialog-btn dialog-btn-danger" type="button"><span class="btn-spinner" aria-hidden="true"></span><span id="exit-confirm-label">确认退出</span></button>
+          <button id="exit-confirm" class="dialog-btn dialog-btn-danger" type="button">确认退出</button>
         </div>
       </div>
     </form>
@@ -260,150 +257,332 @@
     "use strict";
     const $ = (id) => document.getElementById(id);
 
-    let API = null;
-    window.addEventListener("pywebviewready", () => {
-      API = window.pywebview?.api ?? null;
-      refreshStatus();
-    });
+    const BASE = "__LAUNCHER_BASE__".startsWith("http") ? "__LAUNCHER_BASE__" : "http://127.0.0.1:17000";
+    const PROGRESS_URL = "__LAUNCHER_PROGRESS__".startsWith("http") ? "__LAUNCHER_PROGRESS__" : "";
 
-    const STEP_KEYS = ["docker", "containers", "mysql", "milvus", "service"];
+    let readyDone = false;
+    let currentPercent = 0;
+    let targetPercent = 0;
+    let rafId = 0;
+    let lastFrame = 0;
+    let isPreview = false;
+    const PROGRESS_SPEED = 32;
 
-    function renderSteps(steps) {
-      STEP_KEYS.forEach((key) => {
-        const item = document.querySelector(`[data-step="${key}"]`);
-        if (!item) return;
-        const info = (steps || []).find((step) => step.key === key) || {};
-        item.classList.toggle("is-running", info.state === "running");
-        item.classList.toggle("is-ok", info.state === "ok");
-        item.classList.toggle("is-fail", info.state === "fail");
-        const detail = item.querySelector(".detail");
-        if (detail && info.detail) detail.textContent = info.detail;
-      });
+    const STEP_ORDER = ["docker", "containers", "mysql", "milvus", "attu", "service"];
+    const STEP_WEIGHTS = { docker: 0.15, containers: 0.38, mysql: 0.56, milvus: 0.74, attu: 0.84, service: 0.94 };
+
+    // 兜底默认速度：动画循环内连续以 2%/秒匀速推进（每 0.5s 涨 1%），
+    // 保证进度条在任何情况下都不会冻结，且视觉丝滑不跳格；
+    // 若服务尚未加载完就已到 99，则停在 99 等待完成。
+    const DEFAULT_RATE = 2;   // 兜底默认速度（%/秒）
+    const MAX_LEAD = 99;      // 服务完成前兜底前进的展示上限
+
+    // 暗夜渐晓：前段保持深色（启动期反馈靠文字），接近就绪时加速变白
+    // el = [r, g, b, a] 用于耗时小字；halo / haloR 控制中央柔光强度与半径
+    const THEME = [
+      { p: 0,   bgTop: "#101014", bg: "#0d0d10", bgBottom: "#08080b", ink: "#e9e9ec", muted: "#9b9ba3", dim: "#60606a", track: "#26262c", line: "#e9e9ec", bad: "#ff6b6b", el: [210, 210, 215, 0.36], halo: 0,    haloR: 18 },
+      { p: 68,  bgTop: "#18181f", bg: "#14141a", bgBottom: "#0e0e12", ink: "#ececef", muted: "#a3a3ab", dim: "#6a6a73", track: "#2b2b32", line: "#ececef", bad: "#ff7a7a", el: [205, 205, 210, 0.36], halo: 0.18, haloR: 30 },
+      { p: 78,  bgTop: "#4a4a52", bg: "#3a3a42", bgBottom: "#2a2a30", ink: "#f1f1f3", muted: "#b5b5bb", dim: "#7b7b83", track: "#4a4a52", line: "#f1f1f3", bad: "#e45757", el: [215, 215, 220, 0.40], halo: 0.26, haloR: 46 },
+      { p: 86,  bgTop: "#b4b4b9", bg: "#9a9aa1", bgBottom: "#7e7e85", ink: "#f5f5f6", muted: "#cfcfd3", dim: "#9d9da3", track: "#a6a6ac", line: "#1c1c1f", bad: "#d64545", el: [0, 0, 0, 0.40], halo: 0.16, haloR: 62 },
+      { p: 92,  bgTop: "#ededee", bg: "#d9d9dc", bgBottom: "#c4c4c8", ink: "#2c2c30", muted: "#6f6f76", dim: "#9c9ca2", track: "#d9d9dc", line: "#1c1c1f", bad: "#d64545", el: [0, 0, 0, 0.38], halo: 0.05, haloR: 72 },
+      { p: 100, bgTop: "#ffffff", bg: "#f6f6f7", bgBottom: "#ececee", ink: "#1a1a1a", muted: "#6f6f76", dim: "#9c9ca2", track: "#e0e0e3", line: "#1a1a1a", bad: "#d64545", el: [0, 0, 0, 0.38], halo: 0,    haloR: 76 },
+    ];
+
+    function hexRgb(hex) {
+      const value = parseInt(hex.slice(1), 16);
+      return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+    }
+    function mix(a, b, t) { return Math.round(a + (b - a) * t); }
+    function mixN(a, b, t) { return a + (b - a) * t; }
+    function mixHex(h1, h2, t) {
+      const a = hexRgb(h1);
+      const b = hexRgb(h2);
+      return `rgb(${mix(a[0], b[0], t)}, ${mix(a[1], b[1], t)}, ${mix(a[2], b[2], t)})`;
     }
 
-    function deriveFromStatus(s) {
-      renderSteps([
-        { key: "docker", state: s.docker_ready ? "ok" : "pending", detail: s.docker_ready ? "Docker Engine 就绪" : "等待中" },
-        { key: "containers", state: s.containers_up ? "ok" : "pending", detail: s.containers_up ? "容器已运行" : "等待中" },
-        { key: "mysql", state: s.mysql_up ? "ok" : "pending", detail: s.mysql_up ? "MySQL 已连接" : "等待中" },
-        { key: "milvus", state: s.milvus_up ? "ok" : "pending", detail: s.milvus_up ? "Milvus 已连接" : "等待中" },
-        { key: "service", state: s.service_running ? "ok" : "pending", detail: s.service_running ? "服务已就绪" : "等待中" },
-      ]);
-    }
-
-    async function refreshStatus() {
-      try {
-        if (!API) return;
-        const s = await API.status();
-        if (s.port) $("service-info").textContent = `服务地址 http://127.0.0.1:${s.port}`;
-        if (s.version) $("version-text").textContent = `v${s.version}`;
-        if (!startPollTimer) deriveFromStatus(s);
-      } catch (e) { /* ignore */ }
-    }
-
-    function setBusy(busy) {
-      $("start-btn").disabled = busy;
-      $("start-btn").classList.toggle("is-loading", busy);
-      $("start-label").textContent = busy ? "正在启动…" : "启动";
-    }
-
-    let startPollTimer = null;
-    let startElapsedTimer = null;
-    let startStartedAt = 0;
-
-    function clearStartPoll() {
-      if (startPollTimer) { clearInterval(startPollTimer); startPollTimer = null; }
-      if (startElapsedTimer) { clearInterval(startElapsedTimer); startElapsedTimer = null; }
-      $("elapsed").textContent = "";
-    }
-
-    function tickElapsed() {
-      if (startStartedAt) $("elapsed").textContent = `已耗时 ${Math.floor((Date.now() - startStartedAt) / 1000)} 秒`;
-    }
-
-    async function waitForMainReady(attempts = 30) {
-      for (let i = 0; i < attempts; i += 1) {
-        try {
-          const s = await API.status();
-          if (s && s.service_running) return true;
-        } catch (e) { /* keep waiting */ }
-        await new Promise((resolve) => setTimeout(resolve, 500));
+    function themeAt(p) {
+      let a = THEME[0];
+      let b = THEME[THEME.length - 1];
+      let t = 0;
+      for (let i = 1; i < THEME.length; i += 1) {
+        if (p <= THEME[i].p) {
+          a = THEME[i - 1];
+          b = THEME[i];
+          t = (p - a.p) / (b.p - a.p);
+          break;
+        }
       }
+      const ea = a.el;
+      const eb = b.el;
+      return {
+        bgTop: mixHex(a.bgTop, b.bgTop, t),
+        bg: mixHex(a.bg, b.bg, t),
+        bgBottom: mixHex(a.bgBottom, b.bgBottom, t),
+        ink: mixHex(a.ink, b.ink, t),
+        muted: mixHex(a.muted, b.muted, t),
+        dim: mixHex(a.dim, b.dim, t),
+        track: mixHex(a.track, b.track, t),
+        line: mixHex(a.line, b.line, t),
+        bad: mixHex(a.bad, b.bad, t),
+        elapsed: `rgba(${mix(ea[0], eb[0], t)}, ${mix(ea[1], eb[1], t)}, ${mix(ea[2], eb[2], t)}, ${mixN(ea[3], eb[3], t).toFixed(2)})`,
+        halo: mixN(a.halo, b.halo, t),
+        haloR: mixN(a.haloR, b.haloR, t),
+      };
+    }
+
+    function renderPercent(p) {
+      const theme = themeAt(p);
+      const s = document.documentElement.style;
+      s.setProperty("--bg-top", theme.bgTop);
+      s.setProperty("--bg", theme.bg);
+      s.setProperty("--bg-bottom", theme.bgBottom);
+      s.setProperty("--ink", theme.ink);
+      s.setProperty("--muted", theme.muted);
+      s.setProperty("--dim", theme.dim);
+      s.setProperty("--track", theme.track);
+      s.setProperty("--line", theme.line);
+      s.setProperty("--elapsed", theme.elapsed);
+      s.setProperty("--bad", theme.bad);
+      s.setProperty("--halo", theme.halo.toFixed(3));
+      s.setProperty("--halo-r", `${theme.haloR.toFixed(1)}%`);
+      const track = $("track");
+      if (track) track.style.setProperty("--p", (p / 100).toFixed(4));
+      const pct = $("percent-text");
+      if (pct) pct.textContent = `${Math.round(p)}`;
+      const loadline = $("loadline");
+      if (loadline) loadline.classList.toggle("is-done", p >= 99.5);
+    }
+
+    function setTarget(target) {
+      // 进度只前进不后退：任何来源都不允许把目标值拉低，避免进度条倒退
+      targetPercent = Math.max(targetPercent, Math.max(0, Math.min(100, Number(target) || 0)));
+      if (!rafId) {
+        lastFrame = performance.now();
+        rafId = requestAnimationFrame(tweenPercent);
+      }
+    }
+
+    function tweenPercent(now) {
+      const dt = Math.min(0.1, (now - lastFrame) / 1000);
+      lastFrame = now;
+      let goal;
+      let speed;
+      if (isPreview) {
+        // 预览模式：仅按目标值渲染，不叠加兜底匀速
+        goal = targetPercent;
+        speed = PROGRESS_SPEED;
+      } else if (targetPercent > currentPercent) {
+        // 真实步骤推进：快速追赶目标
+        goal = targetPercent;
+        speed = PROGRESS_SPEED;
+      } else {
+        // 兜底：连续匀速前进（2%/秒），封顶 99
+        goal = Math.min(MAX_LEAD, currentPercent + DEFAULT_RATE * dt);
+        speed = DEFAULT_RATE;
+      }
+      currentPercent = Math.min(goal, currentPercent + speed * dt);
+      const catchingUp = targetPercent > currentPercent;
+      const flooring = !isPreview && currentPercent < MAX_LEAD;
+      if (catchingUp || flooring) {
+        rafId = requestAnimationFrame(tweenPercent);
+      } else {
+        rafId = 0;
+      }
+      renderPercent(currentPercent);
+    }
+
+    function setPhase(text, state, elapsed) {
+      const node = $("phase-text");
+      if (!node) return;
+      node.replaceChildren();
+      if (text) {
+        const parts = String(text).split(" · ");
+        parts.forEach((part, i) => {
+          if (i > 0) node.append(document.createTextNode(" · "));
+          if (/^(MySQL|etcd|MinIO|Milvus|Attu)/i.test(part.trim())) {
+            const span = document.createElement("span");
+            span.className = "phase-dim";
+            span.textContent = part;
+            node.append(span);
+          } else {
+            node.append(document.createTextNode(part));
+          }
+        });
+      }
+      if (elapsed != null && Number.isFinite(elapsed) && elapsed >= 5) {
+        const span = document.createElement("span");
+        span.className = "elapsed";
+        span.textContent = `${elapsed}s`;
+        node.append(span);
+      }
+      node.classList.toggle("is-active", state === "running");
+      node.classList.toggle("is-fail", state === "fail");
+    }
+
+    function addRetry() {
+      const node = $("phase-text");
+      if (!node || node.querySelector(".retry")) return;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "retry";
+      button.textContent = "重试";
+      button.addEventListener("click", () => {
+        currentPercent = 0;
+        targetPercent = 0;
+        node.replaceChildren();
+        tick();
+      });
+      node.append(button);
+    }
+
+    async function fetchJson(url, timeoutMs = 2000) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return await response.json();
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    function percentFromSteps(steps) {
+      let base = 0;
+      for (const key of STEP_ORDER) {
+        const step = (steps || []).find((s) => s.key === key);
+        if (!step) continue;
+        const weight = STEP_WEIGHTS[key];
+        if (step.state === "ok") base = weight;
+        else if (step.state === "running") {
+          // 步骤内蠕动：随耗时在 [base, weight] 区间内缓慢推进（上限 90%），
+          // 保证长步骤（如等待 Docker/容器健康）期间进度持续前进、不冻结
+          const span = weight - base;
+          const elapsed = Number.isFinite(step.elapsed) ? step.elapsed : 0;
+          const within = Math.min(0.9, 0.04 + elapsed * 0.008);
+          return Math.round((base + span * within) * 100);
+        }
+        else if (step.state === "fail") return Math.round(base * 100);
+      }
+      return Math.round(base * 100);
+    }
+
+    function phaseFromSteps(steps) {
+      for (const key of STEP_ORDER) {
+        const step = (steps || []).find((s) => s.key === key);
+        if (step && step.state === "running") {
+          return {
+            text: step.detail || "正在启动…",
+            state: "running",
+            elapsed: Number.isFinite(step.elapsed) ? step.elapsed : null,
+          };
+        }
+        if (step && step.state === "fail") return { text: step.detail || "启动失败", state: "fail" };
+      }
+      return { text: "正在准备环境…", state: "pending" };
+    }
+
+    function handleProgress(p) {
+      if (!p || !Array.isArray(p.steps)) return false;
+      const stepPercent = percentFromSteps(p.steps);
+      const phase = phaseFromSteps(p.steps);
+      setPhase(phase.text, phase.state, phase.elapsed);
+      if (p.done && p.ok) {
+        setTarget(100);
+        enterMain();
+        return true;
+      }
+      if (p.done && !p.ok) {
+        setPhase(p.error || "启动失败", "fail");
+        addRetry();
+        return true;
+      }
+      setTarget(stepPercent);
       return false;
     }
 
-    async function pollStartProgress() {
-      try {
-        const p = await API.progress();
-        renderSteps(p.steps);
-        if (!p.done) return;
-        clearStartPoll();
-        setBusy(false);
-        if (p.ok) {
-          if (await waitForMainReady()) {
-            if (API?.show_main) API.show_main();
-          } else {
-            $("start-error").textContent = "服务已启动但尚未就绪，请稍候重试";
-          }
-        } else {
-          $("start-error").textContent = p.error || "启动失败";
+    function enterMain() {
+      if (readyDone) return;
+      readyDone = true;
+      setPhase("服务已就绪", "running");
+      const started = performance.now();
+      const wait = setInterval(() => {
+        if (currentPercent >= 99.5 || performance.now() - started > 1800) {
+          clearInterval(wait);
+          document.body.classList.add("is-done");
+          setTimeout(() => {
+            try { window.location.replace(`${BASE}/static/index.html`); } catch (e) { /* ignore */ }
+          }, 460);
         }
-      } catch (reason) {
-        clearStartPoll();
-        setBusy(false);
-        $("start-error").textContent = String(reason);
-      }
+      }, 100);
     }
 
-    async function enterSystem() {
-      if (startPollTimer) return;
-      setBusy(true);
-      $("start-error").textContent = "";
+    async function tick() {
+      if (PROGRESS_URL) {
+        try {
+          const p = await fetchJson(PROGRESS_URL);
+          if (p && Array.isArray(p.steps)) {
+            // 进度服务是权威来源：只要它正常返回，就以其为准并结束本轮，
+            // 不再去轮询 /api/status，避免两个来源交替覆盖文案、拉扯进度条
+            handleProgress(p);
+            return;
+          }
+        } catch (e) { /* 进度服务不可用，回退到主服务状态 */ }
+      }
       try {
-        const result = await API.start();
-        if (!result || !result.ok) {
-          setBusy(false);
-          $("start-error").textContent = (result && result.error) || "启动失败";
+        const s = await fetchJson(`${BASE}/api/status`);
+        if (s && s.app) { enterMain(); return; }
+        if (s) {
+          const ready = [];
+          if (s.mysql === "ok") ready.push("MySQL");
+          if (s.milvus === "ok") ready.push("Milvus");
+          setTarget(ready.length ? 45 + ready.length * 20 : 12);
+          setPhase(ready.length ? `已连接 ${ready.join("、")}，正在启动本地服务…` : "正在启动本地服务…", "running");
           return;
         }
-        startStartedAt = Date.now();
-        tickElapsed();
-        startElapsedTimer = setInterval(tickElapsed, 1000);
-        await pollStartProgress();
-        startPollTimer = setInterval(pollStartProgress, 600);
-      } catch (reason) {
-        clearStartPoll();
-        setBusy(false);
-        $("start-error").textContent = String(reason);
+      } catch (e) { /* 主服务未起 */ }
+      setTarget(Math.min(40, targetPercent + 0.6));
+      setPhase("正在启动本地服务…", "running");
+      if (targetPercent >= 39) {
+        setPhase("启动超时，请检查 Docker 状态后重试", "fail");
+        addRetry();
       }
     }
-
-    $("start-btn").addEventListener("click", enterSystem);
-    refreshStatus();
-    setInterval(refreshStatus, 3000);
 
     function renderExitPolicy(policy) {
       const radio = document.querySelector('input[name="exit-policy"][value="' + (policy || "pause") + '"]');
       if (radio) radio.checked = true;
     }
     window.showExitConfirm = function showExitConfirm() {
-      if (API?.get_exit_policy) {
-        API.get_exit_policy().then((settings) => renderExitPolicy(settings.on_exit)).catch(() => {});
+      const api = window.pywebview && window.pywebview.api;
+      if (api && api.get_exit_policy) {
+        api.get_exit_policy().then((settings) => renderExitPolicy(settings.on_exit)).catch(() => {});
       }
       $("exit-confirm-dialog").showModal();
     };
     $("exit-cancel").addEventListener("click", () => $("exit-confirm-dialog").close());
     $("exit-confirm").addEventListener("click", async () => {
       const btn = $("exit-confirm");
-      btn.classList.add("is-loading");
       btn.disabled = true;
-      $("exit-confirm-label").textContent = "正在退出…";
       const selected = (document.querySelector('input[name="exit-policy"]:checked') || {}).value || "pause";
-      if (API?.set_exit_policy) {
-        try { await API.set_exit_policy(selected); } catch (e) {}
+      const api = window.pywebview && window.pywebview.api;
+      if (api && api.set_exit_policy) {
+        try { await api.set_exit_policy(selected); } catch (e) {}
       }
-      if (API?.do_exit) API.do_exit();
+      if (api && api.do_exit) api.do_exit();
+      else $("exit-confirm-dialog").close();
     });
+
+    // 预览模式：file://.../onboarding.html#preview=NN 直接渲染到 NN%，便于设计验证
+    const previewMatch = (location.hash.match(/preview=([\d.]+)/) || [])[1];
+    if (previewMatch !== undefined) {
+      isPreview = true;
+      renderPercent(Number(previewMatch));
+      setTarget(Number(previewMatch));
+    } else {
+      setInterval(tick, 900);
+      tick();
+    }
   </script>
 </body>
 </html>

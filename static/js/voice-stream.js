@@ -1,6 +1,6 @@
 "use strict";
 
-// Hands-free voice streaming client for the PersonaLive voice stream API.
+// Hands-free voice streaming client for the YUMENO voice stream API.
 // Streams 16 kHz mono PCM to /api/voice/stream/ws while the server runs
 // Silero VAD endpointing; partial transcripts arrive while speaking and a
 // final transcript is delivered once the utterance ends.
