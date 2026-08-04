@@ -1,0 +1,87 @@
+<section id="manage-view" class="view is-hidden">
+  <section class="panel manage-list-panel">
+    <div class="panel-heading"><div><h2>角色列表</h2><p class="panel-subtitle">选择角色后在下方面板编辑资料、形象与声音。</p></div><span id="manage-count" class="status-pill">0 个角色</span></div>
+    <div id="manage-persona-list" class="manage-persona-list"></div>
+  </section>
+
+  <div id="edit-persona-workspace" class="edit-persona-workspace is-hidden">
+    <div class="edit-toolbar">
+      <div class="workspace-heading"><div><h2>编辑角色</h2><p>各模块可单独保存，也可一次「保存全部」。</p></div></div>
+      <div class="panel-actions">
+        <button id="delete-persona" class="icon-button icon-button-danger" type="button" title="永久删除当前角色" disabled><i data-lucide="trash-2"></i></button>
+        <button id="save-all-persona" class="button button-primary" type="button"><i data-lucide="check-check"></i>保存全部</button>
+      </div>
+    </div>
+
+    <section class="panel edit-files-panel">
+      <div class="panel-heading"><div><h2>角色资料</h2><p class="panel-subtitle">名称、人设与知识文件，支持拖入或点击选择。</p></div><span id="edit-files-status" class="status-pill">未修改</span></div>
+      <div class="basic-fields">
+        <label class="field"><span>名称</span><input id="edit-persona-name" maxlength="255" required></label>
+        <label class="field"><span>人设</span><textarea id="edit-persona-profile" rows="4"></textarea></label>
+      </div>
+      <div id="edit-files-drop" class="upload-drop" tabindex="0" role="button" aria-label="选择文件">
+        <i data-lucide="file-plus-2"></i>
+        <b>拖入文件，或点击选择</b>
+        <span>支持 PDF / Word / 图片 / 文本等，可一次多选</span>
+        <input id="edit-document-files" type="file" multiple>
+      </div>
+      <ul id="edit-files-selected" class="file-chip-list is-hidden"></ul>
+      <label class="field text-supplement"><span>补充文本</span><textarea id="edit-direct-text" rows="3" placeholder="粘贴资料内容"></textarea></label>
+      <div class="module-actions">
+        <p id="edit-files-message" class="inline-status"></p>
+        <button id="edit-files-confirm" class="button button-primary" type="button"><i data-lucide="save"></i>保存资料</button>
+      </div>
+      <div class="section-heading"><b>已写入 Milvus 向量库</b></div>
+      <div id="edit-document-list" class="document-list"></div>
+    </section>
+
+    <div class="edit-modules-row">
+      <section class="panel edit-live2d-panel">
+        <div class="panel-heading"><div><h2>角色形象</h2><p class="panel-subtitle">绑定 Live2D 模型，对话时自动切换形象。</p></div><span id="edit-live2d-status" class="status-pill">未绑定</span></div>
+        <div class="live2d-bind-row"><label class="field"><span>Live2D 模型</span><select id="edit-live2d-model"><option value="">默认（不绑定）</option></select></label></div>
+        <p class="settings-help">模型来自 data/live2d/ 目录；未绑定时使用角色面板中选择的模型。</p>
+        <div class="module-actions">
+          <p id="edit-live2d-message" class="inline-status"></p>
+          <button id="edit-live2d-confirm" class="button button-secondary" type="button"><i data-lucide="save"></i>保存形象</button>
+        </div>
+      </section>
+
+      <section class="panel edit-tts-panel">
+        <div class="panel-heading"><div><h2>角色声音</h2><p class="panel-subtitle">上传参考音频（可多选），生成示例语音确认效果。</p></div><span id="edit-tts-reference-status" class="status-pill">未配置</span></div>
+        <div id="edit-tts-drop" class="upload-drop" tabindex="0" role="button" aria-label="选择参考音频">
+          <i data-lucide="audio-lines"></i>
+          <b>拖入 WAV，或点击选择</b>
+          <span>建议 2~5 条、合计 10~20 秒</span>
+          <input id="edit-tts-reference" type="file" accept="audio/wav,.wav" multiple>
+        </div>
+        <ul id="edit-tts-selected" class="file-chip-list is-hidden"></ul>
+        <div class="voice-reference-actions">
+          <label class="toggle-field"><input id="edit-tts-enabled" type="checkbox"><span>生成语音</span></label>
+          <label class="toggle-field"><input id="edit-tts-auto-play" type="checkbox"><span>自动播放</span></label>
+          <button id="edit-tts-preview-reference" class="button button-secondary" type="button" disabled>播放参考音频</button>
+          <button id="edit-tts-remove-reference" class="button button-secondary" type="button" disabled>移除音色</button>
+        </div>
+        <div class="voice-sample-row">
+          <label class="field"><span>示例文案</span><input id="edit-tts-preview-text" value="你好，我是这个角色，很高兴和你聊天。" maxlength="200"></label>
+          <button id="edit-tts-generate-preview" class="button button-secondary" type="button" disabled>生成示例语音</button>
+          <audio id="edit-tts-preview-audio" class="is-hidden" controls preload="none"></audio>
+        </div>
+        <div class="module-actions">
+          <p id="edit-tts-message" class="inline-status"></p>
+          <button id="edit-tts-confirm" class="button button-primary" type="button"><i data-lucide="save"></i>保存声音</button>
+        </div>
+        <p id="edit-tts-preview-status" class="inline-status"></p>
+        <button id="edit-tts-open-settings" class="button button-secondary is-hidden" type="button">前往设置安装 TTS 模型</button>
+      </section>
+
+      <section class="panel edit-mcp-grants-panel">
+        <div class="panel-heading"><div><h2>可用 MCP 服务</h2><p class="panel-subtitle">勾选本角色可调用的 MCP 服务器；未授权服务器即使技能引用也不可见。</p></div><span id="edit-mcp-grants-status" class="status-pill">未配置</span></div>
+        <div id="edit-mcp-grant-list" class="skill-tools"></div>
+        <div class="module-actions">
+          <p id="edit-mcp-grants-message" class="inline-status"></p>
+          <button id="edit-mcp-grants-save" class="button button-secondary" type="button">保存授权</button>
+        </div>
+      </section>
+    </div>
+  </div>
+</section>
