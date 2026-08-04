@@ -1,18 +1,21 @@
 import os
+import shutil
 import subprocess
 import threading
 import time
 
-from fastapi import APIRouter, Body, Request
+from fastapi import APIRouter, Body, HTTPException, Request
 
 from app.routers.settings import require_local
 from app.schemas import DockerSettingsPayload, ShutdownPayload
 from extensions.storage import read_json, write_json
+from integrations.mcp.config import MCPServerConfig
 from settings import Settings
 
 
 router = APIRouter(prefix="/api/system", tags=["system"])
 DOCKER_SETTINGS_PATH = Settings.load().project_root / "data" / "docker_settings.json"
+KEYLESS_SERVER_NAME = "free-search"
 
 
 def _docker_settings() -> dict:
@@ -38,6 +41,67 @@ def _run_compose(command: str) -> dict:
         detail = (result.stderr or result.stdout or "").strip()
         return {"ok": False, "error": detail or f"docker compose {command} 失败"}
     return {"ok": True}
+
+
+def _mcp_manager(request: Request):
+    manager = getattr(request.app.state, "mcp_manager", None)
+    if manager is None:
+        raise HTTPException(status_code=503, detail="MCP 管理器尚未就绪")
+    return manager
+
+
+@router.get("/web-search-keyless")
+def web_search_keyless_status(request: Request) -> dict:
+    """返回免 key 搜索当前状态（是否配置、uvx 可用性、连接状态）。"""
+
+    require_local(request)
+    manager = _mcp_manager(request)
+    config = manager.get_config(KEYLESS_SERVER_NAME)
+    status = manager.status().get(KEYLESS_SERVER_NAME, {})
+    return {
+        "enabled": config is not None,
+        "uvx_available": shutil.which("uvx") is not None,
+        "status": status.get("status", "not_loaded"),
+        "tool_count": status.get("tool_count", 0),
+        "error": status.get("error", ""),
+    }
+
+
+@router.post("/web-search-keyless")
+async def web_search_keyless_set(request: Request, payload: dict) -> dict:
+    """启用/关闭内置免 key 搜索（free-search-mcp）；变更即时生效。"""
+
+    require_local(request)
+    manager = _mcp_manager(request)
+    enabled = bool(payload.get("enabled"))
+    servers = manager.list_configs()
+    if enabled:
+        if shutil.which("uvx") is None:
+            raise HTTPException(status_code=422, detail="未检测到 uvx，请先安装 uv")
+        config = MCPServerConfig(
+            name=KEYLESS_SERVER_NAME,
+            transport="stdio",
+            command="uvx",
+            args=["free-search-mcp"],
+            env={
+                "UV_DEFAULT_INDEX": "https://mirrors.aliyun.com/pypi/simple/",
+                "SEARCH_MCP_DOWNLOAD_ENABLED": "false",
+            },
+            enabled=True,
+            description="免 API key 联网搜索（本地优先）",
+        )
+        manager.save_configs(
+            [s for s in servers if s.name != KEYLESS_SERVER_NAME] + [config]
+        )
+        await manager.reload_server(KEYLESS_SERVER_NAME)
+    else:
+        remaining = [s for s in servers if s.name != KEYLESS_SERVER_NAME]
+        manager.save_configs(remaining)
+        manager.disable_server(KEYLESS_SERVER_NAME)
+    from agents.skills import refresh_skills
+
+    refresh_skills()
+    return web_search_keyless_status(request)
 
 
 @router.get("/docker-settings")
