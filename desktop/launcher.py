@@ -16,12 +16,9 @@ def show_error(message: str) -> None:
 
 
 def apply_window_icon(window, icon_path: Path) -> None:
-    """给 pywebview 窗口设置任务栏/标题栏图标（开发模式下 exe 图标不生效）。
-
-    pywebview 5.x 的 edgechromium 窗口是 WinForms 容器（BrowserForm 默认用
-    sys.executable 的图标）；直接设置 form.Icon 覆盖默认 Python 图标。
+    """兜底：通过 WinForms 原生控件强制设置窗口/任务栏图标。
+    pywebview 6.2 起官方 icon= 参数已支持 WinForms，此函数仅作兼容兜底。
     """
-
     try:
         native = window.native
         form = native.form
@@ -74,6 +71,7 @@ def run(project_root: Path | None = None) -> int:
             gui="edgechromium",
             debug=False,
             private_mode=False,
+            icon=str(root / "resources" / "app.ico"),
             func=lambda: apply_window_icon(window, root / "resources" / "app.ico"),
         )
         return 0
