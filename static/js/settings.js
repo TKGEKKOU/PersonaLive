@@ -2,49 +2,70 @@
 window.PL = window.PL || { modules: {} };
 window.PL.modules.settings = { init: initSettings };
 
+function bindIf(id, event, handler) {
+  const node = $(id);
+  if (node) node.addEventListener(event, handler);
+}
+function setDisabled(id, value) {
+  const node = $(id);
+  if (node) node.disabled = value;
+}
+function setHidden(id, hidden) {
+  const node = $(id);
+  if (node) node.classList.toggle("is-hidden", hidden);
+}
+function friendlyError(reason) {
+  const message = String(reason?.message || reason || "").trim();
+  if (!message) return "请稍后重试";
+  if (/null|undefined/.test(message)) return "页面组件未就绪，请刷新页面后重试";
+  return message;
+}
+
 function initSettings() {
   bindSettingsEvents();
   prepareSettingsSections();
   loadStatus();
   loadSettings();
+  loadKeylessSearchStatus();
   loadEmbeddingStatus();
   loadAsrStatus();
   loadTtsStatus();
 }
 
 function bindSettingsEvents() {
-  $("refresh-status").addEventListener("click", refreshSystemStatus);
-  $("collapse-status").addEventListener("click", toggleStatusCards);
-  $("settings-form").addEventListener("submit", requestSettingsSave);
-  $("reset-settings").addEventListener("click", requestSettingsReset);
-  $("llm-provider").addEventListener("change", applyLlmPreset);
+  bindIf("refresh-status", "click", refreshSystemStatus);
+  bindIf("collapse-status", "click", toggleStatusCards);
+  bindIf("settings-form", "submit", requestSettingsSave);
+  bindIf("reset-settings", "click", requestSettingsReset);
+  bindIf("llm-provider", "change", applyLlmPreset);
   ["openai-api-key", "embedding-api-key", "web-search-api-key"].forEach((id) => {
-    $(`toggle-${id}`).addEventListener("click", () => toggleApiKeyVisibility(id));
-    $(`copy-${id}`).addEventListener("click", () => copyApiKey(id));
+    bindIf(`toggle-${id}`, "click", () => toggleApiKeyVisibility(id));
+    bindIf(`copy-${id}`, "click", () => copyApiKey(id));
   });
-  $("embedding-provider").addEventListener("change", applyEmbeddingPreset);
-  $("managed-embedding-preset").addEventListener("change", applyManagedEmbeddingPreset);
-  $("embedding-model").addEventListener("input", markEmbeddingSelectionChanged);
-  ["embedding-base-url", "embedding-model", "embedding-api-key", "embedding-dimensions", "chunk-size", "chunk-overlap"].forEach((id) => $(id).addEventListener("input", renderEmbeddingWarning));
-  $("web-search-enabled").addEventListener("change", renderWebSearchSettings);
-  $("web-search-provider").addEventListener("change", renderWebSearchSettings);
-  ["web-search-api-key", "web-search-base-url"].forEach((id) => $(id).addEventListener("input", renderWebSearchSettings));
-  $("save-asr").addEventListener("click", saveAsrConfig);
-  $("install-asr").addEventListener("click", installAsr);
-  $("cancel-asr").addEventListener("click", cancelAsr);
-  $("remove-asr").addEventListener("click", removeAsr);
-  $("open-asr-directory").addEventListener("click", openAsrDirectory);
-  $("install-embedding").addEventListener("click", installEmbedding);
-  $("cancel-embedding").addEventListener("click", cancelEmbedding);
-  $("remove-embedding").addEventListener("click", removeEmbedding);
-  $("open-embedding-directory").addEventListener("click", openEmbeddingDirectory);
-  $("tts-enabled").addEventListener("change", saveTtsConfig);
-  $("tts-use-gpu").addEventListener("change", saveTtsConfig);
-  $("install-tts").addEventListener("click", installTts);
-  $("cancel-tts").addEventListener("click", cancelTts);
-  $("remove-tts").addEventListener("click", removeTts);
-  $("open-tts-directory").addEventListener("click", openTtsDirectory);
-  $("preview-tts").addEventListener("click", previewTts);
+  bindIf("embedding-provider", "change", applyEmbeddingPreset);
+  bindIf("managed-embedding-preset", "change", applyManagedEmbeddingPreset);
+  bindIf("embedding-model", "input", markEmbeddingSelectionChanged);
+  ["embedding-base-url", "embedding-model", "embedding-api-key", "embedding-dimensions", "chunk-size", "chunk-overlap"].forEach((id) => bindIf(id, "input", renderEmbeddingWarning));
+  bindIf("web-search-enabled", "change", renderWebSearchSettings);
+  bindIf("web-search-provider", "change", renderWebSearchSettings);
+  ["web-search-api-key", "web-search-base-url"].forEach((id) => bindIf(id, "input", renderWebSearchSettings));
+  bindIf("keyless-search-enabled", "change", toggleKeylessSearch);
+  bindIf("save-asr", "click", saveAsrConfig);
+  bindIf("install-asr", "click", installAsr);
+  bindIf("cancel-asr", "click", cancelAsr);
+  bindIf("remove-asr", "click", removeAsr);
+  bindIf("open-asr-directory", "click", openAsrDirectory);
+  bindIf("install-embedding", "click", installEmbedding);
+  bindIf("cancel-embedding", "click", cancelEmbedding);
+  bindIf("remove-embedding", "click", removeEmbedding);
+  bindIf("open-embedding-directory", "click", openEmbeddingDirectory);
+  bindIf("tts-enabled", "change", saveTtsConfig);
+  bindIf("tts-use-gpu", "change", saveTtsConfig);
+  bindIf("install-tts", "click", installTts);
+  bindIf("cancel-tts", "click", cancelTts);
+  bindIf("remove-tts", "click", removeTts);
+  bindIf("open-tts-directory", "click", openTtsDirectory);
+  bindIf("preview-tts", "click", previewTts);
   document.querySelectorAll("[data-collapsible]").forEach((section) => section.addEventListener("toggle", () => {
     const label = section.querySelector(".section-toggle-label");
     if (label) label.textContent = section.open ? "收起" : "展开";
@@ -196,20 +217,19 @@ async function loadEmbeddingStatus() {
     const device = config.actual_device ? ` · ${config.actual_device.toUpperCase()}` : "";
     setText("embedding-status", config.error || (config.ready ? `${config.model_id} · ${config.dimensions} 维${device} · ${config.model_dir}` : `${config.model_id} · ${config.source === "modelscope" ? "ModelScope" : "Hugging Face"}`));
     const progress = $("embedding-progress");
-    progress.classList.toggle("is-hidden", !config.installing);
-    if (config.progress_percent == null) progress.removeAttribute("value"); else progress.value = config.progress_percent;
+    if (progress) { progress.classList.toggle("is-hidden", !config.installing); if (config.progress_percent == null) progress.removeAttribute("value"); else progress.value = config.progress_percent; }
     setText("embedding-progress-detail", config.installing ? `${phaseNames[config.phase] || "处理中"}${config.elapsed_seconds ? ` · 已用时 ${config.elapsed_seconds} 秒` : ""}` : "");
     renderEmbeddingInstallAction();
-    $("cancel-embedding").classList.toggle("is-hidden", !config.installing);
-    $("cancel-embedding").disabled = !config.installing || config.cancelling;
-    $("remove-embedding").disabled = config.installing || !config.installed;
-    $("open-embedding-directory").disabled = config.installing;
+    setHidden("cancel-embedding", !config.installing);
+    setDisabled("cancel-embedding", !config.installing || config.cancelling);
+    setDisabled("remove-embedding", config.installing || !config.installed);
+    setDisabled("open-embedding-directory", config.installing);
     renderServiceStatus("embedding", "Embedding", embeddingState, embeddingState);
     if (config.ready && !wasReady && Number($("embedding-dimensions").value) !== Number(config.dimensions)) await loadSettings();
     if (config.installing) setTimeout(loadEmbeddingStatus, 2000);
   } catch (reason) {
     state.embeddingConfigured = false;
-    setText("embedding-status", reason);
+    setText("embedding-status", `嵌入服务不可用：${friendlyError(reason)}`);
   }
 }
 function embeddingResourcePayload() {
@@ -218,35 +238,36 @@ function embeddingResourcePayload() {
 async function installEmbedding() {
   if (!validateSettings()) return;
   if (!confirm("将自动安装独立运行环境并下载所选 Embedding 模型，是否继续？")) return;
-  $("install-embedding").disabled = true;
-  $("install-embedding").textContent = "安装中";
+  setDisabled("install-embedding", true);
+  const installButton = $("install-embedding");
+  if (installButton) installButton.textContent = "安装中";
   try {
     await api(fetch("/api/embedding/install", { method: "POST", headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" }, body: JSON.stringify(embeddingResourcePayload()) }));
     await loadEmbeddingStatus();
-  } catch (reason) { setText("embedding-status", reason); $("install-embedding").disabled = false; }
+  } catch (reason) { setText("embedding-status", `安装失败：${friendlyError(reason)}`); setDisabled("install-embedding", false); }
 }
 async function cancelEmbedding() {
-  $("cancel-embedding").disabled = true;
+  setDisabled("cancel-embedding", true);
   try {
     await api(fetch("/api/embedding/install/cancel", { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
     await loadEmbeddingStatus();
-  } catch (reason) { setText("embedding-status", reason); $("cancel-embedding").disabled = false; }
+  } catch (reason) { setText("embedding-status", `取消失败：${friendlyError(reason)}`); setDisabled("cancel-embedding", false); }
 }
 async function removeEmbedding() {
   if (!confirm("删除当前本地 Embedding 模型？Milvus 中的资料不会被删除。")) return;
-  $("remove-embedding").disabled = true;
+  setDisabled("remove-embedding", true);
   try {
     await api(fetch("/api/embedding/model", { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
     await loadEmbeddingStatus();
-  } catch (reason) { setText("embedding-status", reason); $("remove-embedding").disabled = false; }
+  } catch (reason) { setText("embedding-status", `删除失败：${friendlyError(reason)}`); setDisabled("remove-embedding", false); }
 }
 async function openEmbeddingDirectory() {
-  $("open-embedding-directory").disabled = true;
+  setDisabled("open-embedding-directory", true);
   try {
     const result = await api(fetch("/api/embedding/model-directory", { method: "POST", headers: { "X-PersonaLive-Request": "web" } }));
     setText("embedding-status", `已打开：${result.opened_directory}`);
-  } catch (reason) { setText("embedding-status", reason); }
-  finally { $("open-embedding-directory").disabled = false; }
+  } catch (reason) { setText("embedding-status", `打开失败：${friendlyError(reason)}`); }
+  finally { setDisabled("open-embedding-directory", false); }
 }
 async function loadAsrStatus() {
   try {
@@ -264,14 +285,14 @@ async function loadAsrStatus() {
     setText("asr-status", config.error || (config.ready ? `Qwen3-ASR-0.6B · ${config.resolved_model}` : config.download_size));
     const phaseNames = { preparing: "准备安装", runtime: "安装运行环境", model: "从 ModelScope 下载模型", ffmpeg: "准备 FFmpeg", cancelling: "正在取消", complete: "已就绪", error: "安装失败" };
     const progress = $("asr-progress");
-    progress.classList.toggle("is-hidden", !config.installing);
-    if (config.progress_percent == null) progress.removeAttribute("value"); else progress.value = config.progress_percent;
+    if (progress) { progress.classList.toggle("is-hidden", !config.installing); if (config.progress_percent == null) progress.removeAttribute("value"); else progress.value = config.progress_percent; }
     setText("asr-progress-detail", config.installing ? `${phaseNames[config.phase] || "处理中"}${config.elapsed_seconds ? ` · 已用时 ${config.elapsed_seconds} 秒` : ""}` : "");
-    $("install-asr").disabled = config.installing || config.installed;
-    $("install-asr").textContent = config.installing ? "安装中" : config.installed ? "已安装" : "自动下载安装";
-    $("cancel-asr").classList.toggle("is-hidden", !config.installing);
-    $("cancel-asr").disabled = !config.installing || config.cancelling;
-    $("remove-asr").disabled = config.installing || !config.managed_installed;
+    setDisabled("install-asr", config.installing || config.installed);
+    const installAsrLabel = $("install-asr");
+    if (installAsrLabel) installAsrLabel.textContent = config.installing ? "安装中" : config.installed ? "已安装" : "自动下载安装";
+    setHidden("cancel-asr", !config.installing);
+    setDisabled("cancel-asr", !config.installing || config.cancelling);
+    setDisabled("remove-asr", config.installing || !config.managed_installed);
     updateComposerControls();
     if (config.installing) setTimeout(loadAsrStatus, 2000);
   } catch (reason) {
@@ -279,49 +300,51 @@ async function loadAsrStatus() {
     updateComposerControls();
     if (!$("asr-enabled")) return;
     renderServiceStatus("asr", "ASR", "unavailable");
-    setText("asr-status", reason);
+    setText("asr-status", `语音识别服务不可用：${friendlyError(reason)}`);
   }
 }
 async function saveAsrConfig() {
-  $("save-asr").disabled = true;
+  setDisabled("save-asr", true);
   try {
     await api(fetch("/api/asr/config", { method: "PATCH", headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" }, body: JSON.stringify({ enabled: $("asr-enabled").checked, python_path: $("asr-python-path").value.trim(), model_path: $("asr-model-path").value.trim(), ffmpeg_path: $("asr-ffmpeg-path").value.trim() }) }));
     await loadAsrStatus();
-  } catch (reason) { setText("asr-status", reason); }
-  finally { $("save-asr").disabled = false; }
+  } catch (reason) { setText("asr-status", `保存失败：${friendlyError(reason)}`); }
+  finally { setDisabled("save-asr", false); }
 }
 async function installAsr() {
   if (!confirm("将下载约 5-10 GB 的 CUDA 运行环境和 Qwen3-ASR 模型，是否继续？")) return;
-  $("install-asr").disabled = true;
-  $("install-asr").textContent = "安装中";
+  setDisabled("install-asr", true);
+  const installButton = $("install-asr");
+  if (installButton) installButton.textContent = "安装中";
   try {
     await saveAsrConfig();
     await api(fetch("/api/asr/install", { method: "POST", headers: { "X-PersonaLive-Request": "web" } }));
     await loadAsrStatus();
-  } catch (reason) { setText("asr-status", reason); $("install-asr").disabled = false; }
+  } catch (reason) { setText("asr-status", `安装失败：${friendlyError(reason)}`); setDisabled("install-asr", false); }
 }
 async function removeAsr() {
   if (!confirm("删除项目自动下载的 ASR 环境和模型？外部目录不会被删除。")) return;
-  $("remove-asr").disabled = true;
+  setDisabled("remove-asr", true);
   try {
     await api(fetch("/api/asr/install", { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
     await loadAsrStatus();
-  } catch (reason) { setText("asr-status", reason); $("remove-asr").disabled = false; }
+  } catch (reason) { setText("asr-status", `删除失败：${friendlyError(reason)}`); setDisabled("remove-asr", false); }
 }
 async function cancelAsr() {
-  $("cancel-asr").disabled = true;
+  setDisabled("cancel-asr", true);
   try {
     await api(fetch("/api/asr/install/cancel", { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
     await loadAsrStatus();
-  } catch (reason) { setText("asr-status", reason); $("cancel-asr").disabled = false; }
+  } catch (reason) { setText("asr-status", `取消失败：${friendlyError(reason)}`); setDisabled("cancel-asr", false); }
 }
 async function openAsrDirectory() {
   const button = $("open-asr-directory");
+  if (!button) return;
   button.disabled = true;
   try {
     const result = await api(fetch("/api/asr/model-directory", { method: "POST", headers: { "X-PersonaLive-Request": "web" } }));
     setText("asr-status", `已打开：${result.opened_directory}`);
-  } catch (reason) { setText("asr-status", reason); }
+  } catch (reason) { setText("asr-status", `打开失败：${friendlyError(reason)}`); }
   finally { button.disabled = false; }
 }
 async function loadTtsStatus() {
@@ -332,25 +355,27 @@ async function loadTtsStatus() {
     if (!$("tts-enabled")) return;
     $("tts-enabled").checked = config.enabled;
     $("tts-use-gpu").checked = config.use_gpu;
-    $("tts-use-gpu").disabled = config.installing;
+    setDisabled("tts-use-gpu", config.installing);
     const ttsState = config.installing ? "installing" : config.ready ? "ready" : config.enabled ? "not_installed" : "disabled";
     renderServiceStatus("tts", "TTS", ttsState, ttsState);
     const phaseNames = { preparing: "准备下载", model: "下载语音模型", cancelling: "正在取消", complete: "安装完成", error: "安装失败" };
-    $("tts-state").textContent = config.installing ? (phaseNames[config.phase] || "正在安装") : config.ready ? "已就绪" : config.enabled ? "尚未安装" : "已关闭";
+    const ttsStateNode = $("tts-state");
+    if (ttsStateNode) ttsStateNode.textContent = config.installing ? (phaseNames[config.phase] || "正在安装") : config.ready ? "已就绪" : config.enabled ? "尚未安装" : "已关闭";
     setText("tts-status", config.error || (!config.runtime_bundled ? "当前开发目录缺少内置 Lunar TTS 运行库；完整 Windows 发布包将自带该文件" : config.ready ? `Qwen3-TTS-0.6B · ${config.model_dir}` : config.download_size));
-    const progress = $("tts-progress"); progress.classList.toggle("is-hidden", !config.installing);
-    if (config.progress_percent == null) progress.removeAttribute("value"); else progress.value = config.progress_percent;
+    const progress = $("tts-progress");
+    if (progress) { progress.classList.toggle("is-hidden", !config.installing); if (config.progress_percent == null) progress.removeAttribute("value"); else progress.value = config.progress_percent; }
     const size = (bytes) => bytes ? `${(bytes / 1024 / 1024).toFixed(bytes > 1024 * 1024 * 100 ? 0 : 1)} MB` : "";
     const duration = (seconds) => seconds == null ? "正在估算剩余时间" : seconds < 60 ? `预计剩余 ${seconds} 秒` : `预计剩余 ${Math.ceil(seconds / 60)} 分钟`;
     const speed = config.download_speed_bytes ? `${size(config.download_speed_bytes)}/s` : "";
     setText("tts-progress-detail", config.installing ? [config.current_file, size(config.downloaded_bytes), config.total_bytes ? `/ ${size(config.total_bytes)}` : "", speed, duration(config.eta_seconds)].filter(Boolean).join(" · ") : "");
-    $("install-tts").disabled = config.installing || config.installed || !config.runtime_bundled;
-    $("install-tts").textContent = config.installing ? "安装中" : config.installed ? "已安装" : "自动下载安装";
-    $("cancel-tts").classList.toggle("is-hidden", !config.installing);
-    $("cancel-tts").disabled = !config.installing || config.cancelling;
-    $("remove-tts").disabled = config.installing || !config.model_dir;
-    $("open-tts-directory").disabled = config.installing;
-    $("preview-tts").disabled = !config.ready;
+    setDisabled("install-tts", config.installing || config.installed || !config.runtime_bundled);
+    const installLabel = $("install-tts");
+    if (installLabel) installLabel.textContent = config.installing ? "安装中" : config.installed ? "已安装" : "自动下载安装";
+    setHidden("cancel-tts", !config.installing);
+    setDisabled("cancel-tts", !config.installing || config.cancelling);
+    setDisabled("remove-tts", config.installing || !config.model_dir);
+    setDisabled("open-tts-directory", config.installing);
+    setDisabled("preview-tts", !config.ready);
     if (state.editPersona) {
       const reference = await api(fetch(`/api/tts/personas/${state.editPersona.id}/reference`, { headers: { "X-PersonaLive-Request": "web" } }));
       syncEditTtsPreview(reference.configured);
@@ -361,51 +386,53 @@ async function loadTtsStatus() {
     updateComposerControls();
     if (!$("tts-enabled")) return;
     renderServiceStatus("tts", "TTS", "unavailable");
-    setText("tts-status", reason);
+    setText("tts-status", `语音服务不可用：${friendlyError(reason)}`);
   }
 }
 async function saveTtsConfig() {
   try {
     await api(fetch("/api/tts/config", { method: "PATCH", headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" }, body: JSON.stringify({ enabled: $("tts-enabled").checked, use_gpu: $("tts-use-gpu").checked }) }));
     await loadTtsStatus();
-  } catch (reason) { setText("tts-status", reason); }
+  } catch (reason) { setText("tts-status", `保存失败：${friendlyError(reason)}`); }
 }
 async function installTts() {
   if (!confirm("将下载约 3 GB 的 Qwen3-TTS GGUF 模型，Lunar TTS 运行库已随应用内置。是否继续？")) return;
-  $("install-tts").disabled = true;
-  $("install-tts").textContent = "安装中";
+  setDisabled("install-tts", true);
+  const installTtsButton = $("install-tts");
+  if (installTtsButton) installTtsButton.textContent = "安装中";
   try {
     await api(fetch("/api/tts/install", { method: "POST", headers: { "X-PersonaLive-Request": "web" } }));
     await loadTtsStatus();
-  } catch (reason) { setText("tts-status", reason); $("install-tts").disabled = false; }
+  } catch (reason) { setText("tts-status", `安装失败：${friendlyError(reason)}`); setDisabled("install-tts", false); }
 }
 async function removeTts() {
   if (!confirm("删除已下载的 TTS 模型？内置运行库和角色参考声音不会删除。")) return;
-  $("remove-tts").disabled = true;
+  setDisabled("remove-tts", true);
   try {
     await api(fetch("/api/tts/install", { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
     await loadTtsStatus();
-  } catch (reason) { setText("tts-status", reason); $("remove-tts").disabled = false; }
+  } catch (reason) { setText("tts-status", `删除失败：${friendlyError(reason)}`); setDisabled("remove-tts", false); }
 }
 async function cancelTts() {
-  $("cancel-tts").disabled = true;
+  setDisabled("cancel-tts", true);
   try {
     await api(fetch("/api/tts/install/cancel", { method: "DELETE", headers: { "X-PersonaLive-Request": "web" } }));
     await loadTtsStatus();
-  } catch (reason) { setText("tts-status", reason); $("cancel-tts").disabled = false; }
+  } catch (reason) { setText("tts-status", `取消失败：${friendlyError(reason)}`); setDisabled("cancel-tts", false); }
 }
 async function openTtsDirectory() {
-  $("open-tts-directory").disabled = true;
+  setDisabled("open-tts-directory", true);
   try {
     const result = await api(fetch("/api/tts/model-directory", { method: "POST", headers: { "X-PersonaLive-Request": "web" } }));
     setText("tts-status", `已打开：${result.opened_directory}`);
-  } catch (reason) { setText("tts-status", reason); }
-  finally { $("open-tts-directory").disabled = false; }
+  } catch (reason) { setText("tts-status", `打开失败：${friendlyError(reason)}`); }
+  finally { setDisabled("open-tts-directory", false); }
 }
 async function previewTts() {
   const text = $("tts-preview-text").value.trim();
   if (!text) return setText("tts-preview-status", "请输入试听文本");
   const button = $("preview-tts");
+  if (!button) return;
   button.disabled = true;
   setText("tts-preview-status", "正在生成试听");
   try {
@@ -420,7 +447,7 @@ async function previewTts() {
     audio.classList.remove("is-hidden");
     setText("tts-preview-status", "试听已生成");
     audio.play().catch(() => {});
-  } catch (reason) { setText("tts-preview-status", reason.message || reason); }
+  } catch (reason) { setText("tts-preview-status", `生成失败：${friendlyError(reason)}`); }
   finally { button.disabled = !state.ttsConfigured; }
 }
 function normalizedUrl(value) { return value.trim().replace(/\/+$/, "").toLowerCase(); }
@@ -577,4 +604,56 @@ async function resetSettings() {
     setText("settings-status", "配置已重置"); await loadSettings();
   } catch (reason) { setText("settings-status", reason); }
   finally { $("reset-settings").disabled = false; }
+}
+
+function keylessStatusText(data) {
+  if (!data.enabled) {
+    return data.uvx_available ? "未启用" : "未启用（未检测到 uvx，请先安装 uv）";
+  }
+  if (data.status === "connected") return `已连接 ${data.tool_count} 个工具`;
+  if (data.status === "error") return `启用失败：${data.error || "未知原因"}`;
+  if (data.status === "disabled") return "已停用";
+  return "连接中…";
+}
+
+async function loadKeylessSearchStatus() {
+  const checkbox = $("keyless-search-enabled");
+  const status = $("keyless-search-status");
+  if (!checkbox || !status) return;
+  try {
+    const data = await api(fetch("/api/system/web-search-keyless"));
+    checkbox.checked = Boolean(data.enabled);
+    checkbox.disabled = false;
+    status.textContent = keylessStatusText(data);
+    status.classList.toggle("is-error", Boolean(data.error));
+  } catch (reason) {
+    checkbox.disabled = true;
+    status.textContent = friendlyError(reason);
+    status.classList.add("is-error");
+  }
+}
+
+async function toggleKeylessSearch() {
+  const checkbox = $("keyless-search-enabled");
+  const status = $("keyless-search-status");
+  if (!checkbox || !status) return;
+  const enabled = checkbox.checked;
+  checkbox.disabled = true;
+  status.textContent = enabled ? "启用中…" : "停用中…";
+  status.classList.remove("is-error");
+  try {
+    const data = await api(fetch("/api/system/web-search-keyless", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    }));
+    checkbox.checked = Boolean(data.enabled);
+    status.textContent = keylessStatusText(data);
+    status.classList.toggle("is-error", Boolean(data.error));
+  } catch (reason) {
+    checkbox.checked = !enabled;
+    status.textContent = friendlyError(reason);
+    status.classList.add("is-error");
+  }
+  checkbox.disabled = false;
 }
