@@ -51,7 +51,7 @@ PersonaLive 是一个**本地优先、生产级**的角色化多 Agent RAG 平�
 | Worker | 职责 | 工具集 |
 |---|---|---|
 | knowledge | 检索当前角色知识空间，返回可验证的结构化证据 | RAG 检索工具 |
-| web | 查询实时公开信息，区分联网事实与角色知识 | Tavily / 联网搜索 |
+| web | 查询实时公开信息，区分联网事实与角色知识 | Tavily / 免 key 联网搜索 |
 | memory | 读取与维护角色的长期记忆（`persona_memories`） | 记忆读写工具 |
 | management | 管理角色资料与文档（变更类操作需人工确认） | 文档/资料管理工具 |
 
@@ -168,7 +168,7 @@ LangGraph `interrupt()` 触发中断，返回待审批的操作详情（工具�
 | 状态持久化 | `langgraph-checkpoint-mysql` / `MemorySaver` |
 | 向量数据库 | Milvus（Dense HNSW-IP + BM25 sparse + RRF） |
 | 文档解析 | MarkItDown → 结构感知分块（jieba 中文分词） |
-| 联网搜索 | Tavily / 博查 / 自定义 OpenAI 兼容协议 |
+| 联网搜索 | Tavily / 博查 / 自定义协议，或内置免 key 搜索（free-search-mcp，本地优先、无需 API key） |
 | 后端 | FastAPI / Uvicorn / SQLAlchemy / PyMySQL |
 | 基础设施 | Docker Compose（MySQL / etcd / MinIO / Milvus / Attu） |
 | 语音 | Qwen3-TTS（本地）/ Qwen3-ASR（本地）/ Silero VAD / Web Audio |
