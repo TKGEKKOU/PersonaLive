@@ -39,7 +39,7 @@ class MCPServerConfig:
     description: str = ""
     allowed_persona_ids: list[str] = field(default_factory=list)
 
-    def validate(self) -> None:
+    def validate(self, allow_arbitrary_stdio: bool = False) -> None:
         """校验配置字段；非法时抛出 ValueError 并说明原因。"""
 
         name = str(self.name or "").strip()
@@ -50,6 +50,13 @@ class MCPServerConfig:
         if self.transport == "stdio":
             if not str(self.command or "").strip():
                 raise ValueError("stdio 传输必须填写启动命令 command")
+            from integrations.mcp.security import validate_stdio_config
+
+            validate_stdio_config(
+                self.command,
+                self.args,
+                allow_arbitrary=allow_arbitrary_stdio,
+            )
         else:
             if not str(self.url or "").strip():
                 raise ValueError("远程传输必须填写服务器地址 url")
