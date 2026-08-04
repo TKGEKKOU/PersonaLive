@@ -112,6 +112,12 @@ def create_app(initialize_database: bool = True) -> FastAPI:
             app.state.tts_warmup_task = asyncio.create_task(warm_tts_worker())
         yield
         app.state.embedding_warmup_task.cancel()
+        try:
+            from ingestion.local_embedding.client import shutdown_embedding_workers
+
+            shutdown_embedding_workers()
+        except Exception:
+            pass
         warmup = getattr(app.state, "asr_warmup_task", None)
         if warmup is not None:
             warmup.cancel()
