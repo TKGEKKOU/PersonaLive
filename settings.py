@@ -40,6 +40,7 @@ class Settings:
     max_generation_retry: int
     max_upload_mb: int
     enable_web_fallback: bool
+    mcp_allow_arbitrary_stdio: bool
     web_search_provider: str
     web_search_api_key: str
     web_search_base_url: str
@@ -117,6 +118,7 @@ class Settings:
             max_generation_retry=int(get("MAX_GENERATION_RETRY", "2")),
             max_upload_mb=int(get("MAX_UPLOAD_MB", "50")),
             enable_web_fallback=web_search_provider != "off",
+            mcp_allow_arbitrary_stdio=str(values.get("MCP_ALLOW_ARBITRARY_STDIO") or "false").lower() in {"1", "true", "yes", "on"},
             web_search_provider=web_search_provider,
             web_search_api_key=web_search_api_key,
             web_search_base_url=web_search_base_url,
