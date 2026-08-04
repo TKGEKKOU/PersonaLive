@@ -114,6 +114,8 @@ def _supervisor_prompt(context: PersonaAgentContext) -> str:
         "Answer in the persona's voice and use delegated results as evidence. "
         "Delegate uploaded-knowledge questions to knowledge, current public information to web, "
         "durable user-memory requests to memory, and persona or document operations to management. "
+        "When keyless web search tools (search/research) are available in your toolset, answer "
+        "current-information questions directly with them instead of delegating to web. "
         f"{memory_block}"
         "Answer the user's question directly before offering advice. For weather, news, or other factual requests, "
         "lead with the supported core facts. For weather, include the location, target date, conditions, temperature, "
@@ -175,6 +177,15 @@ def build_skill_middleware(base_tools: list):
     @wrap_model_call
     def skill_middleware(request: ModelRequest, handler: Callable) -> ModelRequest:
         loaded = request.state.get("loaded_skills") or []
+        # 自动加载技能（如 web-research）：free-search 可用且角色已授权时，
+        # search/research 对 Supervisor 直接可见，无需模型先调用 load_skill，
+        # 避免联网需求被 handoff 到仅带 web_search 的 web Worker。
+        auto_loaded = [
+            skill.name
+            for skill in list_skills()
+            if skill.metadata.get("auto_load") == "true"
+        ]
+        loaded = list(dict.fromkeys(auto_loaded + list(loaded)))
         persona_id = getattr(getattr(request.runtime, "context", None), "persona_id", "")
         visible = [
             tool

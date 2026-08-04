@@ -2,6 +2,8 @@
 name: web-research
 description: 免 API key 的联网搜索与网页研究：搜索网页、抓取正文并整理成带出处的简报。当用户需要实时信息、最新新闻、查找网页内容或核实事实时使用。
 tool-names: [search, research]
+metadata:
+  auto_load: "true"
 ---
 
 # 联网研究
