@@ -140,8 +140,8 @@ a { color: var(--primary-dark); }
 
 /* Application shell */
 .app-shell { min-width: 800px; min-height: 600px; display: grid; grid-template-rows: 34px minmax(0,1fr); grid-template-columns: 48px minmax(0,1fr); }
-.window-titlebar { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; background: var(--sidebar-bg); border-bottom: 1px solid var(--line); user-select: none; -webkit-app-region: drag; app-region: drag; }
-.titlebar-label { padding-left: 12px; font-size: 12px; color: var(--muted); letter-spacing: .02em; }
+.window-titlebar { grid-column: 1 / -1; position: sticky; top: 0; z-index: var(--z-float); display: flex; align-items: center; justify-content: space-between; background: var(--sidebar-bg); border-bottom: 1px solid var(--line); user-select: none; }
+.titlebar-drag { flex: 1; height: 100%; cursor: default; }
 .titlebar-actions { display: flex; height: 100%; -webkit-app-region: no-drag; app-region: no-drag; }
 .titlebar-actions button { width: 44px; height: 100%; display: grid; place-items: center; border: 0; background: transparent; color: var(--muted); transition: background-color var(--motion), color var(--motion); }
 .titlebar-actions button:hover { background: var(--surface-strong); color: var(--ink); }
