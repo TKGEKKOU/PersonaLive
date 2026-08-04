@@ -1,21 +1,13 @@
 <section id="plugins-view" class="view">
-  <div class="panel plugins-panel">
-    <div class="panel-heading"><div><h2>插件</h2><p class="panel-subtitle">从项目 <code>plugins/</code> 目录自动加载，启用后即时生效；修改插件代码需重启应用。</p></div><span id="plugins-count" class="status-pill">0 个插件</span></div>
+  <details class="fold-card plugins-panel" open>
+    <summary><div><strong>插件</strong><p class="panel-subtitle">从项目 <code>plugins/</code> 目录自动加载，启用后即时生效；修改插件代码需重启应用。</p></div><span id="plugins-count" class="status-pill">0 个插件</span></summary>
     <div id="plugin-list" class="plugin-list"></div>
     <p id="plugins-status" class="inline-status"></p>
-  </div>
-  <div class="panel skills-panel">
-    <div class="panel-heading">
-      <div>
-        <h2>技能</h2>
-        <p class="panel-subtitle">技能是对话中按需加载的提示词包，可附加工具；自定义技能保存到 <code>data/skills/</code>，新增后立即生效，引用新工具需重启应用。</p>
-      </div>
-      <div class="panel-actions">
-        <span id="skills-count" class="status-pill">0 个技能</span>
-        <button id="skill-upload-btn" class="button button-secondary" type="button">上传技能包</button>
-        <input id="skill-upload-input" type="file" accept=".zip" hidden>
-      </div>
-    </div>
+  </details>
+
+  <details class="fold-card skills-panel" open>
+    <summary><div><strong>技能</strong><p class="panel-subtitle">对话中按需加载的提示词包，可附加工具；支持上传标准 SKILL.md 技能包。</p></div><span id="skills-count" class="status-pill">0 个技能</span></summary>
+    <div class="panel-actions"><button id="skill-upload-btn" class="button button-secondary" type="button">上传技能包</button><input id="skill-upload-input" type="file" accept=".zip" hidden></div>
     <div id="skill-list" class="plugin-list"></div>
     <details id="skill-create-form" class="plugin-config">
       <summary>新增技能</summary>
@@ -26,20 +18,13 @@
         <label class="field"><span>触发提示（可选）</span><input id="skill-prompt-hint" placeholder="帮助模型判断何时加载，如：用户要求……时使用"></label>
         <div class="field"><span>可附加工具（可选）</span><div id="skill-tools" class="skill-tools"></div></div>
       </div>
-      <div class="asr-actions">
-        <button id="skill-create-submit" class="button button-secondary" type="button">保存技能</button>
-      </div>
+      <div class="asr-actions"><button id="skill-create-submit" class="button button-secondary" type="button">保存技能</button></div>
     </details>
     <p id="skills-status" class="inline-status"></p>
-  </div>
-  <div class="panel mcp-panel">
-    <div class="panel-heading">
-      <div>
-        <h2>外部工具（MCP）</h2>
-        <p class="panel-subtitle">连接外部 MCP 服务器，把它的工具注册为可被技能引用的能力；配置保存在 <code>data/mcp_servers.json</code>，保存后重启应用生效。</p>
-      </div>
-      <span id="mcp-count" class="status-pill">0 台服务器</span>
-    </div>
+  </details>
+
+  <details class="fold-card mcp-panel" open>
+    <summary><div><strong>外部工具（MCP）</strong><p class="panel-subtitle">连接外部 MCP 服务器，工具注册后可被技能引用；配置保存在 <code>data/mcp_servers.json</code>。</p></div><span id="mcp-count" class="status-pill">0 台服务器</span></summary>
     <div id="mcp-server-list" class="plugin-list"></div>
     <details id="mcp-create-form" class="plugin-config">
       <summary>新增服务器</summary>
@@ -63,14 +48,9 @@
           <label class="field"><span>请求头（每行一个）</span><textarea id="mcp-headers" rows="2" placeholder="Authorization: Bearer xxx"></textarea></label>
         </div>
       </div>
-      <div class="asr-actions">
-        <button id="mcp-create-submit" class="button button-secondary" type="button">保存服务器</button>
-      </div>
+      <div class="asr-actions"><button id="mcp-create-submit" class="button button-secondary" type="button">保存服务器</button></div>
     </details>
-    <div class="mcp-tools-block">
-      <h3>已注册工具</h3>
-      <div id="mcp-tool-list" class="skill-tools"></div>
-    </div>
+    <div class="mcp-tools-block"><div class="section-heading"><b>已注册工具</b></div><div id="mcp-tool-list" class="skill-tools"></div></div>
     <p id="mcp-status" class="inline-status"></p>
-  </div>
+  </details>
 </section>

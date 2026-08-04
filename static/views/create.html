@@ -1,0 +1,42 @@
+<section id="create-view" class="view is-hidden">
+  <div id="create-material-panel">
+    <ol id="create-steps" class="flow-steps is-hidden" aria-label="创建流程">
+      <li data-step="upload">上传资料</li>
+      <li data-step="analyze">智能分析</li>
+      <li data-step="confirm">确认创建</li>
+    </ol>
+    <div id="draft-analyzing" class="draft-analyzing is-hidden" role="status" aria-live="polite">
+      <div class="draft-analyzing-head"><b>正在分析资料</b></div>
+      <p>正在阅读资料并生成角色设定，完成后自动进入确认步骤。</p>
+      <div class="draft-analyzing-bar"><span></span></div>
+    </div>
+    <form id="batch-form" class="panel upload-form">
+      <div class="panel-heading"><div><h2>导入资料</h2><p class="panel-subtitle">上传文件、图片，或直接粘贴文本，自动生成角色设定。</p></div><span id="create-status" class="status-pill">待开始</span></div>
+      <fieldset id="generation-mode" class="mode-switch">
+        <label><input type="radio" name="mode" value="character" checked><span><i data-lucide="user-round"></i><b>角色</b></span></label>
+        <label><input type="radio" name="mode" value="expert"><span><i data-lucide="search"></i><b>检索助手</b></span></label>
+      </fieldset>
+      <div id="create-files-drop" class="upload-drop" tabindex="0" role="button" aria-label="选择文件">
+        <i data-lucide="cloud-upload"></i>
+        <b>拖入文件，或点击选择</b>
+        <span>支持 PDF / Word / 图片 / 文本等，可一次多选</span>
+        <output id="file-summary">未选择文件</output>
+        <input id="document-files" type="file" multiple>
+      </div>
+      <details class="plugin-config create-optional"><summary>补充文本（可选）</summary><label class="field text-supplement"><span>粘贴资料内容</span><textarea id="direct-text" rows="3" placeholder="粘贴资料内容"></textarea></label></details>
+      <div class="module-actions">
+        <p id="upload-error" class="inline-status" role="alert"></p>
+        <button id="reset-batch" class="button button-secondary" type="button"><i data-lucide="rotate-ccw"></i>重置</button>
+        <button id="upload-button" class="button button-primary" type="submit"><i data-lucide="sparkles"></i>生成</button>
+      </div>
+    </form>
+
+    <section id="draft-editor" class="panel draft-panel is-hidden">
+      <div class="panel-heading"><div><h2>确认角色</h2><p class="panel-subtitle">核对名称与设定，可继续调整后写入 Milvus 向量库。</p></div><span id="draft-status" class="status-pill"></span></div>
+      <section id="candidate-picker" class="candidate-picker is-hidden"><b>候选人物</b><div id="candidate-list" class="candidate-list"></div></section>
+      <div class="draft-fields"><label class="field"><span>名称</span><input id="draft-name" maxlength="255"></label><label class="field field-wide"><span>人设</span><textarea id="draft-profile" rows="5"></textarea></label></div>
+      <div class="section-heading"><b>资料</b></div><div id="document-list" class="document-list"></div>
+      <div class="module-actions"><button id="save-draft" class="button button-secondary" type="button">保存草稿</button><button id="confirm-draft" class="button button-primary" type="button">确认创建并入库</button></div>
+    </section>
+  </div>
+</section>
