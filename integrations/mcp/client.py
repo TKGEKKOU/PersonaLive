@@ -74,6 +74,28 @@ def _tool_info(name: str, server: str, tool: BaseTool) -> MCPToolInfo:
     )
 
 
+def _make_sync_tool(original: BaseTool) -> BaseTool:
+    """把仅支持异步调用的 MCP 工具包装为可在同步 Agent 链路中调用。
+
+    PersonaLive 的 workflow 是同步 invoke，并在工作线程（anyio.to_thread /
+    FastAPI 同步端点）中执行，线程内没有运行中的事件循环，因此可以安全地
+    用 asyncio.run 桥接异步工具；工具 schema 与 metadata 保持原样。
+    """
+
+    from langchain_core.tools import tool as make_tool
+
+    async def _run(args: dict):
+        return await original.ainvoke(args)
+
+    @make_tool(original.name, description=original.description or "")
+    def sync_tool(**kwargs):
+        return asyncio.run(_run(kwargs))
+
+    sync_tool.args_schema = original.args_schema
+    sync_tool.metadata = getattr(original, "metadata", None)
+    return sync_tool
+
+
 class MCPManager:
     """管理 MCP 服务器配置、连接状态与工具注册。
 
@@ -194,7 +216,7 @@ class MCPManager:
                 ToolSpec(
                     name=info.name,
                     specialist="mcp",
-                    tool=tool,
+                    tool=_make_sync_tool(tool),
                     requires_confirmation=info.requires_confirmation,
                     mutates_data=info.mutates_data,
                     server=server_name,
