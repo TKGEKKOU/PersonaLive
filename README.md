@@ -142,7 +142,9 @@ LangGraph `interrupt()` 触发中断，返回待审批的操作详情（工具�
 
 - **Agent Skills 动态技能包**：技能 = 提示词包 + 可选工具集（`agents/skills/` 内置、
   `data/skills/` 自定义），由 `load_skill` 按需加载，加载后提示词注入 Supervisor
-  system prompt、对应工具才对模型可见，从源头缓解工具过载；
+  system prompt、对应工具才对模型可见，从源头缓解工具过载；支持上传标准
+  `SKILL.md` 技能包（zip，≤25MB、可含多个技能，frontmatter 用 `tool-names`
+  声明工具），与既有 JSON 技能并存；
 - **MCP 工具接入**：通过 `MultiServerMCPClient`（`langchain-mcp-adapters`）连接外部
   MCP 服务器（stdio / streamable_http / SSE），工具自动注册进 `ToolSpec` 表并被技能引用。
   插件页支持**运行时启停与热重连**（无需重启应用）、30 秒轮询刷新连接状态；
