@@ -25,6 +25,7 @@ from integrations.mcp.config import MCPServerConfig, load_servers, save_servers
 logger = logging.getLogger(__name__)
 
 CONNECT_TIMEOUT_SECONDS = 20
+MCP_TOOL_TIMEOUT_SECONDS = 60
 
 
 @dataclass(frozen=True)
@@ -85,7 +86,11 @@ def _make_sync_tool(original: BaseTool) -> BaseTool:
     from langchain_core.tools import tool as make_tool
 
     async def _run(args: dict):
-        return await original.ainvoke(args)
+        # 单次工具调用兜底超时：搜索/抓取可能很慢或子进程挂起，
+        # 超时后返回错误让模型给出说明，而不是让整轮对话无限等待。
+        return await asyncio.wait_for(
+            original.ainvoke(args), timeout=MCP_TOOL_TIMEOUT_SECONDS
+        )
 
     @make_tool(original.name, description=original.description or "")
     def sync_tool(**kwargs):

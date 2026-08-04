@@ -12,6 +12,10 @@ function bindChatGlobalEvents() {
 }
 
 function initChat() {
+  state.voicePlaybackActive = false;
+  state.voicePlaybackQueue = [];
+  state.voicePlayingAudio = null;
+  state.voiceStreamAbort = null;
   bindChatEvents();
   bindChatGlobalEvents();
   observeChatStatus();
@@ -28,7 +32,6 @@ function bindChatEvents() {
   $("question-form").addEventListener("submit", submitQuestion);
   $("chat-process-toggle").addEventListener("click", toggleChatProcess);
   $("question").addEventListener("input", resizeComposer);
-  $("cancel-generation").addEventListener("click", cancelRealtimeTurn);
   $("voice-chat").addEventListener("click", toggleVoiceChat);
   $("confirm-action").addEventListener("click", () => resumeAgent(true));
   $("cancel-action").addEventListener("click", () => resumeAgent(false));
@@ -92,11 +95,20 @@ function setRealtimeBusy(busy) {
   setText("question-status", busy ? "角色正在生成回复…" : "");
   if (!$("question-form")) return;
   $("question-form").classList.toggle("is-generating", busy);
-  $("cancel-generation").classList.toggle("is-hidden", !busy);
-  $("cancel-generation").disabled = !busy;
+  setSendButton(busy);
   $("confirm-action").disabled = busy;
   $("cancel-action").disabled = busy;
   updateComposerControls();
+}
+function setSendButton(busy) {
+  const button = $("send-question");
+  if (!button) return;
+  button.classList.toggle("is-stop", busy);
+  const icon = button.querySelector("i");
+  if (icon) icon.dataset.lucide = busy ? "square" : "send-horizontal";
+  button.title = busy ? "停止生成" : "发送";
+  button.setAttribute("aria-label", button.title);
+  if (window.lucide) window.lucide.createIcons();
 }
 function toggleChatProcess() {
   const body = $("chat-process-body");
@@ -151,10 +163,12 @@ function handleRealtimeEvent(event) {
     state.realtimeExecutionPending = false;
     setRealtimeBusy(false);
     flushPendingVoiceQuestion();
+    if (window.PLLive2DHub) window.PLLive2DHub.setAgentState("idle");
     return;
   }
   if (event.type === "session.pong" || event.type === "agent.status") return;
   if (event.type === "turn.started") {
+    if (window.PLLive2DHub) window.PLLive2DHub.setAgentState("thinking");
     clearRealtimeSubmission();
     state.realtimeTurnId = event.turn_id;
     state.realtimeAnswerNode = null;
@@ -173,6 +187,7 @@ function handleRealtimeEvent(event) {
     appendPacedText(event.text, state.realtimeAnswerNode);
     collectStreamVoice(event.text, state.realtimeAnswerNode);
   } else if (event.type === "text.final") {
+    if (window.PLLive2DHub) window.PLLive2DHub.setAgentState("idle");
     const target = state.realtimeAnswerNode || (event.answer ? showReplyLoading() : null);
     state.pendingReplyNode = null;
     if (target) {
@@ -187,6 +202,7 @@ function handleRealtimeEvent(event) {
     state.voiceStreamBuffer = "";
     setRealtimeBusy(false);
   } else if (event.type === "confirmation.required") {
+    if (window.PLLive2DHub) window.PLLive2DHub.setAgentState("idle");
     state.pendingAction = { action: event.pending_action, specialist: event.specialist };
     state.realtimeTurnId = null;
     state.realtimeAnswerNode = null;
@@ -195,12 +211,14 @@ function handleRealtimeEvent(event) {
     renderConfirmation();
     setRealtimeBusy(false);
   } else if (event.type === "turn.cancelled") {
+    if (window.PLLive2DHub) window.PLLive2DHub.setAgentState("idle");
     resetPacing();
     state.realtimeTurnId = null;
     state.realtimeAnswerNode = null;
     state.realtimeExecutionPending = true;
     setRealtimeBusy(false);
   } else if (event.type === "error") {
+    if (window.PLLive2DHub) window.PLLive2DHub.setAgentState("idle");
     if (state.realtimeSubmissionPending) failRealtimeSubmission(event.message || "实时会话未接收消息，请重新发送");
     setText("chat-error", event.message || "实时会话发生错误");
     state.realtimeTurnId = null;
@@ -246,6 +264,7 @@ function cancelRealtimeTurn() {
   if (state.realtimeTurnId) sendRealtime({ type: "generation.cancel" });
 }
 function stopVoicePlayback() {
+  abortVoiceStream();
   const current = state.voicePlayingAudio;
   if (current) { try { current.pause(); } catch {} }
   state.voicePlayingAudio = null;
@@ -263,8 +282,12 @@ function appendPacedText(text, node) {
   ensurePacer(null);
 }
 function ensurePacer(done) {
-  if (paceDone) return;
-  paceDone = done || null;
+  if (done) {
+    // 已有完成回调时合并而非丢弃：text.final 的 drainPacedText 回调
+    // 若被吞掉，realtimeAnswerNode 永远不清除，后续回复会渲染错位。
+    const previous = paceDone;
+    paceDone = previous ? () => { previous(); done(); } : done;
+  }
   if (paceTimer) return;
   paceTimer = setInterval(() => {
     const node = state.paceNode || state.realtimeAnswerNode;
@@ -372,6 +395,7 @@ async function startVoiceChat() {
   setText("chat-error");
   const stream = new window.PLVoiceStream({
     onState: (voiceState) => {
+      if (window.PLLive2DHub) window.PLLive2DHub.setVoiceState(voiceState);
       if (voiceState === "speaking") {
         stopVoicePlayback();
         setText("audio-status", "正在听…");
@@ -416,6 +440,7 @@ async function startVoiceChat() {
   updateComposerControls();
 }
 function stopVoiceChat() {
+  if (window.PLLive2DHub) window.PLLive2DHub.setVoiceState("idle");
   clearTimeout(state.voiceFlushTimer);
   state.voiceFlushTimer = null;
   const stream = state.voiceStream;
@@ -488,6 +513,9 @@ async function selectPersona(personaId = "") {
     localStorage.setItem(key, state.conversationId);
   } else state.conversationId = crypto.randomUUID();
   state.pendingAction = null; renderConfirmation(); renderPersonaList();
+  if (window.PLLive2DHub) {
+    window.PLLive2DHub.setPersonaModel(state.activePersona?.profile?.live2d?.model || null);
+  }
   $("chat-title").textContent = state.activePersona?.name || "选择角色";
   $("send-question").disabled = !state.activePersona;
   $("chat-log").replaceChildren(empty(state.activePersona ? "开始对话" : "选择角色后开始聊天"));
@@ -498,6 +526,10 @@ async function selectPersona(personaId = "") {
 }
 async function submitQuestion(event) {
   event.preventDefault(); if (!state.activePersona) return;
+  if ($("send-question")?.classList.contains("is-stop")) {
+    cancelRealtimeTurn();
+    return;
+  }
   if (state.realtimeTurnId || state.realtimeExecutionPending || state.voiceActive) return;
   const question = $("question").value.trim(); if (!question) return;
   sendQuestionText(question);
@@ -532,6 +564,34 @@ function appendMessage(type, text) {
   const node = document.createElement("article"); node.className = `message message-${type}`;
   const body = document.createElement("p"); body.textContent = text; node.append(body); $("chat-log").append(node); node.scrollIntoView({ block: "nearest" }); return node;
 }
+function loadAudioSource(audio, url) {
+  if (!url) return Promise.resolve();
+  const key = `${Date.now()}-${Math.random()}`;
+  audio.dataset.srcKey = key;
+  return fetch(url)
+    .then((response) => { if (!response.ok) throw new Error(`HTTP ${response.status}`); return response.blob(); })
+    .then((blob) => {
+      if (audio.dataset.srcKey !== key) return;
+      if (audio.srcObjectUrl) URL.revokeObjectURL(audio.srcObjectUrl);
+      audio.srcObjectUrl = URL.createObjectURL(blob);
+      audio.src = audio.srcObjectUrl;
+    })
+    .catch(() => { if (audio.dataset.srcKey === key) audio.src = url; });
+}
+function playAudioRobust(audio) {
+  const playOnce = () => audio.play().catch((error) => {
+    if (error && error.name === "NotAllowedError") {
+      audio.muted = true;
+      return audio.play().then(() => { audio.muted = false; }).catch(() => {});
+    }
+    throw error;
+  });
+  if (audio.readyState >= 1) return playOnce();
+  return new Promise((resolve) => {
+    audio.addEventListener("loadedmetadata", () => resolve(playOnce()), { once: true });
+    audio.addEventListener("error", () => resolve(Promise.reject(new Error("audio load failed"))), { once: true });
+  });
+}
 function appendVoiceControl(node, audio) {
   const button = document.createElement("button");
   button.type = "button";
@@ -542,12 +602,21 @@ function appendVoiceControl(node, audio) {
   icon.dataset.lucide = "volume-2";
   button.append(icon);
   button.addEventListener("click", () => {
-    if (audio.paused) audio.play().catch(() => {});
+    if (audio.paused) playAudioRobust(audio).catch(() => {});
     else audio.pause();
   });
   audio.addEventListener("play", () => button.classList.add("is-playing"));
   audio.addEventListener("pause", () => button.classList.remove("is-playing"));
   audio.addEventListener("ended", () => button.classList.remove("is-playing"));
+  audio.addEventListener("error", () => {
+    button.classList.add("is-failed");
+    button.title = "语音加载失败，点击重试";
+    if (state.voicePlayingAudio === audio) {
+      state.voicePlayingAudio = null;
+      state.voicePlaybackActive = false;
+      playNextVoiceAudio();
+    }
+  });
   node.append(button, audio);
   icons();
   return button;
@@ -556,7 +625,8 @@ function appendAudioMessage(message) {
   if ($("chat-log").querySelector(".empty-state")) $("chat-log").replaceChildren();
   const node = document.createElement("article");
   node.className = `message message-${message.role} message-audio`; node.dataset.messageId = message.id;
-  const audio = document.createElement("audio"); audio.controls = false; audio.preload = "metadata"; audio.src = message.audio_url; audio.className = "voice-audio-source";
+  const audio = document.createElement("audio"); audio.controls = false; audio.preload = "metadata"; audio.className = "voice-audio-source"; loadAudioSource(audio, message.audio_url);
+  audio.dataset.lipText = message.content || "";
   if (message.role === "assistant") {
     const body = document.createElement("p"); body.textContent = message.content; const status = document.createElement("span"); status.className = "voice-bubble-status"; status.textContent = "语音回复"; audio.controls = false; audio.className = "voice-audio-source"; node.append(body, status); appendVoiceControl(node, audio);
     $("chat-log").append(node); node.scrollIntoView({ block: "nearest" }); return node;
@@ -629,26 +699,128 @@ function enqueueVoiceAudio(audio) {
   state.voicePlaybackQueue.push(audio);
   playNextVoiceAudio();
 }
+function b64ToWavBlob(b64) {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: "audio/wav" });
+}
+function voiceQueueHost() {
+  let host = document.getElementById("voice-queue-host");
+  if (!host) {
+    host = document.createElement("div");
+    host.id = "voice-queue-host";
+    host.hidden = true;
+    document.body.append(host);
+  }
+  return host;
+}
+function abortVoiceStream() {
+  if (state.voiceStreamAbort) {
+    try { state.voiceStreamAbort.abort(); } catch (e) { /* ignore */ }
+    state.voiceStreamAbort = null;
+  }
+}
 function playNextVoiceAudio() {
   if (state.voicePlaybackActive || !state.voicePlaybackQueue.length) return;
   state.voicePlaybackActive = true;
   const audio = state.voicePlaybackQueue.shift();
   state.voicePlayingAudio = audio;
-  audio.addEventListener("ended", () => { if (state.voicePlayingAudio === audio) state.voicePlayingAudio = null; state.voicePlaybackActive = false; playNextVoiceAudio(); }, { once: true });
-  audio.play().catch(() => { if (state.voicePlayingAudio === audio) state.voicePlayingAudio = null; state.voicePlaybackActive = false; playNextVoiceAudio(); });
+  const advance = () => {
+    if (state.voicePlayingAudio === audio) {
+      state.voicePlayingAudio = null;
+      state.voicePlaybackActive = false;
+      playNextVoiceAudio();
+    }
+  };
+  const watchdog = setTimeout(advance, 30000);
+  const advanceClean = () => { clearTimeout(watchdog); advance(); };
+  audio.addEventListener("ended", advanceClean, { once: true });
+  audio.addEventListener("error", advanceClean, { once: true });
+  audio.addEventListener("pause", () => {
+    // 被其他音频打断（全局单音频策略）→ 取消剩余语音回复队列
+    clearTimeout(watchdog);
+    state.voicePlaybackActive = false;
+    state.voicePlaybackQueue = [];
+    state.voicePlayingAudio = null;
+    abortVoiceStream();
+  }, { once: true });
+  (audio.loaded || Promise.resolve()).then(() => playAudioRobust(audio)).catch(advanceClean);
 }
 async function synthesizeAnswer(text, node, options = {}) {
   const voice = state.activePersona?.profile?.tts;
   if (!state.ttsConfigured || !voice?.enabled || !$("assistant-voice-toggle").checked || !text) return;
+  if (window.PL && window.PL.unlockAudio) window.PL.unlockAudio();
   const epoch = state.voicePlaybackEpoch;
-  const status = document.createElement("span"); status.className = "voice-bubble-status is-generating"; status.textContent = "正在生成语音…"; node.append(status);
+  const autoPlay = voice.auto_play !== false;
+  const status = document.createElement("span");
+  status.className = "voice-bubble-status is-generating";
+  status.textContent = "正在生成语音…";
+  node.append(status);
+  const controller = new AbortController();
+  state.voiceStreamAbort = controller;
+  let segments = 0;
   try {
-    const message = await api(fetch(`/api/tts/personas/${state.activePersona.id}/conversations/${state.conversationId}/synthesize`, { method: "POST", headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" }, body: JSON.stringify({ text }) }));
+    const response = await fetch(`/api/tts/personas/${state.activePersona.id}/conversations/${state.conversationId}/synthesize/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-PersonaLive-Request": "web" },
+      body: JSON.stringify({ text }),
+      signal: controller.signal,
+    });
+    if (!response.ok || !response.body) throw new Error(`语音流式合成失败（HTTP ${response.status}）`);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let nl;
+      while ((nl = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, nl).trim();
+        buffer = buffer.slice(nl + 1);
+        if (!line) continue;
+        let event;
+        try { event = JSON.parse(line); } catch { continue; }
+        if (event.type === "segment") {
+          segments += 1;
+          if (!autoPlay) continue;
+          const url = URL.createObjectURL(b64ToWavBlob(event.audio));
+          const audio = document.createElement("audio");
+          audio.preload = "auto";
+          audio.src = url;
+          audio.dataset.lipText = event.text || "";
+          // 必须挂进 DOM：Live2D 口型依赖 document 级 play 事件，脱离 DOM 的元素事件不会冒泡
+          voiceQueueHost().append(audio);
+          const cleanup = () => { URL.revokeObjectURL(url); audio.remove(); };
+          audio.addEventListener("ended", cleanup, { once: true });
+          audio.addEventListener("error", cleanup, { once: true });
+          enqueueVoiceAudio(audio);
+        } else if (event.type === "done") {
+          if (epoch !== state.voicePlaybackEpoch) { status.remove(); return; }
+          status.textContent = "语音已生成";
+          status.classList.remove("is-generating");
+          const audio = document.createElement("audio");
+          audio.controls = false;
+          audio.preload = "metadata";
+          audio.className = "voice-audio-source";
+          audio.loaded = loadAudioSource(audio, event.message.audio_url);
+          appendVoiceControl(node, audio);
+        } else if (event.type === "error") {
+          throw new Error(event.message || "语音合成失败");
+        }
+      }
+    }
     if (epoch !== state.voicePlaybackEpoch) { status.remove(); return; }
-    status.textContent = "语音已生成"; status.classList.remove("is-generating");
-    const audio = document.createElement("audio"); audio.controls = false; audio.preload = "metadata"; audio.src = message.audio_url; audio.className = "voice-audio-source"; appendVoiceControl(node, audio);
-    if (voice.auto_play !== false) options.queued ? enqueueVoiceAudio(audio) : audio.play().catch(() => {});
-  } catch (reason) { status.textContent = "语音生成失败"; status.classList.remove("is-generating"); setText("chat-error", `文字回复正常，语音生成失败：${reason.message || reason}`); }
+    if (!segments && !node.querySelector(".voice-audio-source")) status.remove();
+  } catch (reason) {
+    if (reason && reason.name === "AbortError") { status.remove(); return; }
+    status.textContent = "语音生成失败";
+    status.classList.remove("is-generating");
+    setText("chat-error", `文字回复正常，语音生成失败：${reason && reason.message ? reason.message : reason}`);
+  } finally {
+    if (state.voiceStreamAbort === controller) state.voiceStreamAbort = null;
+  }
 }
 function appendResultDetails(node, result) { if (result.evidence?.length) node.append(details("引用", result.evidence)); }
 function renderConfirmation() {
