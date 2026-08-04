@@ -115,9 +115,12 @@ class MCPManager:
     async def _fetch_tools(
         self, config: MCPServerConfig
     ) -> list[tuple[BaseTool, MCPToolInfo]]:
+        # 不用服务器名前缀：工具名保持 MCP 服务器原生名（如 search / research），
+        # 标准 SKILL.md 技能包的 tool-names 才能直接引用；多服务器同名工具由
+        # 注册时的名称冲突跳过兜底。
         client = self._client_factory(
             {config.name: config.to_connection()},
-            tool_name_prefix=True,
+            tool_name_prefix=False,
             handle_tool_errors=True,
         )
         tools = await client.get_tools(server_name=config.name)
