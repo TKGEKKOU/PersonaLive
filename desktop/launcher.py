@@ -18,30 +18,16 @@ def show_error(message: str) -> None:
 def apply_window_icon(window, icon_path: Path) -> None:
     """给 pywebview 窗口设置任务栏/标题栏图标（开发模式下 exe 图标不生效）。
 
-    pywebview 5.x 的 edgechromium 窗口是 WinForms 容器，window.native.form.Handle
-    即窗口句柄；通过 WM_SETICON 发送大/小两个图标。
+    pywebview 5.x 的 edgechromium 窗口是 WinForms 容器（BrowserForm 默认用
+    sys.executable 的图标）；直接设置 form.Icon 覆盖默认 Python 图标。
     """
 
     try:
         native = window.native
         form = native.form
-        hwnd = int(form.Handle)
-        if not hwnd:
-            return
-        WM_SETICON = 0x0080
-        IMAGE_ICON = 1
-        LR_LOADFROMFILE = 0x0010
-        for size, icon_index in ((32, 1), (16, 0)):  # ICON_BIG / ICON_SMALL
-            hicon = ctypes.windll.user32.LoadImageW(
-                None,
-                str(icon_path),
-                IMAGE_ICON,
-                size,
-                size,
-                LR_LOADFROMFILE,
-            )
-            if hicon:
-                ctypes.windll.user32.SendMessageW(hwnd, WM_SETICON, icon_index, hicon)
+        from System.Drawing import Icon
+
+        form.Icon = Icon(str(icon_path))
     except Exception:
         # 图标设置失败不影响应用启动。
         pass
