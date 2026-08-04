@@ -200,6 +200,12 @@ class MCPManager:
             known.add(info.name)
             self._registered.append(info)
         register_tool_specs(specs)
+        try:
+            from agents.skills import refresh_skills
+
+            refresh_skills()
+        except Exception:
+            pass
 
     def _unregister_server(self, name: str) -> None:
         """注销指定服务器注册的工具；不影响其他服务器。"""

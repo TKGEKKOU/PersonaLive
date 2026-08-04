@@ -8,7 +8,9 @@
 from __future__ import annotations
 
 
-ALLOWED_STDIO_COMMANDS = frozenset({"python", "python3", "node", "uv", "deno", "bun"})
+ALLOWED_STDIO_COMMANDS = frozenset(
+    {"python", "python3", "node", "uv", "uvx", "deno", "bun"}
+)
 DENIED_STDIO_COMMANDS = frozenset(
     {
         "bash",
