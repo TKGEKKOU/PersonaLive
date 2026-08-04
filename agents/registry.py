@@ -104,15 +104,25 @@ def specialist_for_tool(tool_name: str) -> str:
 
 def capability_summary() -> str:
     # 用于"你会做什么"能力问答：区分自动工具、需确认工具与外部 MCP 工具，
-    # 并列出可用技能，让用户了解权限边界与可加载能力。延迟导入避免循环依赖。
+    # 并列出可用技能。未配置 API key 搜索时 web_search 不列入自动工具，
+    # 联网搜索默认引导到免 key 的 web-research 技能。延迟导入避免循环依赖。
     from agents.skills import list_skills
+    from settings import Settings
 
+    settings = Settings.load()
     specs = tool_specs()
-    automatic = "、".join(spec.name for spec in specs if not spec.requires_confirmation and spec.specialist != "mcp")
+    automatic = [
+        spec.name
+        for spec in specs
+        if not spec.requires_confirmation and spec.specialist != "mcp"
+    ]
+    if not settings.enable_web_fallback and "web_search" in automatic:
+        automatic.remove("web_search")
     confirmed = "、".join(spec.name for spec in specs if spec.requires_confirmation and spec.specialist != "mcp")
     mcp_tools = "、".join(spec.name for spec in specs if spec.specialist == "mcp")
     skills = "、".join(spec.name for spec in list_skills())
-    summary = f"可自动使用：{automatic}。需要你每次确认：{confirmed}。可用技能：{skills}。"
+    summary = f"可自动使用：{'、'.join(automatic)}。需要你每次确认：{confirmed}。可用技能：{skills}。"
     if mcp_tools:
         summary += f"外部 MCP 工具（需先加载对应技能）：{mcp_tools}。"
+    summary += "联网搜索默认使用 web-research 技能（免 key）；web_search 需在设置页配置 API key 后才可用。"
     return summary
