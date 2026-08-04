@@ -5,11 +5,14 @@ import threading
 import time
 
 from fastapi import APIRouter, Body, HTTPException, Request
+from sqlalchemy import select
 
 from app.routers.settings import require_local
 from app.schemas import DockerSettingsPayload, ShutdownPayload
 from extensions.storage import read_json, write_json
 from integrations.mcp.config import MCPServerConfig
+from app.models import Persona
+from persona.service import LOCAL_WORKSPACE_ID
 from settings import Settings
 
 
@@ -48,6 +51,25 @@ def _mcp_manager(request: Request):
     if manager is None:
         raise HTTPException(status_code=503, detail="MCP 管理器尚未就绪")
     return manager
+
+
+def _all_persona_ids(request: Request) -> list[str]:
+    """返回本地工作区全部角色 ID（用于启用平台级 MCP 服务器时自动授权）。"""
+
+    factory = getattr(request.app.state, "session_factory", None)
+    if factory is None:
+        return []
+    try:
+        session = factory()
+        try:
+            rows = session.scalars(
+                select(Persona.id).where(Persona.workspace_id == LOCAL_WORKSPACE_ID)
+            )
+            return list(rows)
+        finally:
+            session.close()
+    except Exception:
+        return []
 
 
 @router.get("/web-search-keyless")
@@ -89,6 +111,9 @@ async def web_search_keyless_set(request: Request, payload: dict) -> dict:
             },
             enabled=True,
             description="免 API key 联网搜索（本地优先）",
+            # 平台级只读能力：启用时自动授权所有现有角色，避免因
+            # fail-closed 角色可见性导致工具不可见；新建角色需在角色管理页授权。
+            allowed_persona_ids=_all_persona_ids(request),
         )
         manager.save_configs(
             [s for s in servers if s.name != KEYLESS_SERVER_NAME] + [config]
