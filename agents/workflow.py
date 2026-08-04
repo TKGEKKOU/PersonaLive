@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import json
 import operator
-from typing import Annotated, Literal
+from typing import Annotated, Callable, Literal
 
 from langchain.agents import create_agent
-from langchain.agents.middleware import ModelRequest, dynamic_prompt
-from langchain.messages import AIMessage, ToolMessage
+from langchain.agents.middleware import ModelRequest, dynamic_prompt, wrap_model_call
+from langchain.messages import AIMessage, SystemMessage, ToolMessage
 from langchain.tools import ToolRuntime, tool
 from langchain_core.language_models import BaseChatModel
 from langgraph.constants import END, START
@@ -20,7 +20,9 @@ from langgraph.graph import MessagesState, StateGraph
 from langgraph.types import Command
 
 from agents.context import PersonaAgentContext
+from agents.mcp_grants import is_mcp_tool_visible
 from agents.registry import tools_for_specialist
+from agents.skills import get_skill, list_skills, load_skill, tools_for_skill
 from agents.tools.memory import memories_for_context
 from rag.llm import get_llm
 
@@ -35,6 +37,18 @@ class PersonaWorkflowState(MessagesState):
 
     active_worker: Worker | None
     worker_results: Annotated[list[dict], operator.add]
+    loaded_skills: Annotated[list[str], operator.add]
+
+
+class SupervisorAgentState(MessagesState):
+    """Supervisor 子图状态：只声明 messages 与 loaded_skills。
+
+    刻意不继承 PersonaWorkflowState——子图若把未修改的 worker_results 等字段
+    原样输出，父图 reducer 会把同一份值再次合并导致重复；子图只需回传
+    loaded_skills（load_skill 工具写入）即可。
+    """
+
+    loaded_skills: Annotated[list[str], operator.add]
 
 
 def worker_tools(worker: Worker):
@@ -147,17 +161,92 @@ def _prompt_middleware(prompt_factory):
     return set_prompt
 
 
+def build_skill_middleware(base_tools: list):
+    """构建"按需加载"工具中间件：基础工具 + 已加载 skill 的工具。
+
+    wrap_model_call 钩子在每次模型调用前执行。create_agent 的 ToolNode 需要
+    注册全部工具才能执行它们，但模型实际看到哪些由 request.tools 决定——
+    这里始终把可见工具收敛为"基础工具（handoff + load_skill）+ 已加载技能的
+    工具"，未加载任何 skill 时不暴露任何技能工具，从源头缓解工具过载。
+    """
+
+    base_names = {tool.name for tool in base_tools}
+
+    @wrap_model_call
+    def skill_middleware(request: ModelRequest, handler: Callable) -> ModelRequest:
+        loaded = request.state.get("loaded_skills") or []
+        persona_id = getattr(getattr(request.runtime, "context", None), "persona_id", "")
+        visible = [
+            tool
+            for tool in request.tools
+            if isinstance(tool, dict) or tool.name in base_names
+        ]
+        visible_names = {getattr(tool, "name", None) for tool in visible}
+        prompt_parts: list[str] = []
+        if request.system_message is not None and request.system_message.content:
+            prompt_parts.append(str(request.system_message.content))
+        for skill_name in loaded:
+            try:
+                skill = get_skill(skill_name)
+            except KeyError:
+                continue
+            # 技能提示词包：加载后拼进 system prompt，让模型获得领域行为约束。
+            if skill.instructions:
+                prompt_parts.append(f"<skill:{skill.name}>\n{skill.instructions}\n</skill>")
+            for skill_tool in tools_for_skill(skill):
+                if (
+                    skill_tool.name not in visible_names
+                    and is_mcp_tool_visible(persona_id, skill_tool.name)
+                ):
+                    visible.append(skill_tool)
+                    visible_names.add(skill_tool.name)
+        system_message = (
+            SystemMessage(content="\n\n".join(prompt_parts))
+            if prompt_parts
+            else request.system_message
+        )
+        return handler(request.override(tools=visible, system_message=system_message))
+
+    return skill_middleware
+
+
 def _supervisor_agent(model: BaseChatModel | None):
+    # LangChain 1.0 的 create_agent 高阶入口：把「模型调用 -> 工具决策 -> 执行 -> 结果整合」
+    # 闭环封装为 LangGraph 子图，开发者只需提供模型、工具和 system prompt。
+    # 本项目的"工具"是四个 handoff（delegate_to_*）：Supervisor 不直接干活，
+    # 而是把任务转交给对应 Worker 节点，由 Worker 用受限工具集执行后再交回。
+    base_tools = [_handoff_tool(worker) for worker in WORKERS] + [load_skill]
+    # 全部 skill 工具注册进 ToolNode（可执行），但默认不暴露给模型；
+    # 可见性由 build_skill_middleware 按 loaded_skills 状态动态收敛。
+    skill_tools = {
+        skill_tool.name: skill_tool
+        for skill in list_skills()
+        for skill_tool in tools_for_skill(skill)
+    }
     return create_agent(
         model=model or get_llm(),
-        tools=[_handoff_tool(worker) for worker in WORKERS],
-        middleware=[_prompt_middleware(_supervisor_prompt)],
+        tools=base_tools + list(skill_tools.values()),
+        # 子图直接复用父图状态模式：load_skill 写入的 loaded_skills 会随子图
+        # 输出合并回父图并被 checkpointer 持久化，跨轮次技能状态不丢失。
+        state_schema=SupervisorAgentState,
+        # middleware 里的 dynamic_prompt 每次请求动态生成人设 prompt（注入完整人设
+        # profile 与持久记忆），而不必为每种角色手写静态模板——这是 LangChain 1.0
+        # 中间件机制的典型用法：钩入模型调用前，不改 Agent 核心逻辑。
+        # 顺序敏感：dynamic_prompt 与 skill_middleware 都是 wrap_model_call 链，
+        # 后面的执行时覆盖 system_message——所以技能注入必须排在提示词注入之后，
+        # 才能读到已注入的人设 prompt 再追加技能 instructions。
+        middleware=[_prompt_middleware(_supervisor_prompt), build_skill_middleware(base_tools)],
+        # context_schema 把 PersonaAgentContext（角色/会话上下文）作为不可变上下文
+        # 传给工具运行时，Worker 工具据此做作用域过滤，而不是塞进对话消息里。
         context_schema=PersonaAgentContext,
         name="persona_supervisor",
     )
 
 
 def _worker_agent(worker: Worker, model: BaseChatModel | None):
+    # 每个 Worker 是独立的 create_agent，只挂自己那一类受限工具
+    # （knowledge 只有 RAG 检索工具，management 只有文档/人设管理工具等），
+    # 从工具集层面强制最小权限，防止 Worker 越权调用其他领域能力。
     return create_agent(
         model=model or get_llm(),
         tools=worker_tools(worker),
@@ -256,14 +345,24 @@ def _finalize_worker(worker: Worker):
 
 
 def build_persona_workflow(model: BaseChatModel | None, checkpointer):
-    """构建 supervisor -> worker -> supervisor 的闭环，并启用会话级检查点。"""
+    """构建 supervisor -> worker -> supervisor 的闭环，并启用会话级检查点。
+
+    设计要点：
+    - 只有 persona_supervisor 对用户可见：它是唯一直接生成最终回复的节点，
+      Worker 永远不直接回答用户，只能把事实性结果交回 Supervisor 整合。
+    - Worker 通过 handoff 工具（Command(PARENT, goto=worker_node)）把控制权从
+      Supervisor 子图交回父图对应节点；执行完再由 finalize 节点封装结果回 Supervisor。
+    - checkpointer 按 thread_id（persona_id:conversation_id）持久化整张图状态，
+      因此中断（interrupt）恢复、多轮对话、服务重启都能从检查点续跑。
+    """
 
     builder = StateGraph(PersonaWorkflowState, context_schema=PersonaAgentContext)
     builder.add_node("persona_supervisor", _supervisor_agent(model))
     builder.add_edge(START, "persona_supervisor")
     builder.add_edge("persona_supervisor", END)
-    # 每个 Worker 都经过 finalize 节点清理 active_worker 并封装交接结果，再回到
-    # persona_supervisor 生成最终答复；Worker 不存在直接通往 END 的边。
+    # 每个 Worker 都经过 finalize 节点：清理 active_worker、把 Worker 的原始输出封装成
+    # 结构化交接结果（knowledge 走 JSON 合同，其余走文本摘要），再回到 persona_supervisor
+    # 生成最终答复；图中不存在 Worker 直达 END 的边，保证所有对外回复都过 Supervisor。
     for worker in WORKERS:
         worker_node = f"{worker}_worker"
         finalize_node = f"finalize_{worker}"
