@@ -4,4 +4,73 @@
     <div id="plugin-list" class="plugin-list"></div>
     <p id="plugins-status" class="inline-status"></p>
   </div>
+  <div class="panel skills-panel">
+    <div class="panel-heading">
+      <div>
+        <h2>技能</h2>
+        <p class="panel-subtitle">技能是对话中按需加载的提示词包，可附加工具；自定义技能保存到 <code>data/skills/</code>，新增后立即生效，引用新工具需重启应用。</p>
+      </div>
+      <div class="panel-actions">
+        <span id="skills-count" class="status-pill">0 个技能</span>
+        <button id="skill-upload-btn" class="button button-secondary" type="button">上传技能包</button>
+        <input id="skill-upload-input" type="file" accept=".zip" hidden>
+      </div>
+    </div>
+    <div id="skill-list" class="plugin-list"></div>
+    <details id="skill-create-form" class="plugin-config">
+      <summary>新增技能</summary>
+      <div class="settings-grid one-column">
+        <label class="field"><span>名称</span><input id="skill-name" placeholder="小写字母、数字、-、_，如 data_analysis"></label>
+        <label class="field"><span>描述</span><input id="skill-description" placeholder="技能做什么"></label>
+        <label class="field"><span>提示词（加载后注入对话）</span><textarea id="skill-instructions" rows="4" placeholder="当用户……时，请……"></textarea></label>
+        <label class="field"><span>触发提示（可选）</span><input id="skill-prompt-hint" placeholder="帮助模型判断何时加载，如：用户要求……时使用"></label>
+        <div class="field"><span>可附加工具（可选）</span><div id="skill-tools" class="skill-tools"></div></div>
+      </div>
+      <div class="asr-actions">
+        <button id="skill-create-submit" class="button button-secondary" type="button">保存技能</button>
+      </div>
+    </details>
+    <p id="skills-status" class="inline-status"></p>
+  </div>
+  <div class="panel mcp-panel">
+    <div class="panel-heading">
+      <div>
+        <h2>外部工具（MCP）</h2>
+        <p class="panel-subtitle">连接外部 MCP 服务器，把它的工具注册为可被技能引用的能力；配置保存在 <code>data/mcp_servers.json</code>，保存后重启应用生效。</p>
+      </div>
+      <span id="mcp-count" class="status-pill">0 台服务器</span>
+    </div>
+    <div id="mcp-server-list" class="plugin-list"></div>
+    <details id="mcp-create-form" class="plugin-config">
+      <summary>新增服务器</summary>
+      <div class="settings-grid one-column">
+        <label class="field"><span>名称</span><input id="mcp-name" placeholder="小写字母、数字、-、_，如 filesystem"></label>
+        <label class="field"><span>描述（可选）</span><input id="mcp-description" placeholder="这台服务器提供什么能力"></label>
+        <div class="field"><span>传输方式</span>
+          <div id="mcp-transport" class="mcp-transport-options">
+            <label class="toggle-field"><input type="radio" name="mcp-transport" value="stdio" checked><span>本地进程（stdio）</span></label>
+            <label class="toggle-field"><input type="radio" name="mcp-transport" value="streamable_http"><span>远程 HTTP</span></label>
+            <label class="toggle-field"><input type="radio" name="mcp-transport" value="sse"><span>远程 SSE（兼容）</span></label>
+          </div>
+        </div>
+        <div id="mcp-stdio-fields" class="mcp-fields-group">
+          <label class="field"><span>启动命令</span><input id="mcp-command" placeholder="如 npx、python 或可执行文件路径"></label>
+          <label class="field"><span>参数（每行一个）</span><textarea id="mcp-args" rows="3" placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;/tmp"></textarea></label>
+          <label class="field"><span>环境变量（KEY=VALUE，每行一个）</span><textarea id="mcp-env" rows="2" placeholder="API_KEY=xxx"></textarea></label>
+        </div>
+        <div id="mcp-remote-fields" class="mcp-fields-group" hidden>
+          <label class="field"><span>服务器地址</span><input id="mcp-url" placeholder="http://127.0.0.1:8008/mcp"></label>
+          <label class="field"><span>请求头（每行一个）</span><textarea id="mcp-headers" rows="2" placeholder="Authorization: Bearer xxx"></textarea></label>
+        </div>
+      </div>
+      <div class="asr-actions">
+        <button id="mcp-create-submit" class="button button-secondary" type="button">保存服务器</button>
+      </div>
+    </details>
+    <div class="mcp-tools-block">
+      <h3>已注册工具</h3>
+      <div id="mcp-tool-list" class="skill-tools"></div>
+    </div>
+    <p id="mcp-status" class="inline-status"></p>
+  </div>
 </section>

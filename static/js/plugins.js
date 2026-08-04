@@ -8,6 +8,10 @@ async function initPlugins() {
   await renderSkillList();
   renderToolOptions(await loadSkillTools());
   $("skill-create-submit").addEventListener("click", createSkill);
+  $("skill-upload-btn").addEventListener("click", () => $("skill-upload-input").click());
+  $("skill-upload-input").addEventListener("change", (event) =>
+    uploadSkillPackage(event.target.files?.[0])
+  );
   bindMCPTransport();
   await renderMCPServers();
   await renderMCPTools();
@@ -187,7 +191,7 @@ function renderSkillCard(skill) {
   const name = document.createElement("strong");
   name.textContent = skill.name;
   const meta = document.createElement("span");
-  meta.textContent = skill.builtin ? "内置" : "自定义";
+  meta.textContent = `${skill.builtin ? "内置" : "自定义"} · ${skill.format === "skillmd" ? "标准包" : "JSON"}`;
   title.append(name, meta);
   head.append(title);
   if (!skill.builtin) {
@@ -311,6 +315,26 @@ function setSkillStatus(message, isError) {
   if (!node) return;
   node.textContent = message || "";
   node.classList.toggle("is-error", Boolean(isError));
+}
+
+async function uploadSkillPackage(file) {
+  if (!file) return;
+  const form = new FormData();
+  form.append("file", file);
+  setSkillStatus("正在上传…", false);
+  try {
+    const result = await api(fetch("/api/skills/upload", { method: "POST", body: form }));
+    const parts = [];
+    if (result.installed?.length) parts.push(`已安装：${result.installed.join("、")}`);
+    if (result.skipped?.length) {
+      parts.push(`跳过：${result.skipped.map((item) => `${item.name}（${item.reason}）`).join("；")}`);
+    }
+    setSkillStatus(parts.join("。") || "上传完成，没有可安装的技能。", Boolean(result.skipped?.length));
+    await renderSkillList();
+  } catch (reason) {
+    setSkillStatus(reason.message || reason, true);
+  }
+  $("skill-upload-input").value = "";
 }
 
 /* ---- MCP 服务器面板 ---- */
