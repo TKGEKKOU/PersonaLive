@@ -139,8 +139,15 @@ svg { width: 17px; height: 17px; stroke-width: 1.75; flex: none; }
 a { color: var(--primary-dark); }
 
 /* Application shell */
-.app-shell { min-width: 800px; min-height: 600px; display: grid; grid-template-columns: 48px minmax(0,1fr); }
-.site-sidebar { position: sticky; top: 0; z-index: var(--z-sidebar); width: 48px; height: 100dvh; overflow: hidden; border-right: 1px solid var(--sidebar-line); background: var(--sidebar-bg); color: var(--ink); transition: width var(--motion), box-shadow var(--motion), background-color var(--motion), color var(--motion), border-color var(--motion); }
+.app-shell { min-width: 800px; min-height: 600px; display: grid; grid-template-rows: 34px minmax(0,1fr); grid-template-columns: 48px minmax(0,1fr); }
+.window-titlebar { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; background: var(--sidebar-bg); border-bottom: 1px solid var(--line); user-select: none; -webkit-app-region: drag; app-region: drag; }
+.titlebar-label { padding-left: 12px; font-size: 12px; color: var(--muted); letter-spacing: .02em; }
+.titlebar-actions { display: flex; height: 100%; -webkit-app-region: no-drag; app-region: no-drag; }
+.titlebar-actions button { width: 44px; height: 100%; display: grid; place-items: center; border: 0; background: transparent; color: var(--muted); transition: background-color var(--motion), color var(--motion); }
+.titlebar-actions button:hover { background: var(--surface-strong); color: var(--ink); }
+.titlebar-actions button svg { width: 15px; height: 15px; }
+.titlebar-actions #titlebar-close:hover { background: #c0392b; color: #fff; }
+.site-sidebar { position: sticky; top: 0; z-index: var(--z-sidebar); grid-row: 2; width: 48px; height: calc(100dvh - 34px); overflow: hidden; border-right: 1px solid var(--sidebar-line); background: var(--sidebar-bg); color: var(--ink); transition: width var(--motion), box-shadow var(--motion), background-color var(--motion), color var(--motion), border-color var(--motion); }
 .site-sidebar:hover, body.sidebar-pinned .site-sidebar { width: 168px; box-shadow: var(--shadow); }
 .sidebar-inner { width: 168px; height: 100%; padding: 12px 6px; display: flex; flex-direction: column; gap: 16px; }
 .sidebar-footer { margin-top: auto; display: flex; gap: 8px; }
@@ -193,7 +200,7 @@ body.status-cards-collapsed .status-card-detail { display: none; }
 body.status-cards-collapsed .status-card [data-status-value] { display: none; }
 body.status-cards-collapsed .status-card b { font-size: 11px; }
 
-.page-shell { width: min(1200px, calc(100% - 40px)); margin: auto; padding: 24px 0 40px; }
+.page-shell { grid-row: 2; grid-column: 2; min-width: 0; width: min(1200px, calc(100% - 40px)); margin: auto; padding: 24px 0 40px; }
 .view { min-height: calc(100dvh - 56px); animation: view-in var(--motion) both; }
 
 /* Shared surfaces and controls */

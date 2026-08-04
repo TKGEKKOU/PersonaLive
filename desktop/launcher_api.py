@@ -26,6 +26,7 @@ class LauncherApi:
         self.server = server
         self.settings = server.settings
         self._window = None
+        self._maximized = False
         self._exiting = False
         self._start_thread: threading.Thread | None = None
         self._start_done = False
@@ -388,6 +389,29 @@ class LauncherApi:
                 self._window.evaluate_js("window.showExitConfirm && window.showExitConfirm()")
             except Exception:
                 pass
+
+    def window_minimize(self) -> None:
+        """无边框窗口：最小化。"""
+
+        if self._window is not None:
+            try:
+                self._window.minimize()
+            except Exception:
+                pass
+
+    def window_toggle_maximize(self) -> None:
+        """无边框窗口：最大化 / 还原切换。"""
+
+        if self._window is None:
+            return
+        try:
+            if self._maximized:
+                self._window.restore()
+            else:
+                self._window.maximize()
+            self._maximized = not self._maximized
+        except Exception:
+            pass
 
     def on_closing(self) -> bool:
         """pywebview closing 回调：阻止直接关闭，改由确认框决定。"""

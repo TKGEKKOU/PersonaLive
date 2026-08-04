@@ -61,6 +61,8 @@ def run(project_root: Path | None = None) -> int:
             height=820,
             min_size=(960, 640),
             js_api=api,
+            frameless=True,
+            easy_drag=False,  # 拖动由前端标题栏 CSS app-region 负责
         )
         api.bind_window(window)
         api.auto_start_if_needed()
