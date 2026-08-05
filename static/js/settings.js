@@ -196,8 +196,8 @@ async function loadSettings() {
     $("embedding-send-dimensions").checked = config.embedding_send_dimensions;
     $("chunk-size").value = config.chunk_size;
     $("chunk-overlap").value = config.chunk_overlap;
-    $("web-search-enabled").checked = config.web_search_provider !== "off";
-    $("web-search-provider").value = config.web_search_provider === "off" ? "free" : config.web_search_provider;
+    $("web-search-enabled").checked = config.enable_web_fallback;
+    $("web-search-provider").value = config.web_search_provider === "off" ? "bocha" : config.web_search_provider;
     state.savedEmbeddingDimensions = config.embedding_dimensions;
     syncManagedEmbeddingPreset(); renderEmbeddingSettings(); renderEmbeddingInstallAction(); renderEmbeddingWarning(); renderWebSearchSettings();
   } catch (reason) { setText("settings-status", reason, true); }
@@ -525,11 +525,11 @@ function renderWebSearchSettings() {
   const enabled = $("web-search-enabled").checked;
   const provider = $("web-search-provider").value;
   const isCustom = provider === "custom";
-  const isFree = provider === "free";
+  
   $("web-search-provider").disabled = !enabled;
-  $("web-search-api-key").disabled = !enabled || isFree;
-  const keyField = $("web-search-api-key").closest(".field");
-  if (keyField) keyField.classList.toggle("is-hidden", isFree);
+  $("web-search-api-key").disabled = !enabled;
+
+
   $("web-search-base-url-field").classList.toggle("is-hidden", !isCustom);
   $("web-search-base-url").disabled = !enabled || !isCustom;
   const guide = WEB_SEARCH_GUIDES[provider] || WEB_SEARCH_GUIDES.off;
@@ -539,7 +539,7 @@ function renderWebSearchSettings() {
     const link = document.createElement("a"); link.href = guide.href; link.target = "_blank"; link.rel = "noopener"; link.textContent = guide.link;
     const source = document.createElement("p"); source.textContent = `${guide.label}：`; source.append(link); $("web-search-guide").append(source);
   }
-  const missingKey = enabled && !isFree && !state.webSearchKeyConfigured && !$("web-search-api-key").value.trim();
+  const missingKey = enabled && !state.webSearchKeyConfigured && !$("web-search-api-key").value.trim();
   const invalidUrl = enabled && isCustom && !isHttpUrl($("web-search-base-url").value);
   const warning = $("web-search-warning");
   warning.textContent = missingKey ? "启用联网搜索后需要填写 API Key。" : invalidUrl ? "自定义搜索需要填写完整的 HTTP(S) 接口地址。" : "";
@@ -591,7 +591,7 @@ async function saveSettings() {
   const value = (id) => $(id).value.trim();
   try {
     const webEnabled = $("web-search-enabled").checked;
-    await api(fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ openai_api_key: value("openai-api-key"), openai_base_url: value("openai-base-url"), openai_model: value("openai-model"), embedding_api_key: value("embedding-api-key"), embedding_provider: $("embedding-provider").value, embedding_model_source: $("embedding-model-source").value, embedding_device: $("embedding-device").value, embedding_base_url: value("embedding-base-url"), embedding_model: value("embedding-model"), embedding_dimensions: Number(value("embedding-dimensions")), embedding_send_dimensions: $("embedding-send-dimensions").checked, chunk_size: Number(value("chunk-size")), chunk_overlap: Number(value("chunk-overlap")), web_search_provider: webEnabled ? $("web-search-provider").value : "off", web_search_api_key: value("web-search-api-key"), web_search_base_url: value("web-search-base-url"), enable_web_fallback: webEnabled && $("web-search-provider").value !== "free" }) }));
+    await api(fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ openai_api_key: value("openai-api-key"), openai_base_url: value("openai-base-url"), openai_model: value("openai-model"), embedding_api_key: value("embedding-api-key"), embedding_provider: $("embedding-provider").value, embedding_model_source: $("embedding-model-source").value, embedding_device: $("embedding-device").value, embedding_base_url: value("embedding-base-url"), embedding_model: value("embedding-model"), embedding_dimensions: Number(value("embedding-dimensions")), embedding_send_dimensions: $("embedding-send-dimensions").checked, chunk_size: Number(value("chunk-size")), chunk_overlap: Number(value("chunk-overlap")), web_search_provider: webEnabled ? $("web-search-provider").value : "off", web_search_api_key: value("web-search-api-key"), web_search_base_url: value("web-search-base-url"), enable_web_fallback: webEnabled }) }));
     resetApiKeyInputs();
     setText("settings-status", "已保存，可立即使用"); await loadSettings();
   } catch (reason) { setText("settings-status", reason, true); }

@@ -99,7 +99,7 @@ def settings_response(path: Path, restart_required: bool = False) -> LocalSettin
         web_search_provider=web_search_provider,
         web_search_api_key_configured=bool(web_search_api_key),
         web_search_base_url=str(values.get("web_search_base_url") or ""),
-        enable_web_fallback=web_search_provider in {"tavily", "bocha", "custom"},
+        enable_web_fallback=web_search_provider != "off",
         restart_required=restart_required,
     )
 

@@ -5,7 +5,7 @@ import sys
 
 from dotenv import dotenv_values
 
-SUPPORTED_WEB_SEARCH_PROVIDERS = frozenset({"off", "free", "tavily", "bocha", "custom"})
+SUPPORTED_WEB_SEARCH_PROVIDERS = frozenset({"off", "tavily", "bocha", "custom"})
 SUPPORTED_EMBEDDING_PROVIDERS = frozenset({"qwen", "managed_local", "custom"})
 SUPPORTED_EMBEDDING_SOURCES = frozenset({"modelscope", "huggingface"})
 SUPPORTED_EMBEDDING_DEVICES = frozenset({"auto", "cuda", "cpu"})
@@ -108,8 +108,7 @@ class Settings:
             max_rewrite_count=int(get("MAX_REWRITE_COUNT", "2")),
             max_generation_retry=int(get("MAX_GENERATION_RETRY", "2")),
             max_upload_mb=int(get("MAX_UPLOAD_MB", "50")),
-            # free(内置免 key)走 skill/MCP 搜索,不触发需要 API key 的 RAG 兜底
-            enable_web_fallback=web_search_provider in {"tavily", "bocha", "custom"},
+            enable_web_fallback=web_search_provider != "off",
             mcp_allow_arbitrary_stdio=str(values.get("MCP_ALLOW_ARBITRARY_STDIO") or "false").lower() in {"1", "true", "yes", "on"},
             web_search_provider=web_search_provider,
             web_search_api_key=web_search_api_key,
