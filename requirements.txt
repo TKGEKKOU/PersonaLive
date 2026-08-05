@@ -25,6 +25,7 @@ tavily-python==0.7.26
 httpx==0.28.1
 httpcore==1.0.9
 httpx-sse==0.4.3
+websockets==15.0.1
 pydantic-settings==2.14.2
 requests==2.32.3
 tiktoken==0.9.0

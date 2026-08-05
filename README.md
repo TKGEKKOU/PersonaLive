@@ -153,7 +153,11 @@ LangGraph `interrupt()` 触发中断，返回待审批的操作详情（工具�
   stdio 启动命令受**白名单 / 黑名单 / 内联代码与危险参数拦截**保护
   （`MCP_ALLOW_ARBITRARY_STDIO=true` 仅跳过白名单）；按角色在**角色管理页**按服务器
   粒度授权，未授权角色即使技能引用该服务器工具也不可见（fail-closed），授权变更即时生效；
-- **OneBot 11（QQ）**：外部渠道消息经 EventBus 广播路由到 Agent，渠道扩展不触碰 Agent 逻辑；
+- **QQ 官方机器人（WebSocket）**：开放平台 AppID / AppSecret 直连官方 WebSocket 网关，
+  支持群聊（@机器人或关键词前缀触发）与单聊；自动换取并缓存 access_token、心跳保活、
+  断线自动重连（Resume 补发），消息经 EventBus 路由到 Agent，回复走官方消息接口；
+- **OneBot 11（QQ）**：通过 OneBot 11 正向 WebSocket 连接 NapCat 等转发端，外部渠道
+  消息经 EventBus 广播路由到 Agent，渠道扩展不触碰 Agent 逻辑；
 - **插件系统**：插件通过受限 `agent_runner` 与 EventBus 安全接入，不直接持有数据库或图对象；
 - **实时会话**：WebSocket 带轮次 ID、确认事件与停止旧轮次能力，REST 与 WS 共用同一 LangGraph 会话；
 - **桌面壳**：PyWebView 桌面模式自动检查 Docker、启动 Compose 与 FastAPI，并统一托管

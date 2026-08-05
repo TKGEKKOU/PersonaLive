@@ -41,6 +41,8 @@ from integrations.config import onebot_runtime_config
 from integrations.mcp.client import MCPManager
 from integrations.onebot11.router import ImMessageRouter
 from integrations.onebot11.ws_server import OneBotConnectionManager, router as onebot_ws_router
+from integrations.qq_official.config import qq_official_runtime_config
+from integrations.qq_official.gateway import QqOfficialGateway
 from persona.delete_service import PersonaDeletionService
 from realtime.execution import ConversationExecutionRegistry
 from voice.asr import build_asr_provider
@@ -105,10 +107,12 @@ def create_app(initialize_database: bool = True) -> FastAPI:
         app.state.embedding_warmup_task = asyncio.create_task(
             asyncio.to_thread(warm_managed_embedding, settings)
         )
+        await app.state.qq_official.start()
         if initialize_database:
             app.state.asr_warmup_task = asyncio.create_task(warm_asr_worker())
             app.state.tts_warmup_task = asyncio.create_task(warm_tts_worker())
         yield
+        await app.state.qq_official.stop()
         app.state.embedding_warmup_task.cancel()
         try:
             from ingestion.local_embedding.client import shutdown_embedding_workers
@@ -170,6 +174,10 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     app.state.onebot = OneBotConnectionManager(
         lambda: onebot_runtime_config(settings.project_root)
     )
+    app.state.qq_official = QqOfficialGateway(
+        lambda: qq_official_runtime_config(settings.project_root),
+        app.state.event_bus,
+    )
     # IM 消息路由：OneBot（QQ）等外部渠道消息经 EventBus 广播到这里，统一转成
     # PersonaAgentService 的一轮对话；消息与 Agent 解耦，渠道扩展不触碰 Agent 逻辑。
     app.state.im_router = ImMessageRouter(
@@ -179,6 +187,16 @@ def create_app(initialize_database: bool = True) -> FastAPI:
         settings.project_root / "data" / "integrations.json",
     )
     app.state.event_bus.subscribe(EVENT_MESSAGE, app.state.im_router.handle)
+    # QQ 官方机器人（WebSocket）与 OneBot 转发端共用同一套 IM 消息路由，
+    # 通过 platform 区分对话会话与默认角色，互不干扰。
+    app.state.im_router_qq_official = ImMessageRouter(
+        app.state.agent_service,
+        app.state.session_factory,
+        settings.project_root / "data" / "im_bindings.json",
+        settings.project_root / "data" / "integrations.json",
+        platform="qq_official",
+    )
+    app.state.event_bus.subscribe(EVENT_MESSAGE, app.state.im_router_qq_official.handle)
     app.include_router(agents_router)
     app.include_router(asr_router)
     app.include_router(onebot_ws_router)

@@ -14,6 +14,7 @@ from integrations.bindings import (
 )
 from integrations.commands import parse_command
 from integrations.config import load_integrations, onebot_config
+from integrations.qq_official.config import qq_official_config
 from persona.service import PersonaNotFound, find_persona_by_name
 
 
@@ -27,15 +28,23 @@ class ImMessageRouter:
         session_factory,
         bindings_path: Path,
         integrations_path: Path,
+        platform: str = "onebot11",
     ) -> None:
         self.agent_service = agent_service
         self.session_factory = session_factory
         self.bindings_path = bindings_path
         self.integrations_path = integrations_path
+        self.platform = platform
         self._locks: dict[str, asyncio.Lock] = {}
 
     def conversation_id(self, chat_type: str, chat_id: str) -> str:
-        return f"im:onebot11:{chat_type}:{chat_id}"
+        return f"im:{self.platform}:{chat_type}:{chat_id}"
+
+    def _config(self) -> dict:
+        data = load_integrations(self.integrations_path)
+        if self.platform == "qq_official":
+            return qq_official_config(data)
+        return onebot_config(data)
 
     def _lock(self, key: str) -> asyncio.Lock:
         if key not in self._locks:
@@ -43,9 +52,9 @@ class ImMessageRouter:
         return self._locks[key]
 
     async def handle(self, event: MessageEvent) -> None:
-        if event.platform != "onebot11":
+        if event.platform != self.platform:
             return
-        config = onebot_config(load_integrations(self.integrations_path))
+        config = self._config()
         if event.chat_type == "group":
             if config["group_trigger"] == "at" and not event.is_at:
                 return
@@ -84,8 +93,7 @@ class ImMessageRouter:
         event.reply(f"已绑定角色「{persona.name}」。")
 
     def _default_persona_id(self) -> str:
-        config = onebot_config(load_integrations(self.integrations_path))
-        return str(config.get("default_persona_id") or "")
+        return str(self._config().get("default_persona_id") or "")
 
     def _persona_for(self, event: MessageEvent) -> str | None:
         bindings = load_bindings(self.bindings_path)
