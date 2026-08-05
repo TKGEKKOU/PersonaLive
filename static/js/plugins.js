@@ -183,7 +183,6 @@ async function createSkill() {
       setSkillStatus("技能已保存。", false);
     }
     resetSkillForm();
-    $("skill-create-form").open = false;
     renderToolOptions(await loadSkillTools());
     await renderSkillList();
   } catch (reason) {
@@ -216,10 +215,10 @@ function editSkill(skill) {
     input.checked = skill.tool_names.includes(input.value);
   });
   const form = $("skill-create-form");
-  const summary = form.querySelector("summary");
-  if (summary) summary.textContent = `编辑技能：${skill.name}`;
+  const title = $("skill-create-title");
+  if (title) title.textContent = `编辑技能：${skill.name}`;
   $("skill-create-submit").textContent = "保存修改";
-  form.open = true;
+  form.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function resetSkillForm() {
@@ -230,9 +229,8 @@ function resetSkillForm() {
   $("skill-instructions").value = "";
   $("skill-prompt-hint").value = "";
   $("skill-tools").querySelectorAll("input").forEach((input) => { input.checked = false; });
-  const form = $("skill-create-form");
-  const summary = form.querySelector("summary");
-  if (summary) summary.textContent = "新增技能";
+  const title = $("skill-create-title");
+  if (title) title.textContent = "新增技能";
   $("skill-create-submit").textContent = "保存技能";
 }
 

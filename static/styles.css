@@ -626,11 +626,16 @@ input:focus, textarea:focus, select:focus { border-color: var(--primary); box-sh
 
 @media (max-width: 720px) {
   .system-status-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .create-grid { grid-template-columns: 1fr; }
   #skill-list { grid-template-columns: 1fr; }
 }
 
 /* 接入页与插件页 */
 .integrations-panel .settings-grid { max-width: 720px; }
+.create-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.create-panel .create-fields { grid-template-columns: 1fr; }
+.create-panel .panel-heading { gap: 12px; }
+.create-panel .panel-heading .panel-subtitle { margin-bottom: 0; }
 .plugin-list { display: grid; gap: 12px; }
 #skill-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .plugin-card { border: 1px solid var(--line-dark); border-radius: 4px; padding: 12px 14px; background: var(--surface); }
