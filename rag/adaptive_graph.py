@@ -4,6 +4,7 @@
 查询改写、联网回退或答案纠错，超过边界后返回保守的无答案结果。
 """
 
+import time
 from typing import Any, Callable
 
 from langgraph.constants import END, START
@@ -88,6 +89,7 @@ def _complete(
             "document_count": len(completed.get("documents") or []),
             "confidence": completed.get("confidence"),
             "has_answer": bool(completed.get("answer")),
+            "ts": time.perf_counter(),
         }
     )
     completed["trace"] = trace

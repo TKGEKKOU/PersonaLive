@@ -49,6 +49,8 @@ def response_for(result) -> AgentTurnResponse:
         tool_calls=list(result.tool_calls),
         evidence=list(result.evidence),
         trace=list(result.trace),
+        duration_seconds=result.duration_seconds,
+        loaded_skills=list(result.loaded_skills),
     )
 
 

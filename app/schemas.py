@@ -151,6 +151,8 @@ class AgentTurnResponse(BaseModel):
     tool_calls: list[dict[str, Any]] = Field(default_factory=list)
     evidence: list[dict[str, Any]] = Field(default_factory=list)
     trace: list[dict[str, Any]] = Field(default_factory=list)
+    duration_seconds: float = 0.0
+    loaded_skills: list[str] = Field(default_factory=list)
 
 
 class LocalSettingsUpdate(BaseModel):

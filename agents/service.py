@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -47,6 +48,8 @@ class AgentTurnResult:
     tool_calls: tuple[dict[str, Any], ...] = field(default_factory=tuple)
     evidence: tuple[dict[str, Any], ...] = field(default_factory=tuple)
     trace: tuple[dict[str, Any], ...] = field(default_factory=tuple)
+    duration_seconds: float = 0.0
+    loaded_skills: tuple[str, ...] = field(default_factory=tuple)
 
 
 class PersonaAgentService:
@@ -81,6 +84,7 @@ class PersonaAgentService:
 
     def query(self, question: str, context: PersonaAgentContext) -> AgentTurnResult:
         graph = self._graph()
+        started = time.perf_counter()
         # 已暂停的写操作必须先由用户处理；不能用新问题绕过上一次确认。
         pending = self._find_pending(graph, context)
         if pending is not None:
@@ -106,9 +110,10 @@ class PersonaAgentService:
                     status="completed",
                     answer=LLM_UNAVAILABLE_MESSAGE,
                     specialist="conversation",
+                    duration_seconds=time.perf_counter() - started,
                 )
             raise
-        return self._result(result)
+        return self._result(result, time.perf_counter() - started)
 
     def _find_pending(self, graph, context: PersonaAgentContext) -> AgentTurnResult | None:
         snapshot = graph.get_state(self._config(context))
@@ -128,12 +133,13 @@ class PersonaAgentService:
         specialist: Specialist,
         approved: bool,
     ) -> AgentTurnResult:
+        started = time.perf_counter()
         del specialist
         graph = self._graph()
         config = self._config(context)
         snapshot = graph.get_state(config)
         if not snapshot.interrupts:
-            return self._result(snapshot.values or {})
+            return self._result(snapshot.values or {}, time.perf_counter() - started)
         # Command(resume=...) 从 checkpointer 中恢复 interrupt 所在节点，不会重跑
         # 用户消息之前已经完成的 Worker 步骤。
         try:
@@ -149,9 +155,10 @@ class PersonaAgentService:
                     status="completed",
                     answer=LLM_UNAVAILABLE_MESSAGE,
                     specialist="conversation",
+                    duration_seconds=time.perf_counter() - started,
                 )
             raise
-        return self._result(result)
+        return self._result(result, time.perf_counter() - started)
 
     @staticmethod
     def _specialist_for_state(state: dict, action: dict | None = None) -> Specialist:
@@ -165,7 +172,7 @@ class PersonaAgentService:
         return "conversation"
 
     @staticmethod
-    def _result(state: dict) -> AgentTurnResult:
+    def _result(state: dict, duration_seconds: float = 0.0) -> AgentTurnResult:
         """只暴露注册工具的结果，过滤内部 handoff ToolMessage。"""
 
         interrupts = state.get("__interrupt__") or ()
@@ -181,6 +188,7 @@ class PersonaAgentService:
         tool_calls: list[dict[str, Any]] = []
         evidence: list[dict[str, Any]] = []
         trace: list[dict[str, Any]] = []
+        loaded_skills = list(state.get("loaded_skills") or [])
         visible_tools = {spec.name for spec in tool_specs()}
         for message in messages:
             if isinstance(message, AIMessage) and message.content:
@@ -201,6 +209,8 @@ class PersonaAgentService:
             tool_calls=tuple(tool_calls[-8:]),
             evidence=tuple(evidence),
             trace=tuple(trace),
+            duration_seconds=duration_seconds,
+            loaded_skills=tuple(loaded_skills),
         )
 
     @staticmethod

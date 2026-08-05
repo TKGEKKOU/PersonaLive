@@ -4,6 +4,70 @@ window.PL.modules.chat = { init: initChat };
 
 let chatGlobalEventsBound = false;
 
+const CHAT_PROCESS_VISIBLE_KEY = "yumeno:chat-process-visible";
+const CHAT_PROCESS_POS_KEY = "yumeno:chat-process-pos";
+const SPECIALIST_LABELS = {
+  conversation: "综合对话",
+  web: "联网检索",
+  memory: "记忆管理",
+  management: "资料管理",
+};
+const PROCESS_NODE_LABELS = {
+  route_query: "问题路由",
+  retrieve: "知识检索",
+  batch_grade_documents: "证据筛选",
+  generate: "生成回答",
+  quality_gate: "质量门",
+  prepare_correction: "自我纠错",
+  rewrite_query: "改写问题",
+  web_search: "联网检索",
+};
+
+function formatMessageTime(iso) {
+  const date = iso ? new Date(iso) : new Date();
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (value) => String(value).padStart(2, "0");
+  const clock = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const now = new Date();
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  return sameDay ? clock : `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${clock}`;
+}
+
+function messageActionButton(label, icon, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "message-action";
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  const glyph = document.createElement("i");
+  glyph.dataset.lucide = icon;
+  const text = document.createElement("span");
+  text.textContent = label;
+  button.append(glyph, text);
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+async function copyMessageText(text, button) {
+  const label = button.querySelector("span");
+  const original = label.textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const helper = document.createElement("textarea");
+    helper.value = text;
+    document.body.append(helper);
+    helper.select();
+    try { document.execCommand("copy"); } catch { /* clipboard unavailable */ }
+    helper.remove();
+  }
+  label.textContent = "已复制";
+  setTimeout(() => { label.textContent = original; }, 1200);
+}
+
 function bindChatGlobalEvents() {
   if (chatGlobalEventsBound) return;
   chatGlobalEventsBound = true;
@@ -19,6 +83,7 @@ function initChat() {
   bindChatEvents();
   bindChatGlobalEvents();
   observeChatStatus();
+  initChatProcessPanel();
   updateChatStatusCard();
   renderPersonaList();
   if (state.activePersona) {
@@ -46,6 +111,15 @@ function bindChatEvents() {
   $("chat-settings-toggle").addEventListener("click", (event) => { event.stopPropagation(); toggleChatSettingsMenu(); });
   document.querySelectorAll("#chat-settings-menu button").forEach((button) => button.addEventListener("click", closeChatSettingsMenu));
   $("assistant-voice-toggle").addEventListener("change", () => localStorage.setItem("yumeno:assistant-voice", $("assistant-voice-toggle").checked ? "on" : "off"));
+  const processSetting = $("chat-process-setting");
+  if (processSetting) {
+    processSetting.checked = isChatProcessVisible();
+    processSetting.addEventListener("change", () => {
+      localStorage.setItem(CHAT_PROCESS_VISIBLE_KEY, processSetting.checked ? "on" : "off");
+      if (!processSetting.checked) $("chat-process-panel")?.classList.add("is-hidden");
+      updateChatStatusCard();
+    });
+  }
 }
 function connectRealtime() {
   if (!state.activePersona) return;
@@ -122,28 +196,100 @@ function resetChatProcess() {
   $("chat-process-summary").textContent = "等待中";
   $("chat-process-content").replaceChildren();
 }
+function isChatProcessVisible() {
+  return localStorage.getItem(CHAT_PROCESS_VISIBLE_KEY) === "on";
+}
+function processGroup(title, rows) {
+  const group = document.createElement("div");
+  group.className = "chat-process-group";
+  const heading = document.createElement("span");
+  heading.className = "chat-process-group-title";
+  heading.textContent = title;
+  group.append(heading);
+  for (const item of rows) {
+    const row = document.createElement("div");
+    row.className = "chat-process-row";
+    const label = document.createElement("span");
+    label.textContent = item.label;
+    const value = document.createElement("span");
+    value.textContent = item.value;
+    row.append(label, value);
+    group.append(row);
+  }
+  return group;
+}
 function renderChatProcess(result) {
-  if (!$("chat-process-panel")) return;
+  const panel = $("chat-process-panel");
+  if (!panel || !isChatProcessVisible()) return;
   const traces = result?.trace || [];
   const toolCalls = result?.tool_calls || [];
   if (!traces.length && !toolCalls.length) return;
-  $("chat-process-panel").classList.remove("is-hidden");
+  panel.classList.remove("is-hidden");
   updateChatStatusCard();
-  $("chat-process-summary").textContent = `工具 ${toolCalls.length} · 检索 ${traces.length}`;
+  const summary = [];
+  if (result?.specialist && SPECIALIST_LABELS[result.specialist]) summary.push(SPECIALIST_LABELS[result.specialist]);
+  if (result?.duration_seconds != null) summary.push(`${result.duration_seconds.toFixed(1)}s`);
+  if (toolCalls.length) summary.push(`工具 ${toolCalls.length}`);
+  if (traces.length) summary.push(`检索 ${traces.length}`);
+  $("chat-process-summary").textContent = summary.join(" · ") || "等待中";
   const content = $("chat-process-content"); content.replaceChildren();
-  const toolCounts = new Map();
-  for (const tool of toolCalls) { const name = tool.name || String(tool); toolCounts.set(name, (toolCounts.get(name) || 0) + 1); }
-  const nodeLabels = { route_query: "问题路由", retrieve: "知识检索", batch_grade_documents: "证据筛选", generate: "生成回答", quality_gate: "质量门禁", prepare_correction: "自我纠正", rewrite_query: "改写问题", web_search: "联网检索" };
-  const items = [
-    ...[...toolCounts].map(([name, count]) => ({ label: name, value: `${count} 次` })),
-    ...traces.map((x) => ({ label: nodeLabels[x.node] || x.node || "处理步骤", value: x.document_count != null ? `${x.document_count} 个片段` : "完成" })),
-  ];
-  for (const item of items) {
-    const row = document.createElement("div"); row.className = "chat-process-row";
-    const label = document.createElement("span"); label.textContent = item.label;
-    const value = document.createElement("span"); value.textContent = item.value;
-    row.append(label, value); content.append(row);
+  if (result?.loaded_skills?.length) {
+    content.append(processGroup("技能", result.loaded_skills.map((name) => ({ label: name, value: "已加载" }))));
   }
+  if (toolCalls.length) {
+    const counts = new Map();
+    for (const tool of toolCalls) { const name = tool.name || String(tool); counts.set(name, (counts.get(name) || 0) + 1); }
+    content.append(processGroup("工具调用", [...counts].map(([name, count]) => ({ label: name, value: `${count} 次` }))));
+  }
+  if (traces.length) {
+    const rows = traces.map((step, index) => {
+      const previous = index > 0 ? traces[index - 1].ts : null;
+      const elapsed = previous != null && step.ts != null ? Math.max(0, (step.ts - previous) * 1000) : null;
+      const parts = [];
+      if (elapsed != null) parts.push(elapsed >= 1000 ? `${(elapsed / 1000).toFixed(1)}s` : `${Math.round(elapsed)}ms`);
+      if (step.document_count != null) parts.push(`${step.document_count} 片段`);
+      if (step.confidence != null) parts.push(`置信 ${Math.round(step.confidence * 100)}%`);
+      return { label: PROCESS_NODE_LABELS[step.node] || step.node || "处理步骤", value: parts.join(" · ") || "完成" };
+    });
+    content.append(processGroup("处理步骤", rows));
+  }
+}
+function initChatProcessPanel() {
+  const panel = $("chat-process-panel");
+  const handle = $("chat-process-toggle");
+  if (!panel || !handle) return;
+  try {
+    const saved = JSON.parse(localStorage.getItem(CHAT_PROCESS_POS_KEY) || "null");
+    if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
+      panel.style.left = `${saved.x}px`;
+      panel.style.top = `${saved.y}px`;
+      panel.style.right = "auto";
+    }
+  } catch { /* 忽略损坏的位置缓存 */ }
+  handle.addEventListener("mousedown", (event) => {
+    if (event.button !== 0) return;
+    const rect = panel.getBoundingClientRect();
+    const offsetX = event.clientX - rect.left;
+    const offsetY = event.clientY - rect.top;
+    const onMove = (moveEvent) => {
+      const x = Math.min(Math.max(moveEvent.clientX - offsetX, 4), window.innerWidth - 90);
+      const y = Math.min(Math.max(moveEvent.clientY - offsetY, 4), window.innerHeight - 36);
+      panel.style.left = `${x}px`;
+      panel.style.top = `${y}px`;
+      panel.style.right = "auto";
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      localStorage.setItem(CHAT_PROCESS_POS_KEY, JSON.stringify({
+        x: parseFloat(panel.style.left) || 0,
+        y: parseFloat(panel.style.top) || 0,
+      }));
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    event.preventDefault();
+  });
 }
 function showReplyLoading() {
   if (state.pendingReplyNode) return state.pendingReplyNode;
@@ -329,6 +475,10 @@ function resetPacing() {
 function updateChatStatusCard() {
   const panel = $("chat-process-panel");
   if (!panel) return;
+  if (!isChatProcessVisible()) {
+    panel.classList.add("is-hidden");
+    return;
+  }
   const hasStatus = ["audio-status", "question-status", "chat-error"].some((id) => $(id)?.textContent.trim());
   const hasProcess = Boolean($("chat-process-content")?.children.length);
   panel.classList.toggle("is-hidden", !(hasStatus || hasProcess));
@@ -559,10 +709,38 @@ function resizeComposer() {
   input.style.height = `${height}px`;
   input.style.overflowY = input.scrollHeight > 104 ? "auto" : "hidden";
 }
-function appendMessage(type, text) {
+function appendMessage(type, text, createdAt) {
   if ($("chat-log").querySelector(".empty-state")) $("chat-log").replaceChildren();
-  const node = document.createElement("article"); node.className = `message message-${type}`;
-  const body = document.createElement("p"); body.textContent = text; node.append(body); $("chat-log").append(node); node.scrollIntoView({ block: "nearest" }); return node;
+  const node = document.createElement("article");
+  node.className = `message message-${type}`;
+  const body = document.createElement("p");
+  body.textContent = text;
+  node.append(body);
+  const actions = document.createElement("footer");
+  actions.className = "message-actions";
+  const stamp = document.createElement("time");
+  stamp.className = "message-time";
+  stamp.dateTime = createdAt || new Date().toISOString();
+  stamp.textContent = formatMessageTime(createdAt);
+  actions.append(stamp);
+  actions.append(messageActionButton("复制", "copy", (event) => {
+    copyMessageText(text, event.currentTarget);
+  }));
+  if (type === "user") {
+    actions.append(messageActionButton("编辑", "pencil", () => {
+      const input = $("question");
+      if (!input) return;
+      input.value = text;
+      resizeComposer();
+      input.focus();
+      input.scrollIntoView({ block: "center" });
+    }));
+  }
+  node.append(actions);
+  $("chat-log").append(node);
+  node.scrollIntoView({ block: "nearest" });
+  icons();
+  return node;
 }
 function loadAudioSource(audio, url) {
   if (!url) return Promise.resolve();
@@ -660,7 +838,7 @@ async function loadConversationMessages() {
     const messages = await api(fetch(`/api/personas/${state.activePersona.id}/conversations/${state.conversationId}/messages`));
     $("chat-log").replaceChildren();
     if (!messages.length) return $("chat-log").append(empty("开始对话"));
-    for (const message of messages) message.kind === "audio" ? appendAudioMessage(message) : appendMessage(message.role, message.content);
+    for (const message of messages) message.kind === "audio" ? appendAudioMessage(message) : appendMessage(message.role, message.content, message.created_at);
   } catch (reason) { setText("chat-error", reason); }
 }
 async function clearConversation() {
