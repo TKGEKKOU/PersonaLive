@@ -626,16 +626,46 @@ input:focus, textarea:focus, select:focus { border-color: var(--primary); box-sh
 
 @media (max-width: 720px) {
   .system-status-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #skill-list { grid-template-columns: 1fr; }
 }
 
 /* 接入页与插件页 */
 .integrations-panel .settings-grid { max-width: 720px; }
 .plugin-list { display: grid; gap: 12px; }
-.plugin-card { border: 1px solid var(--line-dark); border-radius: 4px; padding: 14px 16px; background: var(--surface); }
+#skill-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.plugin-card { border: 1px solid var(--line-dark); border-radius: 4px; padding: 12px 14px; background: var(--surface); }
 .plugin-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .plugin-card-head > div { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
 .plugin-card-head strong { font-size: 15px; }
 .plugin-card-head span { color: var(--muted); font-size: 12px; }
+.toggle-switch {
+  width: 46px;
+  height: 26px;
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--line-dark);
+  border-radius: 13px;
+  background: var(--surface-strong);
+  position: relative;
+  cursor: pointer;
+  transition: background-color var(--motion), border-color var(--motion);
+}
+.toggle-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform var(--motion);
+}
+.toggle-switch.is-on { background: var(--success); border-color: var(--success); }
+.toggle-switch.is-on::after { transform: translateX(20px); }
+.toggle-switch:hover { border-color: var(--primary-dark); }
+.toggle-switch:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 .plugin-description { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
 .plugin-config { margin-top: 10px; }
 .plugin-config summary { cursor: pointer; font-size: 13px; color: var(--primary-dark); }
