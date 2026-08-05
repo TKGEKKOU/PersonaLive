@@ -194,15 +194,14 @@ function renderSystemStatusDetail(status) {
     ? [`${base(tts.model_dir || tts.runtime)}`, `GPU ${tts.use_gpu ? "加速" : "关闭"} · 首次合成时运行`]
     : [tts.installing ? "安装中" : (tts.error || "未安装")]);
   setDetail("sqlite", status.sqlite === "ok"
-    ? ["本地数据库已连接"]
+    ? ["本地 SQLite 数据库已连接"]
     : [status.sqlite === "unavailable" ? "连接失败" : "未初始化"]);
   setDetail("milvus", [
     status.milvus === "ok"
-      ? "知识库已就绪"
+      ? "本地向量数据库已连接"
       : status.milvus === "collection_missing"
         ? "缺少集合，请重建"
         : status.milvus === "unavailable" ? "服务不可用" : "检查中",
-    status.collection ? `集合 ${status.collection}` : "",
   ]);
 
   const app = status.app || {};
