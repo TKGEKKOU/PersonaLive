@@ -16,6 +16,14 @@ if (-not (Test-Path $ttsRuntime)) {
   --contents-directory "." `
   --name YUMENO `
   --collect-all webview `
+  --exclude-module speech_recognition `
+  --exclude-module tensorboard `
+  --exclude-module pytest `
+  --exclude-module matplotlib `
+  --exclude-module azure-ai-contentunderstanding `
+  --exclude-module azure-ai-documentintelligence `
+  --exclude-module azure-identity `
+  --exclude-module youtube-transcript-api `
   --add-data "static;static" `
   --add-data "resources;resources" `
   --add-data "runtime\tts;runtime\tts" `
