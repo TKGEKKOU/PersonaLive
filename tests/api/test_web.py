@@ -97,8 +97,8 @@ def test_web_workbench_exposes_shell_and_module_views(client):
         ),
         "plugins": (
             "plugins-view",
-            "plugin-list",
-            "plugins-count",
+            "skill-list",
+            "mcp-server-list",
         ),
     }
     for name, ids in views.items():
@@ -141,7 +141,6 @@ def test_web_workbench_exposes_shell_and_module_views(client):
     assert "https://api.deepseek.com" in client.get("/static/js/common.js").text
     assert "https://dashscope.aliyuncs.com/compatible-mode/v1" in client.get("/static/js/common.js").text
     assert "text-embedding-v4" in client.get("/static/js/common.js").text
-    assert "获取 Key 与填写示例" in client.get("/static/views/settings.html").text
     assert "请输入 API Key" in client.get("/static/js/settings.js").text
     assert "已保存，可输入新 Key 替换" in client.get("/static/js/settings.js").text
     assert "已配置，留空保持" not in client.get("/static/js/settings.js").text

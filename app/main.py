@@ -24,7 +24,6 @@ from app.routers.mcp import router as mcp_router
 from app.routers.persona_drafts import router as persona_drafts_router
 from app.routers.messages import router as messages_router
 from app.routers.personas import router as personas_router
-from app.routers.plugins import router as plugins_router
 from app.routers.rag import router as rag_router
 from app.routers.realtime import router as realtime_router
 from app.routers.settings import router as settings_router
@@ -35,7 +34,6 @@ from app.routers.voice import router as voice_router
 from app.routers.voice_stream import router as voice_stream_router
 from settings import Settings
 from extensions.events import EVENT_MESSAGE, EventBus
-from extensions.manager import PluginManager
 from ingestion.status import get_system_status
 from ingestion.local_embedding.resources import LocalEmbeddingResourceManager
 from ingestion.embeddings import warm_managed_embedding
@@ -124,7 +122,6 @@ def create_app(initialize_database: bool = True) -> FastAPI:
         tts_warmup = getattr(app.state, "tts_warmup_task", None)
         if tts_warmup is not None:
             tts_warmup.cancel()
-        app.state.plugin_manager.unload_all()
         app.state.tts_worker.stop_service()
         resource = getattr(app.state, "checkpoint_resource", None)
         if resource is not None:
@@ -182,15 +179,6 @@ def create_app(initialize_database: bool = True) -> FastAPI:
         settings.project_root / "data" / "integrations.json",
     )
     app.state.event_bus.subscribe(EVENT_MESSAGE, app.state.im_router.handle)
-    # 插件管理器注入 agent_runner，使插件能安全地触发同一套 Agent 流程；
-    # 插件自身只感知 EventBus 与受限 runner，不直接持有数据库或图对象。
-    app.state.plugin_manager = PluginManager(
-        settings.project_root / "plugins",
-        settings.project_root / "data",
-        app.state.event_bus,
-        agent_runner=build_agent_runner(app.state.session_factory, app.state.agent_service),
-    )
-    app.state.plugin_manager.load_all()
     app.include_router(agents_router)
     app.include_router(asr_router)
     app.include_router(onebot_ws_router)
@@ -203,7 +191,6 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     app.include_router(embedding_router)
     app.include_router(eval_router)
     app.include_router(persona_drafts_router)
-    app.include_router(plugins_router)
     app.include_router(skills_router)
     app.include_router(rag_router)
     app.include_router(realtime_router)

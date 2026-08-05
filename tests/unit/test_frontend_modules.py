@@ -19,9 +19,10 @@ def test_integrations_module_registers_and_uses_api():
 def test_plugins_module_registers_and_uses_api():
     script = read_script("plugins")
     assert "window.PL.modules.plugins" in script
-    assert 'fetch("/api/plugins")' in script
-    assert "setPluginEnabled" in script
-    assert "renderPluginList" in script
+    assert 'fetch("/api/skills")' in script
+    assert 'fetch("/api/mcp/servers")' in script
+    assert "renderSkillList" in script
+    assert "renderMCPServers" in script
 
 
 def test_shell_registers_new_module_entries():
