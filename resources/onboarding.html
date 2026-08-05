@@ -167,35 +167,6 @@
     dialog.exit-confirm::backdrop { background: rgba(0, 0, 0, .42); }
     dialog.exit-confirm h2 { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: .01em; }
     dialog.exit-confirm .dialog-sub { margin: 6px 0 0; color: #6f6f76; font-size: 12px; line-height: 1.5; }
-    .exit-options { margin: 16px 0 20px; display: grid; gap: 8px; }
-    .exit-option {
-      position: relative;
-      display: grid;
-      grid-template-columns: 16px 20px minmax(0, 1fr);
-      align-items: center;
-      gap: 10px;
-      padding: 12px 14px;
-      border: 1px solid #e0e0e3;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: border-color var(--motion), background-color var(--motion);
-    }
-    .exit-option:hover { border-color: #b8b8bd; background: #f7f7f7; }
-    .exit-option:has(input:checked) { border-color: #1a1a1a; background: #f3f3f3; }
-    .exit-option input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-    .exit-radio { width: 15px; height: 15px; border: 1.5px solid #b8b8bd; border-radius: 50%; transition: border-color var(--motion), background var(--motion); }
-    .exit-option:has(input:checked) .exit-radio { border-color: #1a1a1a; background: radial-gradient(circle, #1a1a1a 0 4px, transparent 5px); }
-    .exit-option svg { width: 18px; height: 18px; color: #9c9ca2; transition: color var(--motion); }
-    .exit-option:has(input:checked) svg { color: #1a1a1a; }
-    .exit-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-    .exit-copy b { font-size: 13px; font-weight: 600; color: #1a1a1a; }
-    .exit-copy em { font-style: normal; font-size: 12px; color: #6f6f76; line-height: 1.45; }
-    .exit-option:has(input[value="pause"]) .exit-copy { padding-right: 52px; }
-    .exit-recommend {
-      position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
-      padding: 3px 9px; border: 1px solid #1a1a1a; border-radius: 999px;
-      color: #1a1a1a; font-size: 11px; font-weight: 600; line-height: 1;
-    }
     .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 16px; border-top: 1px solid #efeff1; }
     .dialog-btn {
       min-height: 38px; padding: 0 18px;
@@ -244,16 +215,11 @@
 
   <dialog id="exit-confirm-dialog" class="exit-confirm">
     <form method="dialog">
-      <h2>退出 YUMENO？</h2>
-      <p class="dialog-sub">选择退出后如何处理服务</p>
-      <div class="exit-options">
-        <label class="exit-option"><input type="radio" name="exit-policy" value="pause" checked><span class="exit-radio" aria-hidden="true"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/></svg><span class="exit-copy"><b>停止服务</b><em>暂停 Docker，下次启动自动恢复</em></span><em class="exit-recommend">推荐</em></label>
-        <label class="exit-option"><input type="radio" name="exit-policy" value="keep"><span class="exit-radio" aria-hidden="true"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg><span class="exit-copy"><b>保持服务</b><em>Docker 保持运行，下次启动最快</em></span></label>
-        <label class="exit-option"><input type="radio" name="exit-policy" value="remove"><span class="exit-radio" aria-hidden="true"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg><span class="exit-copy"><b>删除服务</b><em>删除 Docker 容器，数据保留</em></span></label>
-      </div>
+      <h2>中止启动？</h2>
+      <p class="dialog-sub">当前启动将被中止，服务不会继续启动。</p>
       <div class="dialog-actions">
         <button id="exit-cancel" class="dialog-btn" type="button">取消</button>
-        <button id="exit-confirm" class="dialog-btn dialog-btn-danger" type="button">安全退出</button>
+        <button id="exit-confirm" class="dialog-btn dialog-btn-danger" type="button">中止启动</button>
       </div>
     </form>
   </dialog>
@@ -554,26 +520,14 @@
       }
     }
 
-    function renderExitPolicy(policy) {
-      const radio = document.querySelector('input[name="exit-policy"][value="' + (policy || "pause") + '"]');
-      if (radio) radio.checked = true;
-    }
     window.showExitConfirm = function showExitConfirm() {
-      const api = window.pywebview && window.pywebview.api;
-      if (api && api.get_exit_policy) {
-        api.get_exit_policy().then((settings) => renderExitPolicy(settings.on_exit)).catch(() => {});
-      }
       $("exit-confirm-dialog").showModal();
     };
     $("exit-cancel").addEventListener("click", () => $("exit-confirm-dialog").close());
     $("exit-confirm").addEventListener("click", async () => {
       const btn = $("exit-confirm");
       btn.disabled = true;
-      const selected = (document.querySelector('input[name="exit-policy"]:checked') || {}).value || "pause";
       const api = window.pywebview && window.pywebview.api;
-      if (api && api.set_exit_policy) {
-        try { await api.set_exit_policy(selected); } catch (e) {}
-      }
       if (api && api.do_exit) api.do_exit();
       else $("exit-confirm-dialog").close();
     });
