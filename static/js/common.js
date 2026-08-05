@@ -114,9 +114,13 @@ async function loadStatus() {
     renderServiceStatus("milvus", "Milvus", status.milvus);
     renderSystemStatusDetail(status);
     const milvusLink = $("settings-open-milvus");
+    const sqliteLink = $("settings-open-sqlite");
     const attuPort = status.ports?.attu;
     if (milvusLink && attuPort) {
       milvusLink.href = `http://127.0.0.1:${attuPort}`;
+    }
+    if (sqliteLink && status.port) {
+      sqliteLink.href = `http://127.0.0.1:${status.port}/sqlite/`;
     }
   } catch {
     renderServiceStatus("sqlite", "SQLite", "unavailable");

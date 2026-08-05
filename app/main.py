@@ -238,4 +238,18 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     app.mount("/live2d-assets", StaticFiles(directory=live2d_dir), name="live2d-assets")
     app.mount("/static", NoCacheStaticFiles(directory=STATIC_DIR), name="static")
 
+    # SQLite 网页管理（datasette，只读）：/sqlite/ 浏览表与执行查询，失败不影响应用启动
+    try:
+        from datasette.app import Datasette
+
+        settings.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+        settings.sqlite_path.touch(exist_ok=True)
+        datasette_app = Datasette(
+            files=[str(settings.sqlite_path)],
+            settings={"base_url": "/sqlite/", "default_page_size": 50},
+        ).app()
+        app.mount("/sqlite", datasette_app, name="sqlite")
+    except Exception:
+        pass
+
     return app
