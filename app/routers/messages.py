@@ -10,7 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_session
-from app.models import ConversationMessage
+from app.conversation_summary import schedule_summary_after_turn
+from app.models import ConversationMessage, ConversationSummary
 from app.routers.agents import context_for, response_for
 from app.routers.personas import local_persona_or_404
 from app.routers.settings import require_local
@@ -136,6 +137,15 @@ def clear_conversation(
     messages = list(session.scalars(statement))
     thread_id = f"{persona_id}:{conversation_id}"
     request.app.state.agent_service.checkpointer.delete_thread(thread_id)
+    summary = session.scalars(
+        select(ConversationSummary).where(
+            ConversationSummary.workspace_id == LOCAL_WORKSPACE_ID,
+            ConversationSummary.persona_id == persona_id,
+            ConversationSummary.conversation_id == conversation_id,
+        )
+    ).first()
+    if summary is not None:
+        session.delete(summary)
     directory = AUDIO_ROOT / hashlib.sha256(conversation_id.encode("utf-8")).hexdigest()[:32]
     if directory.exists():
         shutil.rmtree(directory)
@@ -233,4 +243,10 @@ async def transcribe_message(
     session.add(assistant)
     session.commit()
     session.refresh(message)
+    schedule_summary_after_turn(
+        request.app.state.session_factory,
+        workspace_id=message.workspace_id,
+        persona_id=message.persona_id,
+        conversation_id=message.conversation_id,
+    )
     return {"message": message_response(message), "turn": response_for(result)}

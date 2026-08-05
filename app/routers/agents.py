@@ -5,6 +5,7 @@ from starlette.requests import HTTPConnection
 from app.chat_store import try_persist_text_message
 from agents.context import PersonaAgentContext
 from app.conversation_summary import get_conversation_summary
+from app.conversation_summary import schedule_summary_after_turn
 from app.database import get_session
 from app.models import Persona
 from app.schemas import AgentQueryPayload, AgentResumePayload, AgentTurnResponse
@@ -84,6 +85,12 @@ def query_agent(
             role="assistant",
             content=result.answer,
         )
+        schedule_summary_after_turn(
+            request.app.state.session_factory,
+            workspace_id=context.workspace_id,
+            persona_id=persona_id,
+            conversation_id=payload.conversation_id,
+        )
     return response_for(result)
 
 
@@ -108,6 +115,12 @@ def resume_agent(
             conversation_id=payload.conversation_id,
             role="assistant",
             content=result.answer,
+        )
+        schedule_summary_after_turn(
+            request.app.state.session_factory,
+            workspace_id=context.workspace_id,
+            persona_id=persona_id,
+            conversation_id=payload.conversation_id,
         )
     return response_for(result)
 
