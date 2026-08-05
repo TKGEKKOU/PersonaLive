@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.database import get_session
 from app.models import DocumentJob, Persona
 from app.schemas import DocumentJobResponse, PersonaCreate, PersonaResponse, PersonaUpdate
+from integrations.mcp.config import GLOBAL_ALL
 from persona.service import LOCAL_WORKSPACE_ID, PersonaNotFound, create_persona
 from settings import Settings
 
@@ -55,7 +56,11 @@ def get_mcp_grants(persona_id: str, request: Request) -> dict:
                 "name": server.name,
                 "description": server.description,
                 "enabled": server.enabled,
-                "authorized": persona_id in server.allowed_persona_ids,
+                "global": GLOBAL_ALL in server.allowed_persona_ids,
+                "authorized": (
+                    GLOBAL_ALL in server.allowed_persona_ids
+                    or persona_id in server.allowed_persona_ids
+                ),
             }
             for server in manager.list_configs()
         ],
@@ -70,6 +75,9 @@ def put_mcp_grants(persona_id: str, request: Request, payload: dict) -> dict:
     wanted = set(str(name) for name in payload.get("server_names") or [])
     servers = manager.list_configs()
     for server in servers:
+        # 平台级全局服务器不参与按角色授权，保持对所有角色可见
+        if GLOBAL_ALL in server.allowed_persona_ids:
+            continue
         ids = set(server.allowed_persona_ids)
         if server.name in wanted:
             ids.add(persona_id)

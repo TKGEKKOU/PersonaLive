@@ -464,8 +464,15 @@ async function loadEditMCPGrants() {
     checkbox.type = "checkbox";
     checkbox.value = server.name;
     checkbox.checked = Boolean(server.authorized);
+    if (server.global) {
+      checkbox.disabled = true;
+      label.classList.add("is-muted");
+    }
     const span = document.createElement("span");
-    span.textContent = `${server.name}${server.enabled ? "" : "（已停用）"}`;
+    span.textContent =
+      `${server.name}` +
+      (server.global ? "（全局）" : "") +
+      (server.enabled ? "" : "（已停用）");
     label.append(checkbox, span);
     list.append(label);
   }
@@ -476,7 +483,7 @@ async function saveEditMCPGrants() {
   const message = $("edit-mcp-grants-message");
   if (!personaId) return;
   const serverNames = Array.from(
-    $("edit-mcp-grant-list").querySelectorAll("input:checked")
+    $("edit-mcp-grant-list").querySelectorAll("input:checked:not(:disabled)")
   ).map((input) => input.value);
   try {
     await api(fetch(`/api/personas/${encodeURIComponent(personaId)}/mcp-grants`, {

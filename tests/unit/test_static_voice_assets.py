@@ -186,17 +186,17 @@ def test_streaming_voice_is_synthesized_once_after_final_text():
     assert "flushStreamVoice(true" in source
 
 
-def test_chat_process_is_inside_container_and_loading_state_exists():
+def test_chat_process_panel_removed_and_loading_state_exists():
     html = read_view("chat")
     script = read_script("chat")
     styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
-    assert 'id="chat-process-panel"' in html
-    assert 'id="chat-process-toggle"' in html
+    # 旧的 process 面板已移除，loading 状态改为气泡内呈现
+    assert 'id="chat-process-panel"' not in html
+    assert 'id="chat-process-toggle"' not in html
+    assert "renderChatProcess" not in script
     assert "showReplyLoading" in script
-    assert "renderChatProcess" in script
+    assert "resetChatProcess" in script
     assert "appendResultDetails(node, result)" in script
     assert "loading-bubble" in styles
     assert "background: transparent" in styles
     assert ".chat-panel" in styles and "border: 0" in styles
-    assert "right: clamp(16px,4vw,48px)" in styles
-    assert "nodeLabels" in script

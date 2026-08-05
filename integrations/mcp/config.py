@@ -16,6 +16,7 @@ from pathlib import Path
 
 NAME_PATTERN = re.compile(r"[a-z0-9_-]+")
 SUPPORTED_TRANSPORTS = ("stdio", "streamable_http", "sse")
+GLOBAL_ALL = "*"
 
 
 @dataclass
@@ -147,15 +148,30 @@ def default_servers() -> list[MCPServerConfig]:
             },
             enabled=True,
             description="免 API key 联网搜索（本地优先）",
+            # 平台级基础能力：全局可用（所有现有与新建角色均可见）
+            allowed_persona_ids=[GLOBAL_ALL],
         )
     ]
 
 
 def ensure_default_servers(path: Path) -> None:
-    """配置文件不存在时写入默认服务器列表；已有配置保持不变。"""
+    """保证内置默认服务器以最新预置形态存在。
 
-    if not Path(path).is_file():
-        save_servers(path, default_servers())
+    - 配置文件不存在：写入默认服务器列表（free-search 全局可用）。
+    - 文件已存在但 free-search 缺失：保持不变，尊重用户显式关闭/移除。
+    - free-search 存在但未标记全局：迁移为全局（含旧版按角色授权的数据）。
+    """
+
+    target = Path(path)
+    if not target.is_file():
+        save_servers(target, default_servers())
+        return
+    servers = load_servers(target)
+    free_search = next((s for s in servers if s.name == "free-search"), None)
+    if free_search is None or GLOBAL_ALL in free_search.allowed_persona_ids:
+        return
+    free_search.allowed_persona_ids = [GLOBAL_ALL]
+    save_servers(target, servers)
 
 
 def save_servers(path: Path, servers: list[MCPServerConfig]) -> None:

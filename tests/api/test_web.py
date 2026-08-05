@@ -19,7 +19,6 @@ def test_web_workbench_exposes_shell_and_module_views(client):
         "nav-integrations",
         "nav-plugins",
         "theme-toggle",
-        "exit-confirm-dialog",
         "view-root",
         "preview-drawer",
         "settings-confirm-dialog",
@@ -27,6 +26,10 @@ def test_web_workbench_exposes_shell_and_module_views(client):
         "save-all-dialog",
     ):
         assert f'id="{element_id}"' in response.text
+
+    # 退出确认弹窗由 common.js 动态创建，不再内联在 index.html
+    common_js = client.get("/static/js/common.js").text
+    assert 'dialog.id = "exit-confirm-dialog"' in common_js
 
     views = {
         "create": (
