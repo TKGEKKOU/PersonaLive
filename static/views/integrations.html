@@ -3,7 +3,7 @@
     <div class="panel-heading"><div><h2>接入</h2><p class="panel-subtitle">把角色接到 QQ：官方机器人直连官方网关，或通过 OneBot 11（NapCat）转发。</p></div></div>
 
     <details class="fold-card" open>
-      <summary><div><strong>QQ 官方机器人</strong><p class="panel-subtitle">使用开放平台 AppID/AppSecret 直连官方 WebSocket 网关，支持群聊与单聊。</p></div><span id="qq-official-status-pill" class="status-pill">未启用</span></summary>
+      <summary><div><strong>QQ 官方机器人</strong><p class="panel-subtitle">官方 WebSocket 直连，支持群聊与单聊；需开放平台主体认证与 IP 白名单。</p></div><span id="qq-official-status-pill" class="status-pill">未启用</span></summary>
       <form id="qq-official-form" class="settings-form">
         <div class="settings-grid settings-grid-form">
           <label class="toggle-field settings-feature-toggle"><input id="qq-official-enabled" type="checkbox"><span>启用 QQ 官方机器人</span></label>
@@ -15,6 +15,18 @@
           <label class="field"><span>默认角色</span><select id="qq-official-default-persona"><option value="">未设置</option></select></label>
         </div>
         <div class="asr-resource-bar"><div><strong id="qq-official-state">未启用</strong><p id="qq-official-status" class="inline-status"></p></div><div class="asr-actions"><button id="save-qq-official" class="button button-primary" type="submit">保存配置</button></div></div>
+        <div id="qq-official-notice" class="integrations-notice" hidden>
+          <i data-lucide="shield-alert"></i>
+          <div>
+            <strong id="qq-official-notice-title">官方通道当前未连接</strong>
+            <p>开放平台要求机器人完成以下配置后，官方网关才会接受连接。请先在开放平台完成配置，再回到这里保存重试：</p>
+            <ol>
+              <li>完成机器人主体认证（未认证机器人无法接收群聊与主动消息）</li>
+              <li>在开发设置中将本机公网 IP 加入白名单</li>
+              <li>在沙箱 / 环境配置中添加允许对话的 QQ 号或测试群</li>
+            </ol>
+          </div>
+        </div>
         <p id="qq-official-save-status" class="inline-status"></p>
       </form>
     </details>

@@ -54,22 +54,38 @@ function renderIntegrationStatus(cfg) {
 
 function renderQqOfficialStatus(cfg) {
   const pill = $("qq-official-status-pill");
-  if (!cfg.enabled || !cfg.secret_configured) {
-    pill.textContent = cfg.enabled ? "缺少凭据" : "未启用";
-    pill.className = "status-pill" + (cfg.enabled ? " status-pill-warn" : "");
+  const notice = $("qq-official-notice");
+  const enabled = Boolean(cfg.enabled);
+  const configured = Boolean(cfg.appid) && Boolean(cfg.secret_configured);
+  if (!enabled) {
+    pill.textContent = "未启用";
+    pill.className = "status-pill";
     setText("qq-official-state", "未启用");
-    setText("qq-official-status", cfg.enabled ? "请填写 AppID 与 AppSecret。" : "填写 AppID/AppSecret 并启用后自动连接官方网关。");
+    setText("qq-official-status", "填写 AppID/AppSecret 并启用后，通过官方 WebSocket 网关直连 QQ。");
+    notice.hidden = true;
   } else if (cfg.connected) {
     pill.textContent = "已连接";
     pill.className = "status-pill status-pill-ok";
     setText("qq-official-state", "已连接");
     const env = cfg.sandbox ? "沙箱环境" : "正式环境";
     setText("qq-official-status", `已连上${env}，机器人 OpenID：${cfg.bot_openid || "未知"}。`);
-  } else {
-    pill.textContent = "未连接";
+    notice.hidden = true;
+  } else if (!configured) {
+    pill.textContent = "待配置";
     pill.className = "status-pill status-pill-warn";
-    setText("qq-official-state", "连接中");
+    setText("qq-official-state", "缺少凭据");
+    setText("qq-official-status", "请填写开放平台的 AppID 与 AppSecret。");
+    notice.hidden = false;
+  } else {
+    pill.textContent = cfg.error ? "未连接" : "连接中";
+    pill.className = "status-pill status-pill-warn";
+    setText("qq-official-state", cfg.error ? "未连接" : "连接中");
     setText("qq-official-status", cfg.error || "正在连接官方网关，请稍候……");
+    notice.hidden = false;
+  }
+  if (!notice.hidden) {
+    const state = $("qq-official-state").textContent;
+    setText("qq-official-notice-title", state === "连接中" ? "正在连接官方网关" : "官方通道当前未连接");
   }
 }
 
