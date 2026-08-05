@@ -117,6 +117,32 @@ def load_servers(path: Path) -> list[MCPServerConfig]:
     return servers
 
 
+def default_servers() -> list[MCPServerConfig]:
+    """首次启动默认预置：内置免 key 联网搜索（free-search）。"""
+
+    return [
+        MCPServerConfig(
+            name="free-search",
+            transport="stdio",
+            command="uvx",
+            args=["free-search-mcp"],
+            env={
+                "UV_DEFAULT_INDEX": "https://mirrors.aliyun.com/pypi/simple/",
+                "SEARCH_MCP_DOWNLOAD_ENABLED": "false",
+            },
+            enabled=True,
+            description="免 API key 联网搜索（本地优先）",
+        )
+    ]
+
+
+def ensure_default_servers(path: Path) -> None:
+    """配置文件不存在时写入默认服务器列表；已有配置保持不变。"""
+
+    if not Path(path).is_file():
+        save_servers(path, default_servers())
+
+
 def save_servers(path: Path, servers: list[MCPServerConfig]) -> None:
     """原子写入 MCP 服务器配置（临时文件 + os.replace）。"""
 

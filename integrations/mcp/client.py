@@ -19,7 +19,12 @@ from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from agents.registry import ToolSpec, register_tool_specs, tool_specs
-from integrations.mcp.config import MCPServerConfig, load_servers, save_servers
+from integrations.mcp.config import (
+    MCPServerConfig,
+    ensure_default_servers,
+    load_servers,
+    save_servers,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -118,6 +123,7 @@ class MCPManager:
         self.config_path = Path(config_path)
         self._client_factory = client_factory or MultiServerMCPClient
         self._allow_arbitrary = allow_arbitrary_stdio
+        ensure_default_servers(self.config_path)
         self._status: dict[str, dict] = {}
         self._registered: list[MCPToolInfo] = []
 

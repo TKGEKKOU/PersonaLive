@@ -74,6 +74,7 @@ const EMBEDDING_PRESETS = {
 
 const WEB_SEARCH_GUIDES = {
   off: { text: "选择服务并填写 API Key 后，联网搜索才会启用。" },
+  free: { text: "使用内置 free-search 联网搜索，无需 API key；应用已默认预装该能力。" },
   tavily: { text: "只需填写 Tavily API Key。适合通用英文与多语种网页搜索。", label: "官方入口", href: "https://app.tavily.com/", link: "Tavily" },
   bocha: { text: "只需填写博查 API Key。接口会返回适合 RAG 使用的网页摘要。", label: "官方入口", href: "https://open.bocha.cn/", link: "博查 AI" },
   custom: { text: "填写完整的 Web Search 接口地址和 API Key。接口需兼容博查/Bing 结果格式：POST 请求、Bearer 鉴权，并返回 data.webPages.value。" },

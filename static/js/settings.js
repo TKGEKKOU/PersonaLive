@@ -26,7 +26,6 @@ function initSettings() {
   prepareSettingsSections();
   loadStatus();
   loadSettings();
-  loadKeylessSearchStatus();
   loadEmbeddingStatus();
   loadAsrStatus();
   loadTtsStatus();
@@ -49,7 +48,6 @@ function bindSettingsEvents() {
   bindIf("web-search-enabled", "change", renderWebSearchSettings);
   bindIf("web-search-provider", "change", renderWebSearchSettings);
   ["web-search-api-key", "web-search-base-url"].forEach((id) => bindIf(id, "input", renderWebSearchSettings));
-  bindIf("keyless-search-enabled", "change", toggleKeylessSearch);
   bindIf("save-asr", "click", saveAsrConfig);
   bindIf("install-asr", "click", installAsr);
   bindIf("cancel-asr", "click", cancelAsr);
@@ -198,8 +196,8 @@ async function loadSettings() {
     $("embedding-send-dimensions").checked = config.embedding_send_dimensions;
     $("chunk-size").value = config.chunk_size;
     $("chunk-overlap").value = config.chunk_overlap;
-    $("web-search-enabled").checked = config.enable_web_fallback;
-    $("web-search-provider").value = config.web_search_provider === "off" ? "bocha" : config.web_search_provider;
+    $("web-search-enabled").checked = config.web_search_provider !== "off";
+    $("web-search-provider").value = config.web_search_provider === "off" ? "free" : config.web_search_provider;
     state.savedEmbeddingDimensions = config.embedding_dimensions;
     syncManagedEmbeddingPreset(); renderEmbeddingSettings(); renderEmbeddingInstallAction(); renderEmbeddingWarning(); renderWebSearchSettings();
   } catch (reason) { setText("settings-status", reason, true); }
@@ -527,8 +525,11 @@ function renderWebSearchSettings() {
   const enabled = $("web-search-enabled").checked;
   const provider = $("web-search-provider").value;
   const isCustom = provider === "custom";
+  const isFree = provider === "free";
   $("web-search-provider").disabled = !enabled;
-  $("web-search-api-key").disabled = !enabled;
+  $("web-search-api-key").disabled = !enabled || isFree;
+  const keyField = $("web-search-api-key").closest(".field");
+  if (keyField) keyField.classList.toggle("is-hidden", isFree);
   $("web-search-base-url-field").classList.toggle("is-hidden", !isCustom);
   $("web-search-base-url").disabled = !enabled || !isCustom;
   const guide = WEB_SEARCH_GUIDES[provider] || WEB_SEARCH_GUIDES.off;
@@ -538,7 +539,7 @@ function renderWebSearchSettings() {
     const link = document.createElement("a"); link.href = guide.href; link.target = "_blank"; link.rel = "noopener"; link.textContent = guide.link;
     const source = document.createElement("p"); source.textContent = `${guide.label}：`; source.append(link); $("web-search-guide").append(source);
   }
-  const missingKey = enabled && !state.webSearchKeyConfigured && !$("web-search-api-key").value.trim();
+  const missingKey = enabled && !isFree && !state.webSearchKeyConfigured && !$("web-search-api-key").value.trim();
   const invalidUrl = enabled && isCustom && !isHttpUrl($("web-search-base-url").value);
   const warning = $("web-search-warning");
   warning.textContent = missingKey ? "启用联网搜索后需要填写 API Key。" : invalidUrl ? "自定义搜索需要填写完整的 HTTP(S) 接口地址。" : "";
@@ -590,7 +591,7 @@ async function saveSettings() {
   const value = (id) => $(id).value.trim();
   try {
     const webEnabled = $("web-search-enabled").checked;
-    await api(fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ openai_api_key: value("openai-api-key"), openai_base_url: value("openai-base-url"), openai_model: value("openai-model"), embedding_api_key: value("embedding-api-key"), embedding_provider: $("embedding-provider").value, embedding_model_source: $("embedding-model-source").value, embedding_device: $("embedding-device").value, embedding_base_url: value("embedding-base-url"), embedding_model: value("embedding-model"), embedding_dimensions: Number(value("embedding-dimensions")), embedding_send_dimensions: $("embedding-send-dimensions").checked, chunk_size: Number(value("chunk-size")), chunk_overlap: Number(value("chunk-overlap")), web_search_provider: webEnabled ? $("web-search-provider").value : "off", web_search_api_key: value("web-search-api-key"), web_search_base_url: value("web-search-base-url"), enable_web_fallback: webEnabled }) }));
+    await api(fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ openai_api_key: value("openai-api-key"), openai_base_url: value("openai-base-url"), openai_model: value("openai-model"), embedding_api_key: value("embedding-api-key"), embedding_provider: $("embedding-provider").value, embedding_model_source: $("embedding-model-source").value, embedding_device: $("embedding-device").value, embedding_base_url: value("embedding-base-url"), embedding_model: value("embedding-model"), embedding_dimensions: Number(value("embedding-dimensions")), embedding_send_dimensions: $("embedding-send-dimensions").checked, chunk_size: Number(value("chunk-size")), chunk_overlap: Number(value("chunk-overlap")), web_search_provider: webEnabled ? $("web-search-provider").value : "off", web_search_api_key: value("web-search-api-key"), web_search_base_url: value("web-search-base-url"), enable_web_fallback: webEnabled && $("web-search-provider").value !== "free" }) }));
     resetApiKeyInputs();
     setText("settings-status", "已保存，可立即使用"); await loadSettings();
   } catch (reason) { setText("settings-status", reason, true); }
@@ -606,54 +607,4 @@ async function resetSettings() {
   finally { $("reset-settings").disabled = false; }
 }
 
-function keylessStatusText(data) {
-  if (!data.enabled) {
-    return data.uvx_available ? "未启用" : "未启用（未检测到 uvx，请先安装 uv）";
-  }
-  if (data.status === "connected") return `已连接 ${data.tool_count} 个工具`;
-  if (data.status === "error") return `启用失败：${data.error || "未知原因"}`;
-  if (data.status === "disabled") return "已停用";
-  return "连接中…";
-}
 
-async function loadKeylessSearchStatus() {
-  const checkbox = $("keyless-search-enabled");
-  const status = $("keyless-search-status");
-  if (!checkbox || !status) return;
-  try {
-    const data = await api(fetch("/api/system/web-search-keyless"));
-    checkbox.checked = Boolean(data.enabled);
-    checkbox.disabled = false;
-    status.textContent = keylessStatusText(data);
-    status.classList.toggle("is-error", Boolean(data.error));
-  } catch (reason) {
-    checkbox.disabled = true;
-    status.textContent = friendlyError(reason);
-    status.classList.add("is-error");
-  }
-}
-
-async function toggleKeylessSearch() {
-  const checkbox = $("keyless-search-enabled");
-  const status = $("keyless-search-status");
-  if (!checkbox || !status) return;
-  const enabled = checkbox.checked;
-  checkbox.disabled = true;
-  status.textContent = enabled ? "启用中…" : "停用中…";
-  status.classList.remove("is-error");
-  try {
-    const data = await api(fetch("/api/system/web-search-keyless", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled }),
-    }));
-    checkbox.checked = Boolean(data.enabled);
-    status.textContent = keylessStatusText(data);
-    status.classList.toggle("is-error", Boolean(data.error));
-  } catch (reason) {
-    checkbox.checked = !enabled;
-    status.textContent = friendlyError(reason);
-    status.classList.add("is-error");
-  }
-  checkbox.disabled = false;
-}
