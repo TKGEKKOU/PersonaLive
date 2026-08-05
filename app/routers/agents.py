@@ -4,6 +4,7 @@ from starlette.requests import HTTPConnection
 
 from app.chat_store import try_persist_text_message
 from agents.context import PersonaAgentContext
+from app.conversation_summary import get_conversation_summary
 from app.database import get_session
 from app.models import Persona
 from app.schemas import AgentQueryPayload, AgentResumePayload, AgentTurnResponse
@@ -35,6 +36,9 @@ def context_for(
         persona_type=persona.persona_type,
         persona_profile=persona.profile_json,
         session_factory=connection.app.state.session_factory,
+        conversation_summary=get_conversation_summary(
+            session, scope.workspace_id, persona.id, conversation_id
+        ),
     )
 
 

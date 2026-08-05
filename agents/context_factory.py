@@ -1,6 +1,7 @@
 from collections.abc import Callable
 
 from agents.context import PersonaAgentContext
+from app.conversation_summary import get_conversation_summary
 from app.models import Persona
 from persona.service import PersonaNotFound, resolve_knowledge_scope
 
@@ -24,6 +25,9 @@ def persona_agent_context(
             persona_type=persona.persona_type,
             persona_profile=persona.profile_json,
             session_factory=session_factory,
+            conversation_summary=get_conversation_summary(
+                session, scope.workspace_id, persona.id, conversation_id
+            ),
         )
 
 

@@ -22,6 +22,7 @@ class PersonaAgentContext:
     persona_type: str
     persona_profile: dict[str, Any] = field(default_factory=dict)
     session_factory: Callable[[], Session] | None = None
+    conversation_summary: str = ""
 
     def __post_init__(self) -> None:
         # 没有知识空间意味着该角色不可检索，属于配置错误而非合法状态。

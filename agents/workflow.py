@@ -96,6 +96,13 @@ def _supervisor_prompt(context: PersonaAgentContext) -> str:
     except Exception:
         # Memory loading must never block or break a turn (e.g. no DB session).
         memory_block = ""
+    summary_block = ""
+    if context.conversation_summary:
+        summary_block = (
+            "\nThe following is a compressed summary of this conversation's earlier turns; "
+            "treat it as background context and defer to recent conversation details:\n"
+            f"<conversation_summary>{context.conversation_summary}</conversation_summary>\n"
+        )
     tts_enabled = bool((context.persona_profile.get("tts") or {}).get("enabled"))
     reply_guidance = (
         "Keep ordinary chat replies around 30 Chinese characters, preferring fewer and never exceeding 50 "
@@ -116,7 +123,7 @@ def _supervisor_prompt(context: PersonaAgentContext) -> str:
         "durable user-memory requests to memory, and persona or document operations to management. "
         "When keyless web search tools (search/research) are available in your toolset, answer "
         "current-information questions directly with them instead of delegating to web. "
-        f"{memory_block}"
+        f"{memory_block}{summary_block}"
         "Answer the user's question directly before offering advice. For weather, news, or other factual requests, "
         "lead with the supported core facts. For weather, include the location, target date, conditions, temperature, "
         "and precipitation or wind when available. Do not replace available facts with generic advice. "
