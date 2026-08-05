@@ -11,10 +11,11 @@ function ensureExitDialog() {
   dialog.innerHTML = [
     '<form method="dialog">',
     '<h2 id="exit-confirm-title">退出 YUMENO？</h2>',
+    '<p class="exit-confirm-subtitle">选择退出后如何处理服务</p>',
     '<div class="exit-confirm-detail">',
-    '<label class="exit-option"><input type="radio" name="exit-policy" value="pause" checked><span><b>停止服务（推荐）</b><em>暂停 Docker，下次启动自动恢复</em></span></label>',
-    '<label class="exit-option"><input type="radio" name="exit-policy" value="keep"><span><b>保持服务</b><em>Docker 保持运行，下次启动最快</em></span></label>',
-    '<label class="exit-option"><input type="radio" name="exit-policy" value="remove"><span><b>删除服务</b><em>删除 Docker 容器，数据保留</em></span></label>',
+    '<label class="exit-option"><input type="radio" name="exit-policy" value="pause" checked><i data-lucide="power"></i><span><b>停止服务</b><em>暂停 Docker，下次启动自动恢复</em></span><em class="exit-recommend">推荐</em></label>',
+    '<label class="exit-option"><input type="radio" name="exit-policy" value="keep"><i data-lucide="server"></i><span><b>保持服务</b><em>Docker 保持运行，下次启动最快</em></span></label>',
+    '<label class="exit-option"><input type="radio" name="exit-policy" value="remove"><i data-lucide="trash-2"></i><span><b>删除服务</b><em>删除 Docker 容器，数据保留</em></span></label>',
     '</div>',
     '<div class="settings-confirm-actions">',
     '<button id="exit-confirm-cancel" class="button button-secondary" type="button">取消</button>',
@@ -23,6 +24,7 @@ function ensureExitDialog() {
     '</form>',
   ].join("");
   document.body.append(dialog);
+  icons();
   $("exit-confirm-cancel").addEventListener("click", () => dialog.close());
   $("exit-confirm-submit").addEventListener("click", async () => {
     const button = $("exit-confirm-submit");
