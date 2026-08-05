@@ -1,0 +1,16 @@
+<section id="test-view" class="view is-hidden">
+  <details id="eval-panel" class="eval-panel panel" aria-labelledby="eval-title">
+    <summary class="eval-panel-summary">
+      <div class="panel-heading eval-panel-heading"><div><h2 id="eval-title">RAG 评测</h2><p class="panel-subtitle">按档位自动生成评测问题（可检索 + 复杂 + 无关题）并运行，无需人工准备。</p></div><span class="eval-summary-meta"><span id="eval-state-pill" class="status-pill">未运行</span><i data-lucide="chevron-down" class="eval-chevron"></i></span></div>
+    </summary>
+    <div class="settings-grid one-column">
+      <label class="field"><span>评测角色</span><select id="eval-persona"><option value="">请选择角色</option></select></label>
+      <label class="field"><span>问题数量</span><select id="eval-tier"><option value="fast" selected>轻量 · 5 个问题（推荐）</option><option value="standard">标准 · 10 个问题</option><option value="thorough">全面 · 15 个问题</option></select></label>
+    </div>
+    <div class="asr-resource-bar"><div><strong id="eval-state">未运行</strong><p id="eval-status" class="inline-status"></p><progress id="eval-progress" class="is-hidden" max="100"></progress></div><div class="asr-actions"><button id="eval-auto-run" class="button button-primary" type="button"><i data-lucide="wand-sparkles"></i>一键生成并评测</button><button id="eval-analyze" class="button button-secondary" type="button" disabled><i data-lucide="scan-search"></i>AI 分析</button></div></div>
+    <div id="eval-summary" class="eval-summary is-hidden"></div>
+    <div id="eval-metrics" class="eval-metrics is-hidden"></div>
+    <div id="eval-analysis" class="eval-analysis is-hidden"></div>
+    <section id="eval-details" class="eval-details is-hidden"><div class="section-heading"><b>逐条详情</b></div><div id="eval-cases" class="eval-cases"></div></section>
+  </details>
+</section>

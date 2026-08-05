@@ -814,6 +814,47 @@ function renderEvalMetrics(metrics) {
   $("eval-metrics").classList.remove("is-hidden");
 }
 
+function renderEvalSummary(metrics) {
+  metrics = metrics || {};
+  const total = Number(metrics.cases_total || 0);
+  const accepted = Number(metrics.cases_accepted ?? metrics.cases_total ?? 0);
+  const passRate = Number(metrics.accepted_rate);
+  const confidence = Number(metrics.mean_confidence);
+  const isolation = Boolean(metrics.scope_isolation_ok);
+  const fmtPct = (v) => (Number.isFinite(v) ? `${Math.round(v * 100)}%` : "—");
+  const items = [
+    { label: "符合预期", value: `${accepted}/${total}`, good: total > 0 && accepted === total },
+    { label: "通过率", value: fmtPct(passRate), good: Number.isFinite(passRate) && passRate >= 0.8 },
+    { label: "角色隔离", value: isolation ? "通过" : "未通过", good: isolation },
+    { label: "平均置信度", value: fmtPct(confidence), good: Number.isFinite(confidence) && confidence >= 0.8 },
+  ];
+  $("eval-summary").innerHTML = items
+    .map(({ label, value, good }) =>
+      `<div class="eval-summary-item${good ? " is-good" : ""}"><span>${label}</span><b>${value}</b></div>`
+    )
+    .join("");
+  $("eval-summary").classList.remove("is-hidden");
+}
+
+function renderEvalAnalysis(text) {
+  const block = $("eval-analysis");
+  block.classList.remove("is-hidden");
+  block.innerHTML = `<div class="eval-analysis-head">AI 点评</div><div class="eval-analysis-body"></div>`;
+  block.querySelector(".eval-analysis-body").textContent = text || "分析结果为空";
+}
+
+async function autoAnalyze() {
+  const block = $("eval-analysis");
+  block.classList.remove("is-hidden");
+  block.innerHTML = `<div class="eval-analysis-head">AI 点评</div><div class="eval-analysis-body">AI 正在分析评测结果…</div>`;
+  try {
+    const result = await api(fetch("/api/eval/analyze", { method: "POST" }));
+    renderEvalAnalysis(result.analysis);
+  } catch (reason) {
+    block.innerHTML = `<div class="eval-analysis-head">AI 点评</div><div class="eval-analysis-body">分析暂不可用：${reason.message || reason}</div>`;
+  }
+}
+
 function renderEvalCases(cases) {
   cases = cases || [];
   const list = cases.map((caseItem, index) => {
@@ -874,6 +915,7 @@ async function pollEvalResult() {
       if (panel) panel.open = true;
       try {
         const results = await api(fetch("/api/eval/results"));
+        renderEvalSummary(results.metrics);
         renderEvalMetrics(results.metrics);
         renderEvalCases(results.cases);
         $("eval-status").textContent = "评测完成";
@@ -886,6 +928,7 @@ async function pollEvalResult() {
       if (metricsNode && !metricsNode.classList.contains("is-hidden")) {
         metricsNode.scrollIntoView({ behavior: "smooth", block: "nearest" });
       }
+      autoAnalyze();
       break;
     }
     if (status.state === "error") {
@@ -926,19 +969,10 @@ function bindEvalEvents() {
   const analyze = async () => {
     const button = $("eval-analyze");
     button.disabled = true;
-    button.textContent = "分析中…";
-    const block = $("eval-analysis");
-    block.classList.remove("is-hidden");
-    block.textContent = "AI 正在分析评测结果…";
-    try {
-      const result = await api(fetch("/api/eval/analyze", { method: "POST" }));
-      block.textContent = result.analysis;
-    } catch (reason) {
-      block.textContent = reason.message || reason;
-    } finally {
-      button.disabled = false;
-      button.textContent = "AI 分析";
-    }
+    button.textContent = "重新分析";
+    await autoAnalyze();
+    button.disabled = false;
+    button.textContent = "AI 分析";
   };
   bindSafe("eval-auto-run", "click", startEval);
   bindSafe("eval-analyze", "click", analyze);

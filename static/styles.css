@@ -670,6 +670,12 @@ input:focus, textarea:focus, select:focus { border-color: var(--primary); box-sh
 
 /* RAG 评测板块 */
 .eval-panel { margin-top: 24px; }
+.eval-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-top: 14px; }
+.eval-summary-item { padding: 10px 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface-soft); display: grid; gap: 4px; }
+.eval-summary-item span { color: var(--muted); font-size: 11px; }
+.eval-summary-item b { font-size: 18px; color: var(--ink); }
+.eval-summary-item.is-good b { color: var(--success); }
+.eval-summary-item.is-bad b { color: var(--danger); }
 .eval-metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-top: 14px; }
 .eval-metric { padding: 10px 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface-soft); display: grid; gap: 4px; }
 .eval-metric span { color: var(--muted); font-size: 11px; }
@@ -689,7 +695,9 @@ input:focus, textarea:focus, select:focus { border-color: var(--primary); box-sh
 .eval-flags { font-size: 11px; color: var(--subtle); }
 .eval-flags .flag-ok { color: var(--success); }
 .eval-flags .flag-bad { color: var(--danger); }
-.eval-analysis { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface-soft); color: var(--ink-soft); font-size: 12px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.eval-analysis { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--status-ok-border); border-radius: 4px; background: var(--status-ok-bg); }
+.eval-analysis-head { font-size: 12px; font-weight: 600; color: var(--success); margin-bottom: 6px; }
+.eval-analysis-body { color: var(--ink-soft); font-size: 12px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
 .eval-panel > summary { list-style: none; cursor: pointer; }
 .eval-panel > summary::-webkit-details-marker { display: none; }
 .eval-panel-summary .panel-heading { margin-bottom: 0; }
