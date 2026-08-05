@@ -3,7 +3,7 @@ from datetime import datetime
 from itertools import count
 from uuid import uuid4
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -131,6 +131,37 @@ class ConversationMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ConversationSummary(Base):
+    __tablename__ = "conversation_summaries"
+    __table_args__ = (
+        UniqueConstraint(
+            "persona_id", "conversation_id", name="uq_conversation_summary_persona_conv"
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    workspace_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    persona_id: Mapped[str] = mapped_column(
+        ForeignKey("personas.id"), nullable=False, index=True
+    )
+    conversation_id: Mapped[str] = mapped_column(
+        String(255), nullable=False, index=True
+    )
+    summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    summarized_through_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
 
