@@ -92,7 +92,12 @@ async function api(request) {
   if (!response.ok) throw new Error(typeof data?.detail === "string" ? data.detail : `请求失败 (${response.status})`);
   return data;
 }
-function setText(id, value = "") { const node = $(id); if (node) node.textContent = value?.message || value; }
+function setText(id, value = "", isError = false) {
+  const node = $(id);
+  if (!node) return;
+  node.textContent = value?.message || value;
+  node.classList.toggle("is-error", Boolean(isError));
+}
 
 // pywebview 内 target=_blank 不会可靠打开外部链接，统一交给桌面端在系统浏览器打开。
 document.addEventListener("click", (event) => {

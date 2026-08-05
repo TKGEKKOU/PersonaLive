@@ -107,7 +107,7 @@ async function toggleApiKeyVisibility(inputId) {
     if (!await ensureApiKeyValue(inputId)) return;
     input.type = "text";
     setApiKeyVisibilityIcon(inputId, true);
-  } catch (reason) { setText("settings-status", reason); }
+  } catch (reason) { setText("settings-status", reason, true); }
 }
 async function copyApiKey(inputId) {
   try {
@@ -115,7 +115,7 @@ async function copyApiKey(inputId) {
     if (!value) return;
     await navigator.clipboard.writeText(value);
     setText("settings-status", "API Key 已复制");
-  } catch (reason) { setText("settings-status", `复制失败：${reason.message || reason}`); }
+  } catch (reason) { setText("settings-status", `复制失败：${reason.message || reason}`, true); }
 }
 function resetApiKeyInputs() {
   Object.keys(API_KEY_FIELDS).forEach((id) => {
@@ -202,7 +202,7 @@ async function loadSettings() {
     $("web-search-provider").value = config.web_search_provider === "off" ? "bocha" : config.web_search_provider;
     state.savedEmbeddingDimensions = config.embedding_dimensions;
     syncManagedEmbeddingPreset(); renderEmbeddingSettings(); renderEmbeddingInstallAction(); renderEmbeddingWarning(); renderWebSearchSettings();
-  } catch (reason) { setText("settings-status", reason); }
+  } catch (reason) { setText("settings-status", reason, true); }
 }
 async function loadEmbeddingStatus() {
   try {
@@ -229,7 +229,7 @@ async function loadEmbeddingStatus() {
     if (config.installing) setTimeout(loadEmbeddingStatus, 2000);
   } catch (reason) {
     state.embeddingConfigured = false;
-    setText("embedding-status", `嵌入服务不可用：${friendlyError(reason)}`);
+    setText("embedding-status", `嵌入服务不可用：${friendlyError(reason)}`, true);
   }
 }
 function embeddingResourcePayload() {
@@ -244,14 +244,14 @@ async function installEmbedding() {
   try {
     await api(fetch("/api/embedding/install", { method: "POST", headers: { "Content-Type": "application/json", "X-YUMENO-Request": "web" }, body: JSON.stringify(embeddingResourcePayload()) }));
     await loadEmbeddingStatus();
-  } catch (reason) { setText("embedding-status", `安装失败：${friendlyError(reason)}`); setDisabled("install-embedding", false); }
+  } catch (reason) { setText("embedding-status", `安装失败：${friendlyError(reason)}`, true); setDisabled("install-embedding", false); }
 }
 async function cancelEmbedding() {
   setDisabled("cancel-embedding", true);
   try {
     await api(fetch("/api/embedding/install/cancel", { method: "DELETE", headers: { "X-YUMENO-Request": "web" } }));
     await loadEmbeddingStatus();
-  } catch (reason) { setText("embedding-status", `取消失败：${friendlyError(reason)}`); setDisabled("cancel-embedding", false); }
+  } catch (reason) { setText("embedding-status", `取消失败：${friendlyError(reason)}`, true); setDisabled("cancel-embedding", false); }
 }
 async function removeEmbedding() {
   if (!confirm("删除当前本地 Embedding 模型？Milvus 中的资料不会被删除。")) return;
@@ -259,14 +259,14 @@ async function removeEmbedding() {
   try {
     await api(fetch("/api/embedding/model", { method: "DELETE", headers: { "X-YUMENO-Request": "web" } }));
     await loadEmbeddingStatus();
-  } catch (reason) { setText("embedding-status", `删除失败：${friendlyError(reason)}`); setDisabled("remove-embedding", false); }
+  } catch (reason) { setText("embedding-status", `删除失败：${friendlyError(reason)}`, true); setDisabled("remove-embedding", false); }
 }
 async function openEmbeddingDirectory() {
   setDisabled("open-embedding-directory", true);
   try {
     const result = await api(fetch("/api/embedding/model-directory", { method: "POST", headers: { "X-YUMENO-Request": "web" } }));
     setText("embedding-status", `已打开：${result.opened_directory}`);
-  } catch (reason) { setText("embedding-status", `打开失败：${friendlyError(reason)}`); }
+  } catch (reason) { setText("embedding-status", `打开失败：${friendlyError(reason)}`, true); }
   finally { setDisabled("open-embedding-directory", false); }
 }
 async function loadAsrStatus() {
@@ -300,7 +300,7 @@ async function loadAsrStatus() {
     updateComposerControls();
     if (!$("asr-enabled")) return;
     renderServiceStatus("asr", "ASR", "unavailable");
-    setText("asr-status", `语音识别服务不可用：${friendlyError(reason)}`);
+    setText("asr-status", `语音识别服务不可用：${friendlyError(reason)}`, true);
   }
 }
 async function saveAsrConfig() {
@@ -308,7 +308,7 @@ async function saveAsrConfig() {
   try {
     await api(fetch("/api/asr/config", { method: "PATCH", headers: { "Content-Type": "application/json", "X-YUMENO-Request": "web" }, body: JSON.stringify({ enabled: $("asr-enabled").checked, python_path: $("asr-python-path").value.trim(), model_path: $("asr-model-path").value.trim(), ffmpeg_path: $("asr-ffmpeg-path").value.trim() }) }));
     await loadAsrStatus();
-  } catch (reason) { setText("asr-status", `保存失败：${friendlyError(reason)}`); }
+  } catch (reason) { setText("asr-status", `保存失败：${friendlyError(reason)}`, true); }
   finally { setDisabled("save-asr", false); }
 }
 async function installAsr() {
@@ -320,7 +320,7 @@ async function installAsr() {
     await saveAsrConfig();
     await api(fetch("/api/asr/install", { method: "POST", headers: { "X-YUMENO-Request": "web" } }));
     await loadAsrStatus();
-  } catch (reason) { setText("asr-status", `安装失败：${friendlyError(reason)}`); setDisabled("install-asr", false); }
+  } catch (reason) { setText("asr-status", `安装失败：${friendlyError(reason)}`, true); setDisabled("install-asr", false); }
 }
 async function removeAsr() {
   if (!confirm("删除项目自动下载的 ASR 环境和模型？外部目录不会被删除。")) return;
@@ -328,14 +328,14 @@ async function removeAsr() {
   try {
     await api(fetch("/api/asr/install", { method: "DELETE", headers: { "X-YUMENO-Request": "web" } }));
     await loadAsrStatus();
-  } catch (reason) { setText("asr-status", `删除失败：${friendlyError(reason)}`); setDisabled("remove-asr", false); }
+  } catch (reason) { setText("asr-status", `删除失败：${friendlyError(reason)}`, true); setDisabled("remove-asr", false); }
 }
 async function cancelAsr() {
   setDisabled("cancel-asr", true);
   try {
     await api(fetch("/api/asr/install/cancel", { method: "DELETE", headers: { "X-YUMENO-Request": "web" } }));
     await loadAsrStatus();
-  } catch (reason) { setText("asr-status", `取消失败：${friendlyError(reason)}`); setDisabled("cancel-asr", false); }
+  } catch (reason) { setText("asr-status", `取消失败：${friendlyError(reason)}`, true); setDisabled("cancel-asr", false); }
 }
 async function openAsrDirectory() {
   const button = $("open-asr-directory");
@@ -344,7 +344,7 @@ async function openAsrDirectory() {
   try {
     const result = await api(fetch("/api/asr/model-directory", { method: "POST", headers: { "X-YUMENO-Request": "web" } }));
     setText("asr-status", `已打开：${result.opened_directory}`);
-  } catch (reason) { setText("asr-status", `打开失败：${friendlyError(reason)}`); }
+  } catch (reason) { setText("asr-status", `打开失败：${friendlyError(reason)}`, true); }
   finally { button.disabled = false; }
 }
 async function loadTtsStatus() {
@@ -386,14 +386,14 @@ async function loadTtsStatus() {
     updateComposerControls();
     if (!$("tts-enabled")) return;
     renderServiceStatus("tts", "TTS", "unavailable");
-    setText("tts-status", `语音服务不可用：${friendlyError(reason)}`);
+    setText("tts-status", `语音服务不可用：${friendlyError(reason)}`, true);
   }
 }
 async function saveTtsConfig() {
   try {
     await api(fetch("/api/tts/config", { method: "PATCH", headers: { "Content-Type": "application/json", "X-YUMENO-Request": "web" }, body: JSON.stringify({ enabled: $("tts-enabled").checked, use_gpu: $("tts-use-gpu").checked }) }));
     await loadTtsStatus();
-  } catch (reason) { setText("tts-status", `保存失败：${friendlyError(reason)}`); }
+  } catch (reason) { setText("tts-status", `保存失败：${friendlyError(reason)}`, true); }
 }
 async function installTts() {
   if (!confirm("将下载约 3 GB 的 Qwen3-TTS GGUF 模型，Lunar TTS 运行库已随应用内置。是否继续？")) return;
@@ -403,7 +403,7 @@ async function installTts() {
   try {
     await api(fetch("/api/tts/install", { method: "POST", headers: { "X-YUMENO-Request": "web" } }));
     await loadTtsStatus();
-  } catch (reason) { setText("tts-status", `安装失败：${friendlyError(reason)}`); setDisabled("install-tts", false); }
+  } catch (reason) { setText("tts-status", `安装失败：${friendlyError(reason)}`, true); setDisabled("install-tts", false); }
 }
 async function removeTts() {
   if (!confirm("删除已下载的 TTS 模型？内置运行库和角色参考声音不会删除。")) return;
@@ -411,21 +411,21 @@ async function removeTts() {
   try {
     await api(fetch("/api/tts/install", { method: "DELETE", headers: { "X-YUMENO-Request": "web" } }));
     await loadTtsStatus();
-  } catch (reason) { setText("tts-status", `删除失败：${friendlyError(reason)}`); setDisabled("remove-tts", false); }
+  } catch (reason) { setText("tts-status", `删除失败：${friendlyError(reason)}`, true); setDisabled("remove-tts", false); }
 }
 async function cancelTts() {
   setDisabled("cancel-tts", true);
   try {
     await api(fetch("/api/tts/install/cancel", { method: "DELETE", headers: { "X-YUMENO-Request": "web" } }));
     await loadTtsStatus();
-  } catch (reason) { setText("tts-status", `取消失败：${friendlyError(reason)}`); setDisabled("cancel-tts", false); }
+  } catch (reason) { setText("tts-status", `取消失败：${friendlyError(reason)}`, true); setDisabled("cancel-tts", false); }
 }
 async function openTtsDirectory() {
   setDisabled("open-tts-directory", true);
   try {
     const result = await api(fetch("/api/tts/model-directory", { method: "POST", headers: { "X-YUMENO-Request": "web" } }));
     setText("tts-status", `已打开：${result.opened_directory}`);
-  } catch (reason) { setText("tts-status", `打开失败：${friendlyError(reason)}`); }
+  } catch (reason) { setText("tts-status", `打开失败：${friendlyError(reason)}`, true); }
   finally { setDisabled("open-tts-directory", false); }
 }
 async function previewTts() {
@@ -447,7 +447,7 @@ async function previewTts() {
     audio.classList.remove("is-hidden");
     setText("tts-preview-status", "试听已生成");
     audio.play().catch(() => {});
-  } catch (reason) { setText("tts-preview-status", `生成失败：${friendlyError(reason)}`); }
+  } catch (reason) { setText("tts-preview-status", `生成失败：${friendlyError(reason)}`, true); }
   finally { button.disabled = !state.ttsConfigured; }
 }
 function normalizedUrl(value) { return value.trim().replace(/\/+$/, "").toLowerCase(); }
@@ -593,7 +593,7 @@ async function saveSettings() {
     await api(fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ openai_api_key: value("openai-api-key"), openai_base_url: value("openai-base-url"), openai_model: value("openai-model"), embedding_api_key: value("embedding-api-key"), embedding_provider: $("embedding-provider").value, embedding_model_source: $("embedding-model-source").value, embedding_device: $("embedding-device").value, embedding_base_url: value("embedding-base-url"), embedding_model: value("embedding-model"), embedding_dimensions: Number(value("embedding-dimensions")), embedding_send_dimensions: $("embedding-send-dimensions").checked, chunk_size: Number(value("chunk-size")), chunk_overlap: Number(value("chunk-overlap")), web_search_provider: webEnabled ? $("web-search-provider").value : "off", web_search_api_key: value("web-search-api-key"), web_search_base_url: value("web-search-base-url"), enable_web_fallback: webEnabled }) }));
     resetApiKeyInputs();
     setText("settings-status", "已保存，可立即使用"); await loadSettings();
-  } catch (reason) { setText("settings-status", reason); }
+  } catch (reason) { setText("settings-status", reason, true); }
   finally { $("save-settings").disabled = false; }
 }
 async function resetSettings() {
@@ -602,7 +602,7 @@ async function resetSettings() {
     await api(fetch("/api/settings", { method: "DELETE" }));
     resetApiKeyInputs(); $("web-search-base-url").value = "";
     setText("settings-status", "配置已重置"); await loadSettings();
-  } catch (reason) { setText("settings-status", reason); }
+  } catch (reason) { setText("settings-status", reason, true); }
   finally { $("reset-settings").disabled = false; }
 }
 

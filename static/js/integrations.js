@@ -87,6 +87,6 @@ async function saveOnebotConfig(event) {
     renderIntegrationStatus(saved);
     setText("onebot-save-status", "配置已保存" + (saved.enabled ? "，等待客户端连接。" : "，接入已关闭。"));
   } catch (reason) {
-    setText("onebot-save-status", reason.message || reason);
+    setText("onebot-save-status", reason.message || reason, true, true);
   }
 }
