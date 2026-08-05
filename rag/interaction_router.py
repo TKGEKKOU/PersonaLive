@@ -1,13 +1,15 @@
 from typing import Literal
 
-from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-from rag.llm import get_llm
+from rag.llm import invoke_llm
 
 
 InteractionMode = Literal["conversation", "capability", "knowledge", "web"]
 
+# 路由信号分四类，按"成本从低到高"依次匹配：
+# 关键词命中直接返回（零 LLM 调用）；都不命中才走 LLM 兜底分类（classify_ambiguous）。
+# 这种"规则优先、LLM 兜底"的分层路由把高频简单意图的延迟与成本降到最低。
 CAPABILITY_SIGNALS = ("tool", "工具", "能力", "能调用", "会调用", "可以调用")
 LOCAL_SIGNALS = ("资料", "文档", "知识库", "上传", "报告", "根据内容", "根据设定")
 CONVERSATION_SIGNALS = (
@@ -32,14 +34,17 @@ ROUTER_PROMPT = ChatPromptTemplate.from_messages(
 
 
 def classify_ambiguous(question: str) -> Literal["conversation", "knowledge"]:
+    # LLM 兜底：规则无法判定的模糊请求交给模型二分类；失败时保守归为 knowledge，
+    # 保证资料类问题不会被错误分流到闲聊。
     try:
-        value = (ROUTER_PROMPT | get_llm() | StrOutputParser()).invoke({"question": question}).strip().lower()
+        value = invoke_llm(ROUTER_PROMPT, {"question": question}).strip().lower()
         return "conversation" if value == "conversation" else "knowledge"
     except Exception:
         return "knowledge"
 
 
 def route_interaction(question: str, enable_web_search: bool) -> InteractionMode:
+    # 路由优先级：能力询问 > 本地资料（knowledge）> 闲聊 > 实时信息（需联网开关）> LLM 兜底。
     normalized = (question or "").strip().lower()
     if any(signal in normalized for signal in CAPABILITY_SIGNALS):
         return "capability"

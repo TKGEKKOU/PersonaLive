@@ -40,7 +40,7 @@ def test_local_asr_install_controls_are_present():
 
 
 def test_local_tts_install_controls_are_present():
-    html = read_view("settings") + read_view("personas")
+    html = read_view("settings") + read_view("manage")
     script = read_script("settings") + read_script("personas")
     for control in ["tts-enabled", "tts-use-gpu", "tts-state", "install-tts", "cancel-tts", "remove-tts", "open-tts-directory", "tts-preview-text", "preview-tts", "tts-preview-audio"]:
         assert f'id="{control}"' in html
@@ -55,9 +55,19 @@ def test_local_tts_install_controls_are_present():
 
 
 def test_tts_workflows_have_guidance_and_chat_controls():
-    html = read_view("chat") + read_view("personas") + read_view("settings")
+    html = read_view("chat") + read_view("create") + read_view("manage") + read_view("test") + read_view("settings")
     script = read_script("chat") + read_script("personas")
-    for control in ["chat-persona-toggle", "chat-persona-menu", "assistant-voice-toggle", "edit-tts-guide", "edit-tts-confirm-upload", "edit-tts-steps", "tts-settings-anchor"]:
+    for control in [
+        "chat-persona-toggle",
+        "chat-persona-menu",
+        "assistant-voice-toggle",
+        "edit-tts-confirm",
+        "edit-tts-drop",
+        "edit-tts-message",
+        "edit-tts-open-settings",
+        "edit-tts-preview-text",
+        "tts-settings-anchor",
+    ]:
         assert f'id="{control}"' in html
     assert "reference/preview" in script
     assert "assistant-voice-toggle" in script
@@ -74,10 +84,12 @@ def test_chat_uses_single_compact_persona_menu():
 
 
 def test_chat_is_default_and_home_guidance_is_removed():
-    html = read_view("chat") + read_view("personas") + read_view("settings")
+    html = read_view("chat") + read_view("create") + read_view("manage") + read_view("test") + read_view("settings")
     script = (ROOT / "static" / "js" / "app.js").read_text(encoding="utf-8")
     assert 'id="home-view"' not in html
-    assert 'id="upload-view" class="view is-hidden"' in read_view("personas")
+    assert 'id="create-view" class="view is-hidden"' in read_view("create")
+    assert 'id="manage-view" class="view is-hidden"' in read_view("manage")
+    assert 'id="test-view" class="view is-hidden"' in read_view("test")
     assert 'id="brand-home"' not in html
     assert 'switchView("chat")' in script
     assert 'id="settings-system-status"' in read_view("settings")
@@ -88,7 +100,7 @@ def test_chat_is_default_and_home_guidance_is_removed():
 def test_settings_service_status_covers_required_local_dependencies():
     html = read_view("settings")
     script = read_script("common") + read_script("settings")
-    for service in ["mysql", "milvus", "embedding", "asr", "tts"]:
+    for service in ["sqlite", "milvus", "embedding", "asr", "tts"]:
         assert f'data-service-status="{service}"' in html
     assert 'fetch("/api/status")' in script
     assert 'fetch("/api/asr/status")' in script
@@ -130,7 +142,7 @@ def test_primary_navigation_uses_collapsible_sidebar_with_chat_first():
     html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
     script = (ROOT / "static" / "js" / "app.js").read_text(encoding="utf-8")
     styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
-    assert html.index('id="nav-chat"') < html.index('id="nav-upload"') < html.index('id="nav-settings"')
+    assert html.index('id="nav-chat"') < html.index('id="nav-create"') < html.index('id="nav-manage"') < html.index('id="nav-test"') < html.index('id="nav-settings"')
     assert 'id="sidebar-toggle"' in html
     assert "setSidebarPinned" in script
     assert "personalive:sidebar-collapsed" not in script
@@ -151,11 +163,11 @@ def test_settings_are_rendered_as_one_continuous_page():
 
 
 def test_pages_drop_decorative_section_labels_and_repeated_intros():
-    html = read_view("chat") + read_view("personas") + read_view("settings")
+    html = read_view("chat") + read_view("create") + read_view("manage") + read_view("test") + read_view("settings")
     styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
     for label in ["section-index", "panel-index", "01 / MATERIAL", "03 / SETTINGS", "CURRENT PERSONA"]:
         assert label not in html
-    assert ".material-toolbar" in styles
+    assert ".material-toolbar" not in styles
     assert ".section-index" not in styles
 
 
@@ -174,7 +186,7 @@ def test_streaming_voice_is_synthesized_once_after_final_text():
     assert "flushStreamVoice(true" in source
 
 
-def test_chat_process_is_outside_bubbles_and_loading_state_exists():
+def test_chat_process_is_inside_container_and_loading_state_exists():
     html = read_view("chat")
     script = read_script("chat")
     styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
@@ -185,7 +197,6 @@ def test_chat_process_is_outside_bubbles_and_loading_state_exists():
     assert "appendResultDetails(node, result)" in script
     assert "loading-bubble" in styles
     assert "background: transparent" in styles
-    assert ".chat-panel" in styles and "border: 1px solid var(--line-dark)" in styles
-    assert "margin-left: calc(50% - 28px)" in styles
-    assert "left: calc(50% + 484px)" in styles
+    assert ".chat-panel" in styles and "border: 0" in styles
+    assert "right: clamp(16px,4vw,48px)" in styles
     assert "nodeLabels" in script

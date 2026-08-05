@@ -4,10 +4,9 @@
 adaptive_graph.py 中的确定性路由与计数器决定。
 """
 
-from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-from rag.llm import get_llm
+from rag.llm import invoke_llm
 from rag.output_parsers import (
     AnswerQualityScore,
     BatchDocumentScore,
@@ -19,22 +18,32 @@ from rag.output_parsers import (
 
 
 def _invoke_text(prompt: ChatPromptTemplate, values: dict) -> str:
-    chain = prompt | get_llm() | StrOutputParser()
-    return chain.invoke(values)
+    return invoke_llm(prompt, values)
 
 
 # 批量证据评分（默认路径）：一次 LLM 调用同时评估所有候选片段。
 # 相比逐片段调用，显著降低 token 与延迟；单片段截断 4000 字符防止上下文膨胀。
 # 输出 JSON：relevant_ids（直接支持答案的片段下标）+ confidence（0~1）。
-def grade_retrieved_documents(question: str, documents: list) -> BatchDocumentScore:
-    """一次调用筛选候选片段并评估证据置信度。"""
+def grade_retrieved_documents(
+    question: str,
+    documents: list,
+    max_chars: int = 4000,
+    strict: bool = False,
+) -> BatchDocumentScore:
+    """一次调用筛选候选片段并评估证据置信度。
+
+    Args:
+        max_chars: 单个候选片段送入评分的最大字符数，防止上下文膨胀。
+        strict: 解析失败时按"无相关片段"处理（评测场景），而不是保留全部
+            候选（生产场景的 fail-open 行为，见 output_parsers）。
+    """
 
     if not documents:
         return BatchDocumentScore()
 
     # 限制单个候选长度，防止评分上下文异常膨胀。
     numbered_documents = "\n\n".join(
-        f"[{index}] {(getattr(document, 'page_content', '') or '')[:4000]}"
+        f"[{index}] {(getattr(document, 'page_content', '') or '')[:max_chars]}"
         for index, document in enumerate(documents)
     )
     prompt = ChatPromptTemplate.from_messages(
@@ -51,7 +60,7 @@ def grade_retrieved_documents(question: str, documents: list) -> BatchDocumentSc
         ]
     )
     raw_score = _invoke_text(prompt, {"question": question, "documents": numbered_documents})
-    return parse_batch_document_score(raw_score, len(documents))
+    return parse_batch_document_score(raw_score, len(documents), strict=strict)
 
 
 # 回答质量门：检查 grounded（回答是否完全由资料支持）与 useful（是否真正

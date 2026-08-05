@@ -19,6 +19,8 @@ def context_for(
     persona_id: str,
     conversation_id: str,
 ) -> PersonaAgentContext:
+    # 服务端权威解析角色作用域：knowledge_space_ids 来自角色关联的知识空间，
+    # 请求方不能传入 workspace/knowledge_space，从根本上杜绝跨角色越权检索。
     try:
         scope = resolve_knowledge_scope(session, persona_id)
     except PersonaNotFound as exc:
@@ -37,6 +39,8 @@ def context_for(
 
 
 def response_for(result) -> AgentTurnResponse:
+    # 统一收敛 Agent 输出：只暴露注册工具的调用记录与知识证据，
+    # 过滤内部 handoff ToolMessage 与图内部状态，保持 API 契约稳定。
     return AgentTurnResponse(
         status=result.status,
         answer=result.answer,

@@ -1,9 +1,8 @@
 import json
 
-from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 
-from rag.llm import get_llm
+from rag.llm import invoke_llm
 
 
 PROMPT = PromptTemplate(
@@ -44,8 +43,7 @@ def format_documents(documents) -> str:
 
 
 def _invoke_generation(prompt: PromptTemplate, values: dict) -> str:
-    chain = prompt | get_llm() | StrOutputParser()
-    return chain.invoke(values)
+    return invoke_llm(prompt, values)
 
 
 def generate_answer(

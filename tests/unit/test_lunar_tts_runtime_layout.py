@@ -35,6 +35,6 @@ def test_windows_build_uses_published_lunar_runtime():
 
 
 def test_pyinstaller_spec_packages_lunar_tts_runtime():
-    spec = Path("PersonaLive.spec").read_text(encoding="utf-8")
+    spec = Path("YUMENO.spec").read_text(encoding="utf-8")
 
     assert "('runtime/tts', 'runtime/tts')" in spec

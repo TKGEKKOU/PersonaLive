@@ -1,11 +1,11 @@
-def test_docker_settings_defaults_to_keep(client, tmp_path, monkeypatch):
+def test_docker_settings_defaults_to_pause(client, tmp_path, monkeypatch):
     from app.routers import system as system_router
 
     path = tmp_path / "docker_settings.json"
     monkeypatch.setattr(system_router, "DOCKER_SETTINGS_PATH", path)
     response = client.get("/api/system/docker-settings")
     assert response.status_code == 200
-    assert response.json() == {"on_exit": "keep"}
+    assert response.json() == {"on_exit": "pause"}
 
 
 def test_docker_settings_update_persists(client, tmp_path, monkeypatch):

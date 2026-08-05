@@ -17,7 +17,15 @@ class DocumentScope:
 
 
 class MarkdownParser:
-    """Split a Markdown file into heading-aware chunks for retrieval."""
+    """结构感知分块器：把 Markdown 文档切成适合检索的语义块。
+
+    设计要点：
+    - 分隔符按优先级排列（标题 > 段落 > 句子 > 词），优先保留章节/标题层级边界，
+      避免固定 token 切分打断语义；
+    - 每个块写入来源路径、标题、section、doc_id、chunk_id 等元数据，供检索阶段
+      做作用域过滤与引用溯源；
+    - 内容哈希用于增量入库去重，重复上传不会产生重复向量。
+    """
 
     def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 150):
         safe_overlap = min(chunk_overlap, max(0, chunk_size // 4))

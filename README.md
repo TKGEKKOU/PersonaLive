@@ -246,11 +246,12 @@ LLM、Embedding 与联网搜索配置在前端"设置"页完成，保存到 `dat
 关键 `.env` 项：
 
 ```env
+DB_PATH=data/yumeno.db                 # SQLite 应用数据库（角色/对话/记忆/会话状态）
 RAG_PIPELINE=default                 # default(自适应纠错) | simple(检索直出)
 MAX_REWRITE_COUNT=2                  # 查询改写次数上限
 MAX_GENERATION_RETRY=2               # 生成纠错次数上限
 DEFAULT_CONFIDENCE_THRESHOLD=0.75    # 高置信度直通阈值
-COLLECTION_NAME=yumeno_content  # Milvus 集合名（更换 Embedding 维度时需换新集合）
+COLLECTION_NAME=yumeno_knowledge_v1  # Milvus 集合名（更换 Embedding 维度时需换新集合）
 ```
 
 > **多副本注意**：`docker-compose.yml` 使用固定容器名与绑定数据目录，
@@ -286,6 +287,7 @@ Milvus 写入、删除与查询均携带工作空间与知识空间过滤条件�
 - Web 工作台：<http://127.0.0.1:17000/static/index.html>
 - API 文档：<http://127.0.0.1:17000/docs>
 - 组件状态：<http://127.0.0.1:17000/api/status>
+- SQLite 管理（datasette，只读）：<http://127.0.0.1:17000/sqlite/>
 - Attu（Milvus 控制台）：<http://127.0.0.1:17003>
 
 ## 进程管理

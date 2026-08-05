@@ -40,11 +40,22 @@ def _parse_json_object(text: str) -> dict:
     return value
 
 
-def parse_batch_document_score(text: str, document_count: int) -> BatchDocumentScore:
-    """解析一次批量文档评分；失败时保留片段并强制走低置信度路径。"""
+def parse_batch_document_score(
+    text: str,
+    document_count: int,
+    strict: bool = False,
+) -> BatchDocumentScore:
+    """解析一次批量文档评分。
 
-    # 解析失败时保留全部候选片段但降为 0 置信度，避免误删证据并强制进入质量门。
-    fallback = BatchDocumentScore(relevant_ids=list(range(max(0, document_count))), confidence=0.0)
+    默认（strict=False）解析失败时保留全部候选片段但降为 0 置信度，避免误删
+    证据并强制进入质量门；评测等需要"失败即无相关"的场景传 strict=True，
+    解析失败时按没有任何相关片段处理，防止把失败误判为全部相关。
+    """
+
+    if strict:
+        fallback = BatchDocumentScore()
+    else:
+        fallback = BatchDocumentScore(relevant_ids=list(range(max(0, document_count))), confidence=0.0)
     try:
         score = BatchDocumentScore.model_validate(_parse_json_object(text))
     except (ValueError, TypeError):

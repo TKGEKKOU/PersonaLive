@@ -1,9 +1,27 @@
     <section id="chat-view" class="view is-hidden">
       <div id="chat-layout" class="chat-layout">
         <section class="chat-panel">
-          <div class="chat-toolbar"><div class="chat-persona-picker"><button id="chat-persona-toggle" class="chat-persona-trigger" type="button" aria-haspopup="menu" aria-expanded="false"><strong id="chat-title">选择角色</strong><i data-lucide="chevron-down"></i></button><div id="chat-persona-menu" class="persona-menu is-hidden" role="menu"><div id="persona-list" class="persona-list"></div></div></div><div class="chat-settings"><button id="chat-settings-toggle" class="icon-button" type="button" title="对话设置" aria-label="对话设置" aria-haspopup="menu" aria-expanded="false"><i data-lucide="settings-2"></i></button><div id="chat-settings-menu" class="chat-settings-menu is-hidden" role="menu"><label class="chat-voice-toggle"><input id="assistant-voice-toggle" type="checkbox" checked><span>自动播放语音</span></label><button id="clear-conversation" class="chat-settings-item" type="button" title="清空当前对话" aria-label="清空当前对话" disabled><i data-lucide="trash-2"></i><span>清除聊天记录</span></button></div></div></div>
+          <div class="chat-toolbar"><button id="live2d-toggle" class="icon-button" type="button" title="角色面板" aria-label="角色面板" aria-pressed="false"><i data-lucide="scan-face"></i></button><div class="chat-persona-picker"><button id="chat-persona-toggle" class="chat-persona-trigger" type="button" aria-haspopup="menu" aria-expanded="false"><strong id="chat-title">选择角色</strong><i data-lucide="chevron-down"></i></button><div id="chat-persona-menu" class="persona-menu is-hidden" role="menu"><div id="persona-list" class="persona-list"></div></div></div><div class="chat-settings"><button id="chat-settings-toggle" class="icon-button" type="button" title="对话设置" aria-label="对话设置" aria-haspopup="menu" aria-expanded="false"><i data-lucide="settings-2"></i></button><div id="chat-settings-menu" class="chat-settings-menu is-hidden" role="menu"><label class="chat-voice-toggle"><input id="assistant-voice-toggle" type="checkbox" checked><span>自动播放语音</span></label><button id="clear-conversation" class="chat-settings-item" type="button" title="清空当前对话" aria-label="清空当前对话" disabled><i data-lucide="trash-2"></i><span>清除聊天记录</span></button></div></div></div>
+          <section id="live2d-dock" class="live2d-stage-pane" aria-label="角色舞台" hidden>
+            <div id="live2d-stage" class="live2d-stage">
+              <canvas id="live2d-canvas" class="live2d-canvas"></canvas>
+              <div id="live2d-resize" class="live2d-resize" title="拖动调整舞台高度" aria-label="拖动调整舞台高度"></div>
+              <button id="live2d-focus-hint" class="live2d-focus-hint is-hidden" type="button">已进入专注模式 · 点击退出</button>
+            </div>
+            <footer class="live2d-foot">
+              <p id="live2d-status" class="live2d-status" data-state="idle" aria-live="polite"><span class="live2d-led"></span><em id="live2d-status-text">空闲</em></p>
+              <div class="live2d-controls">
+                <button id="live2d-more" class="icon-button live2d-icon-btn" type="button" title="更多选项" aria-label="更多选项" aria-haspopup="menu" aria-expanded="false"><i data-lucide="more-horizontal"></i></button>
+                <div id="live2d-more-menu" class="live2d-more-menu is-hidden" role="menu">
+                  <select id="live2d-model" class="live2d-select" title="选择模型" aria-label="选择模型" hidden></select>
+                  <button id="live2d-flip" class="live2d-menu-item" type="button" role="menuitem"><i data-lucide="flip-horizontal-2"></i><span>镜像</span></button>
+                  <button id="live2d-mode" class="live2d-menu-item" type="button" role="menuitem"><i data-lucide="monitor"></i><span>渲染方式</span></button>
+                </div>
+              </div>
+            </footer>
+          </section>
           <div id="chat-log" class="chat-log selectable"><p class="empty-state">选择角色后开始聊天</p></div>
-          <div class="chat-footer"><section id="confirmation-panel" class="confirmation-panel is-hidden"><div><strong id="confirmation-title">确认操作</strong><p id="confirmation-detail"></p></div><div class="confirmation-actions"><button id="cancel-action" class="button button-secondary" type="button">取消</button><button id="confirm-action" class="button button-warning" type="button">确认</button></div></section><form id="question-form" class="composer"><textarea id="question" rows="3" maxlength="12000" placeholder="输入消息" required></textarea><button id="cancel-generation" class="icon-button is-hidden" type="button" title="停止生成" aria-label="停止生成" disabled><i data-lucide="square"></i></button><button id="send-question" class="send-button" type="submit" title="发送" disabled><i data-lucide="send-horizontal"></i></button></form></div>
+          <div class="chat-footer"><section id="confirmation-panel" class="confirmation-panel is-hidden"><div><strong id="confirmation-title">确认操作</strong><p id="confirmation-detail"></p></div><div class="confirmation-actions"><button id="cancel-action" class="button button-secondary" type="button">取消</button><button id="confirm-action" class="button button-warning" type="button">确认</button></div></section><form id="question-form" class="composer"><textarea id="question" rows="3" maxlength="12000" placeholder="输入消息" required></textarea><button id="send-question" class="send-button" type="submit" title="发送" disabled><i data-lucide="send-horizontal"></i></button></form></div>
         </section>
         <aside id="chat-process-panel" class="chat-process-panel is-hidden" aria-label="本轮处理过程">
           <button id="chat-process-toggle" class="chat-process-toggle" type="button" aria-expanded="false">

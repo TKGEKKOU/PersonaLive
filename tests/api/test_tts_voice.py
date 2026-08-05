@@ -18,7 +18,7 @@ def test_upload_reference_voice_updates_persona(client, tmp_path, monkeypatch):
     response = client.post(
         f"/api/tts/personas/{persona['id']}/reference",
         files={"file": ("voice.wav", wav_audio(b"\x00\x00" * 1600), "audio/wav")},
-        headers={"X-PersonaLive-Request": "web"},
+        headers={"X-YUMENO-Request": "web"},
     )
     assert response.status_code == 200
     updated = client.get(f"/api/personas/{persona['id']}").json()
@@ -35,7 +35,7 @@ def test_reference_voice_rejects_non_wav(client, tmp_path, monkeypatch):
     response = client.post(
         f"/api/tts/personas/{persona['id']}/reference",
         files={"file": ("voice.wav", b"not-wave", "audio/wav")},
-        headers={"X-PersonaLive-Request": "web"},
+        headers={"X-YUMENO-Request": "web"},
     )
     assert response.status_code == 415
 
@@ -43,7 +43,7 @@ def test_reference_voice_rejects_non_wav(client, tmp_path, monkeypatch):
 def test_reference_voice_can_be_read_and_removed(client, tmp_path, monkeypatch):
     persona = client.post("/api/personas", json={"name": "Voice", "profile": {}}).json()
     monkeypatch.setattr("app.routers.tts.VOICE_ROOT", tmp_path)
-    headers = {"X-PersonaLive-Request": "web"}
+    headers = {"X-YUMENO-Request": "web"}
     uploaded = client.post(
         f"/api/tts/personas/{persona['id']}/reference",
         files={"file": ("voice.wav", wav_audio(b"\x00\x00" * 1600), "audio/wav")},
@@ -78,7 +78,7 @@ def test_reference_voice_preview_uses_persona_voice(client, tmp_path, monkeypatc
     response = client.post(
         f"/api/tts/personas/{persona['id']}/reference/preview",
         json={"text": "示例文案"},
-        headers={"X-PersonaLive-Request": "web"},
+        headers={"X-YUMENO-Request": "web"},
     )
     assert response.status_code == 200
 
@@ -92,7 +92,7 @@ def test_multiple_reference_wavs_are_merged(client, tmp_path, monkeypatch):
             ("files", ("one.wav", wav_audio(b"\x00\x00" * 1600), "audio/wav")),
             ("files", ("two.wav", wav_audio(b"\x01\x00" * 1600), "audio/wav")),
         ],
-        headers={"X-PersonaLive-Request": "web"},
+        headers={"X-YUMENO-Request": "web"},
     )
     assert response.status_code == 200
     with wave.open(str(tmp_path / f"{persona['id']}.wav"), "rb") as merged:

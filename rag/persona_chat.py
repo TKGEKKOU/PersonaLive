@@ -1,9 +1,8 @@
 import json
 
-from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-from rag.llm import get_llm
+from rag.llm import invoke_llm
 
 
 PERSONA_PROMPT = ChatPromptTemplate.from_messages(
@@ -23,8 +22,9 @@ PERSONA_PROMPT = ChatPromptTemplate.from_messages(
 def generate_persona_reply(name: str, profile: dict, question: str) -> str:
     safe_name = name.strip() or "角色"
     profile_text = json.dumps(profile or {}, ensure_ascii=False)
-    return (PERSONA_PROMPT | get_llm() | StrOutputParser()).invoke(
-        {"name": safe_name, "profile": profile_text, "question": question}
+    return invoke_llm(
+        PERSONA_PROMPT,
+        {"name": safe_name, "profile": profile_text, "question": question},
     ).strip()
 
 

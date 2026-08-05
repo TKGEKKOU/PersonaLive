@@ -37,10 +37,51 @@ def response_for(session: Session, draft: PersonaDraft) -> PersonaDraftResponse:
     )
 
 
+def analyze_draft_background(draft_id: str, session_factory) -> None:
+    """Analyze uploaded materials into a persona suggestion off the request path.
+
+    Runs as a Starlette background task (in a worker thread), so the LLM
+    analysis no longer blocks the event loop and the UI can show progress
+    while the draft status is 'analyzing'.
+    """
+    session = session_factory()
+    try:
+        draft = get_draft(session, draft_id)
+        if draft is None or draft.status != "analyzing":
+            return
+        documents = draft_documents(session, draft)
+        previews = [job.markdown_preview or "" for job in documents]
+        mode = draft.mode
+        filename = documents[0].original_filename if documents else "资料"
+        try:
+            if mode == "character":
+                candidates = identify_candidates(previews)
+                if candidates:
+                    for index, candidate in enumerate(candidates, start=1):
+                        candidate.setdefault("id", f"candidate-{index}")
+                    draft.persona_type = "character"
+                    draft.candidates_json = candidates
+                else:
+                    fallback = fallback_identity("expert", filename)
+                    draft.suggested_name, draft.profile_json = analyze_materials("expert", previews, fallback)
+            else:
+                fallback = fallback_identity("expert", filename)
+                draft.suggested_name, draft.profile_json = analyze_materials("expert", previews, fallback)
+        except Exception:
+            fallback = fallback_identity(mode, filename)
+            draft.suggested_name, draft.profile_json = fallback
+        draft.status = "draft"
+        session.commit()
+    finally:
+        session.close()
+
+
 @router.post("/upload", response_model=PersonaDraftResponse, status_code=status.HTTP_201_CREATED)
 async def upload_draft(
     mode: Annotated[Literal["character", "expert"], Form()],
     files: Annotated[list[UploadFile], File(...)],
+    background_tasks: BackgroundTasks,
+    request: Request,
     session: Session = Depends(get_session),
 ):
     draft = create_draft(session, mode)
@@ -54,22 +95,10 @@ async def upload_draft(
             raise HTTPException(status_code=code, detail=str(exc)) from exc
         except Exception as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-    previews = [job.markdown_preview or "" for job in jobs]
-    if mode == "character":
-        candidates = identify_candidates(previews)
-        if candidates:
-            for index, candidate in enumerate(candidates, start=1):
-                candidate.setdefault("id", f"candidate-{index}")
-            draft.persona_type = "character"
-            draft.candidates_json = candidates
-        else:
-            fallback = fallback_identity("expert", jobs[0].original_filename)
-            draft.suggested_name, draft.profile_json = analyze_materials("expert", previews, fallback)
-    else:
-        fallback = fallback_identity("expert", jobs[0].original_filename)
-        draft.suggested_name, draft.profile_json = analyze_materials("expert", previews, fallback)
+    draft.status = "analyzing"
     session.commit()
     session.refresh(draft)
+    background_tasks.add_task(analyze_draft_background, draft.id, request.app.state.session_factory)
     return response_for(session, draft)
 
 

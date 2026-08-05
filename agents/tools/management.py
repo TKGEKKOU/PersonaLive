@@ -18,6 +18,10 @@ Confirmer = Callable[[dict[str, Any]], bool]
 Indexer = Callable[[str, Any], None]
 
 
+# Human-in-the-loop 确认器：所有变更类管理工具默认注入 request_confirmation，
+# 通过 LangGraph interrupt() 暂停图执行并把 action（工具名/标题/参数）抛给 API/UI；
+# 用户批准或拒绝后由 service.resume 以 Command(resume=...) 恢复。测试可用假确认器
+# 注入，避免真正触发中断。
 def request_confirmation(action: dict[str, Any]) -> bool:
     """暂停 LangGraph，将待执行写操作交给 API/UI 确认后再从检查点恢复。"""
 

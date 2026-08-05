@@ -243,6 +243,19 @@ def test_registry_exposes_expected_read_only_tools():
     assert read_only_specs and all(not spec.requires_confirmation for spec in read_only_specs)
 
 
+def test_web_search_returns_guidance_when_no_key_configured(monkeypatch):
+    from agents.tools import web
+
+    fake_settings = type("S", (), {"enable_web_fallback": False})()
+    monkeypatch.setattr(
+        "agents.tools.web.Settings.load", staticmethod(lambda: fake_settings)
+    )
+    result = web.web_search.func("测试", None)
+    text = str(result)
+    assert "web-research" in text
+    assert "未配置" in text
+
+
 def test_supervisor_routes_to_capability_specialists():
     assert route_specialist("查一下今天的新闻") == "web"
     assert route_specialist("记住我喜欢红茶") == "memory"
@@ -482,3 +495,38 @@ def test_supervisor_routes_profile_mutations_to_management():
     assert route_specialist("给你加上一些设定：电子幽灵") == "management"
     assert route_specialist("记住，这是你的共鸣回路：光学取样") == "management"
     assert route_specialist("记住我喜欢红茶") == "memory"
+
+
+class _TransientProviderError(RuntimeError):
+    status_code = 503
+
+
+def test_agent_query_returns_friendly_answer_when_llm_service_unavailable(monkeypatch):
+    from rag.llm import LLM_UNAVAILABLE_MESSAGE
+
+    class FailingGraph:
+        def get_state(self, config):
+            class Snapshot:
+                interrupts = ()
+                values = {}
+
+            return Snapshot()
+
+        def invoke(self, *args, **kwargs):
+            raise _TransientProviderError("Service is too busy")
+
+    service = PersonaAgentService(checkpointer=object())
+    monkeypatch.setattr(service, "_graph", lambda: FailingGraph())
+    context = PersonaAgentContext(
+        persona_id="persona-a",
+        workspace_id="local-default",
+        knowledge_space_ids=("space-a",),
+        conversation_id="thread-a",
+        persona_name="测试角色",
+        persona_type="knowledge_expert",
+    )
+
+    result = service.query("角色核心设定是什么", context)
+
+    assert result.status == "completed"
+    assert result.answer == LLM_UNAVAILABLE_MESSAGE

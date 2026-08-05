@@ -789,42 +789,54 @@ const EVAL_PERCENT_KEYS = new Set([
   "mean_confidence",
 ]);
 
+// 越高越好的核心质量指标:高值绿、极低才红(重大错误);触发率/改写率等行为统计保持中性黑色
+const EVAL_POSITIVE_PERCENT_KEYS = new Set([
+  "recall_at_k_answerable",
+  "precision_at_k_answerable",
+  "mrr_answerable",
+  "hit_at_1_answerable",
+  "grounded_rate",
+  "useful_rate",
+  "answer_rate",
+  "accepted_rate",
+  "mean_confidence",
+]);
+
+const EVAL_METRIC_GROUPS = [
+  { title: "回答质量", keys: ["grounded_rate", "useful_rate", "accepted_rate", "answer_rate", "refusal_rate", "cases_checked", "mean_confidence", "scope_isolation_ok"] },
+  { title: "检索质量", keys: ["recall_at_k_answerable", "precision_at_k_answerable", "mrr_answerable", "hit_at_1_answerable", "cases_answerable", "mean_latency_ms", "p95_latency_ms"] },
+  { title: "行为与性能", keys: ["rewrite_rate", "correction_rate", "mean_rewrite_count", "mean_correction_count", "complex_rewrite_rate", "complex_correction_rate", "probe_refusal_rate", "cases_total", "cases_complex", "mean_total_latency_ms", "p95_total_latency_ms"] },
+];
+
 function renderEvalMetrics(metrics) {
   metrics = metrics || {};
-  // 越高越好的核心质量指标:高值绿、极低才红(重大错误);触发率/改写率等行为统计保持中性黑色
-  const POSITIVE_PERCENT_KEYS = new Set([
-    "recall_at_k_answerable",
-    "precision_at_k_answerable",
-    "mrr_answerable",
-    "hit_at_1_answerable",
-    "grounded_rate",
-    "useful_rate",
-    "answer_rate",
-    "accepted_rate",
-    "mean_confidence",
-  ]);
-  const rows = Object.entries(EVAL_METRIC_LABELS)
-    .filter(([key]) => metrics[key] !== undefined && metrics[key] !== null)
-    .map(([key, label]) => {
-      const number = Number(metrics[key]);
-      let value;
-      let tone = "";
-      if (EVAL_PERCENT_KEYS.has(key) && Number.isFinite(number)) {
-        value = `${Math.round(number * 100)}%`;
-        if (POSITIVE_PERCENT_KEYS.has(key)) {
-          tone = number >= 0.8 ? "is-good" : number <= 0.2 ? "is-bad" : "";
+  const sections = EVAL_METRIC_GROUPS.map((group) => {
+    const rows = group.keys
+      .filter((key) => metrics[key] !== undefined && metrics[key] !== null)
+      .map((key) => {
+        const label = EVAL_METRIC_LABELS[key] || key;
+        const number = Number(metrics[key]);
+        let value;
+        let tone = "";
+        if (EVAL_PERCENT_KEYS.has(key) && Number.isFinite(number)) {
+          value = `${Math.round(number * 100)}%`;
+          if (EVAL_POSITIVE_PERCENT_KEYS.has(key)) {
+            tone = number >= 0.8 ? "is-good" : number <= 0.2 ? "is-bad" : "";
+          }
+        } else if (key === "scope_isolation_ok") {
+          value = metrics[key] ? "通过" : "未通过";
+          tone = metrics[key] ? "is-good" : "is-bad";
+        } else if (typeof metrics[key] === "number" && Number.isFinite(number)) {
+          value = Number.isInteger(number) ? String(number) : number.toFixed(3);
+        } else {
+          value = String(metrics[key]);
         }
-      } else if (key === "scope_isolation_ok") {
-        value = metrics[key] ? "通过" : "未通过";
-        tone = metrics[key] ? "is-good" : "is-bad";
-      } else if (typeof metrics[key] === "number" && Number.isFinite(number)) {
-        value = Number.isInteger(number) ? String(number) : number.toFixed(3);
-      } else {
-        value = String(metrics[key]);
-      }
-      return `<div class="eval-metric"><span>${label}</span><b${tone ? ` class="${tone}"` : ""}>${value}</b></div>`;
-    });
-  $("eval-metrics").innerHTML = `<div class="eval-metric-grid">${rows.join("")}</div>`;
+        return `<div class="eval-metric"><span>${label}</span><b${tone ? ` class="${tone}"` : ""}>${value}</b></div>`;
+      });
+    if (!rows.length) return "";
+    return `<div class="eval-metric-group"><span class="eval-metric-group-title">${group.title}</span><div class="eval-metric-grid">${rows.join("")}</div></div>`;
+  }).join("");
+  $("eval-metrics").innerHTML = sections;
   $("eval-metrics").classList.remove("is-hidden");
 }
 
@@ -871,6 +883,7 @@ async function autoAnalyze() {
 
 function renderEvalCases(cases) {
   cases = cases || [];
+  const VISIBLE_CASES = 3;
   const list = cases.map((caseItem, index) => {
     const answer = (caseItem.answer || "").slice(0, 120);
     const verdict = caseItem.is_probe
@@ -894,7 +907,19 @@ function renderEvalCases(cases) {
     ].filter(Boolean).join(" · ");
     return `<div class="eval-case ${verdict[1]}"><div class="eval-case-head"><b>${index + 1}. ${caseItem.question}</b><span class="eval-verdict ${verdict[1]}">${verdict[0]}</span></div><p>${answer}</p><span class="eval-flags">${flags}</span></div>`;
   });
-  $("eval-cases").innerHTML = list.join("");
+  const hidden = list.slice(VISIBLE_CASES).join("");
+  $("eval-cases").innerHTML = list.slice(0, VISIBLE_CASES).join("");
+  if (hidden) {
+    const expand = document.createElement("button");
+    expand.type = "button";
+    expand.className = "button button-secondary eval-expand";
+    expand.textContent = `展开全部 ${cases.length} 条`;
+    expand.addEventListener("click", () => {
+      expand.insertAdjacentHTML("beforebegin", hidden);
+      expand.remove();
+    });
+    $("eval-cases").append(expand);
+  }
   $("eval-details").classList.remove("is-hidden");
 }
 

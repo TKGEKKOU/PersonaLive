@@ -4,7 +4,7 @@
 查询改写、联网回退或答案纠错，超过边界后返回保守的无答案结果。
 """
 
-from typing import Any
+from typing import Any, Callable
 
 from langgraph.constants import END, START
 from langgraph.graph import StateGraph
@@ -389,25 +389,36 @@ def serialize_document(document: Any) -> dict:
     }
 
 
-def run_adaptive(request: RagRequest) -> RagResult:
+def run_adaptive(request: RagRequest, on_step: Callable | None = None) -> RagResult:
     # 请求中的 context 已由服务端根据 persona 派生，浏览器和模型不能扩大知识范围。
-    state = graph.invoke(
-        {
-            "question": request.question,
-            "query": request.question,
-            "context": request.context,
-            "allow_web_fallback": request.allow_web_fallback,
-            "rewrite_count": 0,
-            "generation_retry_count": 0,
-            "used_web_search": False,
-            "trace": [],
-            "persona_name": request.persona_name,
-            "persona_profile": request.persona_profile or {},
-            "available_tools": request.available_tools,
-            "interaction_mode": "knowledge",
-            "force_knowledge": request.force_knowledge,
-        }
-    )
+    initial_state = {
+        "question": request.question,
+        "query": request.question,
+        "context": request.context,
+        "allow_web_fallback": request.allow_web_fallback,
+        "rewrite_count": 0,
+        "generation_retry_count": 0,
+        "used_web_search": False,
+        "trace": [],
+        "persona_name": request.persona_name,
+        "persona_profile": request.persona_profile or {},
+        "available_tools": request.available_tools,
+        "interaction_mode": "knowledge",
+        "force_knowledge": request.force_knowledge,
+    }
+    if on_step is None:
+        state = graph.invoke(initial_state)
+    else:
+        # 流式执行：每完成一个节点就回调一次节点名（从追加的 trace 推导），
+        # 用于评测过程实时展示，不改变最终状态。
+        state = {}
+        previous_trace_length = 0
+        for chunk in graph.stream(initial_state, stream_mode="values"):
+            state = chunk
+            trace = chunk.get("trace") or []
+            if len(trace) > previous_trace_length:
+                on_step(trace[-1]["node"], chunk)
+                previous_trace_length = len(trace)
     documents = state.get("documents") or []
     return RagResult(
         answer_draft=state.get("answer", ""),

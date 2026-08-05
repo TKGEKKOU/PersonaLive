@@ -12,7 +12,7 @@ def test_clear_conversation_deletes_messages_audio_and_checkpoint(client, tmp_pa
     conversation_id = "clear-me"
     client.post(
         f"/api/personas/{persona['id']}/conversations/{conversation_id}/voice-messages",
-        headers={"X-PersonaLive-Request": "web"},
+        headers={"X-YUMENO-Request": "web"},
         files={"file": ("recording.webm", b"voice", "audio/webm")},
     )
     checkpointer = RecordingCheckpointer()
@@ -20,7 +20,7 @@ def test_clear_conversation_deletes_messages_audio_and_checkpoint(client, tmp_pa
 
     response = client.delete(
         f"/api/personas/{persona['id']}/conversations/{conversation_id}",
-        headers={"X-PersonaLive-Request": "web"},
+        headers={"X-YUMENO-Request": "web"},
     )
 
     assert response.status_code == 204

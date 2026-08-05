@@ -7,7 +7,7 @@ def test_asr_status_and_config_are_local_api(client, tmp_path, monkeypatch):
     initial = client.get("/api/asr/status")
     updated = client.patch(
         "/api/asr/config",
-        headers={"X-PersonaLive-Request": "web"},
+        headers={"X-YUMENO-Request": "web"},
         json={"enabled": False, "model_path": ""},
     )
 

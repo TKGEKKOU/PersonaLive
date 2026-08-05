@@ -50,10 +50,10 @@ class RagService:
     def __init__(self, runner: Callable[[RagRequest], RagResult]):
         self._runner = runner
 
-    def query(self, request: RagRequest) -> RagResult:
+    def query(self, request: RagRequest, on_step: Callable | None = None) -> RagResult:
         if not request.question.strip():
             raise ValueError("question must not be empty")
-        return self._runner(request)
+        return self._runner(request, on_step=on_step)
 
 
 # 管线工厂：按配置选择 simple（纯检索生成）或 adaptive（纠正式 RAG）。

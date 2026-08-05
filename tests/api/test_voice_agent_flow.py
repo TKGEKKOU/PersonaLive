@@ -30,7 +30,7 @@ def _voice_message(client, tmp_path, monkeypatch):
     persona = client.post("/api/personas", json={"name": "Voice", "profile": {}}).json()
     message = client.post(
         f"/api/personas/{persona['id']}/conversations/c1/voice-messages",
-        headers={"X-PersonaLive-Request": "web"},
+        headers={"X-YUMENO-Request": "web"},
         files={"file": ("recording.webm", b"voice", "audio/webm")},
     ).json()
     return persona, message
@@ -44,7 +44,7 @@ def test_voice_transcript_is_saved_and_sent_to_agent(client, tmp_path, monkeypat
 
     response = client.post(
         f"/api/voice-messages/{message['id']}/transcribe",
-        headers={"X-PersonaLive-Request": "web"},
+        headers={"X-YUMENO-Request": "web"},
     )
 
     assert response.status_code == 200
@@ -62,7 +62,7 @@ def test_failed_transcription_keeps_audio_and_skips_agent(client, tmp_path, monk
 
     response = client.post(
         f"/api/voice-messages/{message['id']}/transcribe",
-        headers={"X-PersonaLive-Request": "web"},
+        headers={"X-YUMENO-Request": "web"},
     )
 
     assert response.status_code == 502

@@ -28,3 +28,7 @@ def test_shell_registers_new_module_entries():
     script = (ROOT / "static" / "js" / "app.js").read_text(encoding="utf-8")
     assert 'integrations: { view: "integrations"' in script
     assert 'plugins: { view: "plugins"' in script
+    assert 'create: { view: "create"' in script
+    assert 'manage: { view: "manage"' in script
+    assert 'test: { view: "test"' in script
+    assert 'upload: { view: "personas"' not in script

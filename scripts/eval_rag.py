@@ -3,17 +3,21 @@
 用法示例：
     python scripts/eval_rag.py --data rag/eval/sample_questions.jsonl \
         --persona-id <角色ID> --knowledge-space-id <知识空间ID> \
-        [--workspace-id local] [--max-cases 20] \
-        [--fail-below recall=0.5 mrr=0.5 grounded=0.7]
+        [--workspace-id local-default] [--max-cases 20] [--web] [--no-probes] \
+        [--fail-below recall=0.5 mrr=0.5 grounded=0.7 refusal=0.5]
 
 数据格式（JSONL，每行一个 JSON 对象）：
     {"question": "...", "expected_chunk_ids": ["chunk-1", ...] | null,
      "reference_answer": "..." | null}
 
-- expected_chunk_ids 需从真实 Milvus 数据中取 chunk_id（可用管理端检索或直接
-  查询 Milvus）；缺失时跳过检索类指标，只统计生成质量与耗时。
+- expected_chunk_ids 可选：不填时评测自动用 LLM 判定候选池内的相关片段
+  （免标注模式），无需人工准备标签；填了则按人工标注口径计算真实召回。
+- reference_answer 当前未参与指标，保留字段供后续扩展。
+- 数据集未带探针时自动附加内置无关问题探针测量拒答率；题集自带
+  _probe 标记（自动生成的题集）时不会重复附加。可用 --no-probes 关闭。
 - --fail-below 用于回归门禁（CI）：任一指标低于阈值则进程退出码为 1。
-  可用键：recall / precision / mrr / hit1 / grounded / useful。
+  可用键：recall / precision / mrr / hit1 / grounded / useful /
+  refusal / answer / accepted / confidence。
 """
 
 from __future__ import annotations
@@ -32,8 +36,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--data", type=Path, required=True, help="JSONL dataset path")
     parser.add_argument("--persona-id", required=True, help="persona id to evaluate")
     parser.add_argument("--knowledge-space-id", action="append", required=True, dest="knowledge_space_ids")
-    parser.add_argument("--workspace-id", default="local")
+    parser.add_argument("--workspace-id", default="local-default")
     parser.add_argument("--max-cases", type=int, default=None)
+    parser.add_argument("--web", action="store_true", help="允许本地证据不足时联网兜底")
+    parser.add_argument("--no-probes", action="store_true", help="不附加内置无关问题探针")
     parser.add_argument("--fail-below", nargs="*", default=[], metavar="KEY=VALUE",
                         help="regression gates, e.g. recall=0.5 grounded=0.7")
     return parser
@@ -57,13 +63,21 @@ def main(argv: list[str] | None = None) -> int:
         workspace_id=args.workspace_id,
         knowledge_space_ids=args.knowledge_space_ids,
         max_cases=args.max_cases,
+        enable_web_fallback=args.web,
+        include_probes=not args.no_probes,
     )
+
+    from rag.eval.runner import check_scope_isolation
 
     retrieval = summarize_retrieval([result.as_dict() for result in results])
     generation = summarize_generation([result.as_dict() for result in results])
     report = {
         "retrieval": retrieval,
         "generation": generation,
+        "scope_isolation_ok": check_scope_isolation(
+            args.workspace_id,
+            args.knowledge_space_ids,
+        ),
         "cases": [result.as_dict() for result in results],
     }
     print(json.dumps({k: v for k, v in report.items() if k != "cases"}, ensure_ascii=False, indent=2))
@@ -71,7 +85,11 @@ def main(argv: list[str] | None = None) -> int:
     gates = {"recall": retrieval["recall_at_k"], "precision": retrieval["precision_at_k"],
              "mrr": retrieval["mrr"], "hit1": retrieval["hit_at_1"],
              "grounded": generation.get("grounded_rate") or 0.0,
-             "useful": generation.get("useful_rate") or 0.0}
+             "useful": generation.get("useful_rate") or 0.0,
+             "refusal": generation.get("refusal_rate") or 0.0,
+             "answer": generation.get("answer_rate") or 0.0,
+             "accepted": generation.get("accepted_rate") or 0.0,
+             "confidence": generation.get("mean_confidence") or 0.0}
     failed = []
     for item in args.fail_below:
         key, _, raw = item.partition("=")
@@ -81,7 +99,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"无效阈值: {item}", file=sys.stderr)
             return 2
         if key not in gates:
-            print(f"未知指标: {key}（可选: recall/precision/mrr/hit1/grounded/useful）", file=sys.stderr)
+            print(
+                f"未知指标: {key}（可选: recall/precision/mrr/hit1/grounded/useful/refusal/answer/accepted/confidence）",
+                file=sys.stderr,
+            )
             return 2
         if gates[key] < threshold:
             failed.append(f"{key}={gates[key]:.3f} < {threshold:.3f}")

@@ -1,7 +1,6 @@
-from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-from rag.llm import get_llm
+from rag.llm import invoke_llm
 
 
 def rewrite_query(question: str) -> str:
@@ -16,7 +15,6 @@ def rewrite_query(question: str) -> str:
             ("human", "{question}"),
         ]
     )
-    chain = prompt | get_llm() | StrOutputParser()
-    rewritten = chain.invoke({"question": question}).strip()
+    rewritten = invoke_llm(prompt, {"question": question}).strip()
     # 空输出回退原问题，保证后续检索始终有合法查询。
     return rewritten or question

@@ -9,7 +9,7 @@ def test_voice_message_is_persisted_and_restored(client, tmp_path, monkeypatch):
 
     response = client.post(
         f"/api/personas/{persona['id']}/conversations/{conversation_id}/voice-messages",
-        headers={"X-PersonaLive-Request": "web"},
+        headers={"X-YUMENO-Request": "web"},
         files={"file": ("recording.webm", b"0123456789", "audio/webm")},
     )
 
@@ -32,7 +32,7 @@ def test_voice_audio_supports_range_requests(client, tmp_path, monkeypatch):
     persona = _persona(client)
     message = client.post(
         f"/api/personas/{persona['id']}/conversations/c1/voice-messages",
-        headers={"X-PersonaLive-Request": "web"},
+        headers={"X-YUMENO-Request": "web"},
         files={"file": ("recording.webm", b"0123456789", "audio/webm")},
     ).json()
 
@@ -47,7 +47,7 @@ def test_voice_message_rejects_unsupported_audio(client, tmp_path, monkeypatch):
     persona = _persona(client)
     response = client.post(
         f"/api/personas/{persona['id']}/conversations/c1/voice-messages",
-        headers={"X-PersonaLive-Request": "web"},
+        headers={"X-YUMENO-Request": "web"},
         files={"file": ("note.txt", b"not audio", "text/plain")},
     )
     assert response.status_code == 415

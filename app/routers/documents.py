@@ -1,12 +1,15 @@
 from typing import Annotated
+import shutil
+from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.database import get_session
 from app.models import DocumentJob
 from app.schemas import DocumentJobResponse
 from persona.service import LOCAL_WORKSPACE_ID
+from settings import Settings
 from ingestion.document_jobs import (
     create_conversion_job,
     get_local_knowledge_space,
@@ -14,6 +17,8 @@ from ingestion.document_jobs import (
     prepare_index,
     prepare_retry,
 )
+from ingestion.markdown_parser import DocumentScope
+from ingestion.milvus_store import MilvusRagStore
 
 
 router = APIRouter(tags=["documents"])
@@ -95,3 +100,24 @@ def retry_document(
         raise HTTPException(status_code=409, detail="Invalid document state") from exc
     background_tasks.add_task(index_document_job, job.id, session_factory_from(request))
     return job
+
+
+@router.delete("/api/documents/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_document(job_id: str, session: Session = Depends(get_session)):
+    job = get_job_or_404(session, job_id)
+    # indexing 状态也可能已有部分/全部向量（后台任务与删除并发），
+    # 一并清理，避免删除后残留孤儿向量仍被检索到。
+    if job.status in ("indexing", "indexed", "index_failed"):
+        scope = DocumentScope(job.workspace_id, job.knowledge_space_id, job.document_id)
+        try:
+            MilvusRagStore().delete_document(scope, job.document_id)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Failed to remove document vectors: {exc}") from exc
+    staging_parent = (Settings.load().project_root / "data" / "staging").resolve()
+    if job.source_path:
+        staging = Path(job.source_path).resolve().parent
+        if staging != staging_parent and staging_parent in staging.parents:
+            shutil.rmtree(staging, ignore_errors=True)
+    session.delete(job)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

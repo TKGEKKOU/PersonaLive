@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Callable
 
 from langgraph.constants import END, START
 from langgraph.graph import StateGraph
@@ -54,7 +54,8 @@ def serialize_document(document: Any) -> dict:
     }
 
 
-def run_simple(request: RagRequest) -> RagResult:
+def run_simple(request: RagRequest, on_step: Callable | None = None) -> RagResult:
+    del on_step  # simple 管线不提供分步回调，接口保持对齐
     state = graph.invoke(
         {
             "question": request.question,

@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -5,6 +7,7 @@ from uuid import uuid4
 
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import StaleDataError
 
 from app.models import DocumentJob, KnowledgeSpace
 from persona.service import LOCAL_WORKSPACE_ID
@@ -12,8 +15,10 @@ from settings import Settings
 from ingestion.converter import convert_source
 from ingestion.indexer import ingest_markdown_file
 from ingestion.markdown_parser import DocumentScope
+from ingestion.milvus_store import MilvusRagStore
 
 
+logger = logging.getLogger(__name__)
 settings = Settings.load()
 DATA_DIR = settings.project_root / "data"
 MAX_UPLOAD_BYTES = settings.max_upload_mb * 1024 * 1024
@@ -78,7 +83,7 @@ async def create_conversion_job(
                 if total > MAX_UPLOAD_BYTES:
                     raise ValueError("FILE_TOO_LARGE")
                 destination.write(chunk)
-        job.markdown_preview = convert_source(source_path, markdown_path)
+        job.markdown_preview = await asyncio.to_thread(convert_source, source_path, markdown_path)
         job.status = "preview_ready"
         job.error_message = None
     except Exception as exc:
@@ -114,7 +119,11 @@ def prepare_retry(session: Session, job: DocumentJob) -> DocumentJob:
     return job
 
 
-def index_document_job(job_id: str, session_factory) -> None:
+def index_document_job(
+    job_id: str,
+    session_factory,
+    store: MilvusRagStore | None = None,
+) -> None:
     with session_factory() as session:
         job = session.get(DocumentJob, job_id)
         if job is None or job.workspace_id != LOCAL_WORKSPACE_ID or not job.markdown_path:
@@ -128,4 +137,19 @@ def index_document_job(job_id: str, session_factory) -> None:
         except Exception as exc:
             job.status = "index_failed"
             job.error_message = str(exc)[:2000]
-        session.commit()
+        try:
+            session.commit()
+        except StaleDataError:
+            # 行被并发删除（删除文档/角色）导致 UPDATE 匹配 0 行：回滚事务后
+            # 清理刚写入 Milvus 的向量，避免已删除文档的向量残留污染检索结果。
+            session.rollback()
+            cleanup_store = store or MilvusRagStore()
+            try:
+                cleanup_store.delete_document(scope, job.document_id)
+            except Exception as cleanup_exc:  # noqa: BLE001 - 清理失败不应再次抛出
+                logger.warning("文档任务 %s 清理孤儿向量失败：%s", job_id, cleanup_exc)
+            logger.warning(
+                "文档任务 %s 的行已被并发删除，已回滚并清理 Milvus 向量（document_id=%s）",
+                job_id,
+                job.document_id,
+            )

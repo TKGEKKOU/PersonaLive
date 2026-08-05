@@ -11,8 +11,10 @@ def test_web_workbench_exposes_shell_and_module_views(client):
     assert 'href="/static/styles.css"' in response.text
     assert 'src="/static/js/app.js"' in response.text
     for element_id in (
-        "nav-upload",
+        "nav-create",
+        "nav-manage",
         "nav-chat",
+        "nav-test",
         "nav-settings",
         "nav-integrations",
         "nav-plugins",
@@ -22,19 +24,37 @@ def test_web_workbench_exposes_shell_and_module_views(client):
         "preview-drawer",
         "settings-confirm-dialog",
         "delete-persona-dialog",
+        "save-all-dialog",
     ):
         assert f'id="{element_id}"' in response.text
 
     views = {
-        "personas": (
-            "upload-view",
-            "material-action",
-            "edit-persona-select",
-            "edit-persona-form",
+        "create": (
+            "create-view",
             "generation-mode",
             "batch-form",
             "draft-editor",
+            "create-steps",
+            "direct-text",
+            "upload-button",
+        ),
+        "manage": (
+            "manage-view",
+            "manage-persona-list",
+            "edit-persona-workspace",
+            "edit-files-confirm",
+            "edit-live2d-confirm",
+            "edit-tts-confirm",
+            "save-all-persona",
             "delete-persona",
+            "edit-document-list",
+        ),
+        "test": (
+            "test-view",
+            "eval-panel",
+            "eval-persona",
+            "eval-auto-run",
+            "eval-state-pill",
         ),
         "chat": (
             "chat-view",
@@ -65,10 +85,6 @@ def test_web_workbench_exposes_shell_and_module_views(client):
             "web-search-guide",
             "open-asr-directory",
             "open-tts-directory",
-            "docker-exit-policy",
-            "docker-save-exit",
-            "docker-pause-now",
-            "docker-remove-now",
         ),
         "integrations": (
             "integrations-view",
@@ -101,6 +117,9 @@ def test_web_workbench_exposes_shell_and_module_views(client):
             'fetch(`/api/persona-drafts/${state.draft.id}`',
             'fetch(`/api/persona-drafts/${state.draft.id}/confirm`',
             'fetch(`/api/personas/${persona.id}`, { method: "DELETE" })',
+            'fetch("/api/eval/run"',
+            'fetch("/api/eval/status")',
+            'fetch("/api/eval/results")',
         ),
         "/static/js/chat.js": (
             'fetch(`/api/personas/${state.activePersona.id}/agent/query`',
@@ -110,9 +129,6 @@ def test_web_workbench_exposes_shell_and_module_views(client):
             'fetch("/api/settings"',
             'method: "DELETE"',
             '确认重置配置',
-            'fetch("/api/system/docker-settings"',
-            'fetch("/api/system/docker/pause", { method: "POST" })',
-            'fetch("/api/system/docker/remove", { method: "POST" })',
         ),
     }
     for path, contracts in scripts.items():

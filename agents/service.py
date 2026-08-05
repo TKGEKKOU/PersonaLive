@@ -1,4 +1,5 @@
 import json
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -11,7 +12,10 @@ from agents.context import PersonaAgentContext
 from agents.registry import capability_summary, specialist_for_tool, tool_specs
 from agents.supervisor import Specialist
 from agents.workflow import build_persona_workflow
-from rag.llm import get_llm
+from rag.llm import LLM_UNAVAILABLE_MESSAGE, get_llm, is_transient_provider_error
+
+
+logger = logging.getLogger(__name__)
 
 
 CAPABILITY_QUESTION_SIGNALS = (
@@ -87,11 +91,23 @@ class PersonaAgentService:
                 answer=capability_summary(),
                 specialist="conversation",
             )
-        result = graph.invoke(
-            {"messages": [{"role": "user", "content": question}], "active_worker": None},
-            self._config(context),
-            context=context,
-        )
+        try:
+            result = graph.invoke(
+                {"messages": [{"role": "user", "content": question}], "active_worker": None},
+                self._config(context),
+                context=context,
+            )
+        except Exception as exc:
+            # 模型服务瞬时不可用（429/5xx）时返回统一降级提示，避免整个请求 500；
+            # 其他异常仍然上抛，便于定位真实故障。
+            if is_transient_provider_error(exc):
+                logger.warning("Agent LLM 服务瞬时故障，返回降级提示：%s", exc)
+                return AgentTurnResult(
+                    status="completed",
+                    answer=LLM_UNAVAILABLE_MESSAGE,
+                    specialist="conversation",
+                )
+            raise
         return self._result(result)
 
     def _find_pending(self, graph, context: PersonaAgentContext) -> AgentTurnResult | None:
@@ -120,11 +136,21 @@ class PersonaAgentService:
             return self._result(snapshot.values or {})
         # Command(resume=...) 从 checkpointer 中恢复 interrupt 所在节点，不会重跑
         # 用户消息之前已经完成的 Worker 步骤。
-        result = graph.invoke(
-            Command(resume={"approved": approved}),
-            config,
-            context=context,
-        )
+        try:
+            result = graph.invoke(
+                Command(resume={"approved": approved}),
+                config,
+                context=context,
+            )
+        except Exception as exc:
+            if is_transient_provider_error(exc):
+                logger.warning("Agent 恢复会话时 LLM 服务瞬时故障，返回降级提示：%s", exc)
+                return AgentTurnResult(
+                    status="completed",
+                    answer=LLM_UNAVAILABLE_MESSAGE,
+                    specialist="conversation",
+                )
+            raise
         return self._result(result)
 
     @staticmethod
