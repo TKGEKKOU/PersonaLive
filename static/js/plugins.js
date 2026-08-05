@@ -1,6 +1,7 @@
 "use strict";
 window.PL = window.PL || { modules: {} };
 window.PL.modules.plugins = { init: initPlugins };
+let editingSkillName = null;
 
 async function initPlugins() {
   window.clearInterval(window.__mcpPollTimer);
@@ -53,13 +54,33 @@ function renderSkillCard(skill) {
   meta.textContent = `${skill.builtin ? "内置" : "自定义"} · ${skill.format === "skillmd" ? "标准包" : "JSON"}`;
   title.append(name, meta);
   head.append(title);
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "toggle-switch";
+  toggle.classList.toggle("is-on", skill.enabled);
+  toggle.setAttribute("aria-label", `启用 ${skill.name}`);
+  toggle.title = skill.enabled ? "已启用，点击停用" : "已停用，点击启用";
+  toggle.addEventListener("click", () => toggleSkill(skill.name, !skill.enabled));
+  head.append(toggle);
   if (!skill.builtin) {
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "button button-secondary";
+    edit.textContent = "编辑";
+    edit.addEventListener("click", () => editSkill(skill));
+    head.append(edit);
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "button button-danger";
     remove.textContent = "删除";
     remove.addEventListener("click", () => deleteSkill(skill.name));
     head.append(remove);
+  }
+  if (!skill.enabled) {
+    const disabled = document.createElement("span");
+    disabled.className = "status-pill status-pill-warn";
+    disabled.textContent = "已停用";
+    card.append(disabled);
   }
   card.append(head);
   if (skill.description) {
@@ -135,28 +156,84 @@ async function createSkill() {
     return;
   }
   try {
-    await api(fetch("/api/skills", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name,
-        instructions,
-        description: $("skill-description").value.trim(),
-        prompt_hint: $("skill-prompt-hint").value.trim(),
-        tool_names: toolNames,
-      }),
-    }));
+    if (editingSkillName) {
+      await api(fetch(`/api/skills/${encodeURIComponent(editingSkillName)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          instructions,
+          description: $("skill-description").value.trim(),
+          prompt_hint: $("skill-prompt-hint").value.trim(),
+          tool_names: toolNames,
+        }),
+      }));
+      setSkillStatus("技能已保存修改。", false);
+    } else {
+      await api(fetch("/api/skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          instructions,
+          description: $("skill-description").value.trim(),
+          prompt_hint: $("skill-prompt-hint").value.trim(),
+          tool_names: toolNames,
+        }),
+      }));
+      setSkillStatus("技能已保存。", false);
+    }
+    resetSkillForm();
     $("skill-create-form").open = false;
-    $("skill-name").value = "";
-    $("skill-description").value = "";
-    $("skill-instructions").value = "";
-    $("skill-prompt-hint").value = "";
     renderToolOptions(await loadSkillTools());
     await renderSkillList();
-    setSkillStatus("技能已保存。", false);
   } catch (reason) {
     setSkillStatus(reason.message || reason, true);
   }
+}
+
+async function toggleSkill(name, enabled) {
+  try {
+    await api(fetch(`/api/skills/${encodeURIComponent(name)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    }));
+    await renderSkillList();
+    setSkillStatus(enabled ? "已启用" : "已停用", false);
+  } catch (reason) {
+    setSkillStatus(reason.message || reason, true);
+  }
+}
+
+function editSkill(skill) {
+  editingSkillName = skill.name;
+  $("skill-name").value = skill.name;
+  $("skill-name").readOnly = true;
+  $("skill-description").value = skill.description || "";
+  $("skill-instructions").value = skill.instructions || "";
+  $("skill-prompt-hint").value = skill.prompt_hint || "";
+  $("skill-tools").querySelectorAll("input").forEach((input) => {
+    input.checked = skill.tool_names.includes(input.value);
+  });
+  const form = $("skill-create-form");
+  const summary = form.querySelector("summary");
+  if (summary) summary.textContent = `编辑技能：${skill.name}`;
+  $("skill-create-submit").textContent = "保存修改";
+  form.open = true;
+}
+
+function resetSkillForm() {
+  editingSkillName = null;
+  $("skill-name").value = "";
+  $("skill-name").readOnly = false;
+  $("skill-description").value = "";
+  $("skill-instructions").value = "";
+  $("skill-prompt-hint").value = "";
+  $("skill-tools").querySelectorAll("input").forEach((input) => { input.checked = false; });
+  const form = $("skill-create-form");
+  const summary = form.querySelector("summary");
+  if (summary) summary.textContent = "新增技能";
+  $("skill-create-submit").textContent = "保存技能";
 }
 
 async function deleteSkill(name) {

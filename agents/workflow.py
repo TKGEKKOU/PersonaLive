@@ -184,6 +184,7 @@ def build_skill_middleware(base_tools: list):
             skill.name
             for skill in list_skills()
             if skill.metadata.get("auto_load") == "true"
+            and skill.enabled
         ]
         loaded = list(dict.fromkeys(auto_loaded + list(loaded)))
         persona_id = getattr(getattr(request.runtime, "context", None), "persona_id", "")
@@ -232,6 +233,7 @@ def _supervisor_agent(model: BaseChatModel | None):
     skill_tools = {
         skill_tool.name: skill_tool
         for skill in list_skills()
+        if skill.enabled
         for skill_tool in tools_for_skill(skill)
     }
     return create_agent(

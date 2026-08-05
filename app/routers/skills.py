@@ -38,6 +38,7 @@ def _to_dict(spec) -> dict:
         "tool_names": list(spec.tool_names),
         "builtin": spec.builtin,
         "format": spec.format,
+        "enabled": spec.enabled,
         "metadata": spec.metadata,
     }
 
@@ -87,6 +88,38 @@ def delete_skill_api(name: str) -> Response:
     except KeyError:
         raise HTTPException(status_code=404, detail="Skill not found") from None
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+class SkillUpdate(BaseModel):
+    enabled: bool | None = None
+    description: str | None = None
+    instructions: str | None = None
+    prompt_hint: str | None = None
+    tool_names: list[str] | None = None
+
+
+@router.patch("/{name}", response_model=None)
+def update_skill_api(name: str, payload: SkillUpdate) -> dict:
+    try:
+        if payload.enabled is not None:
+            spec = skills_module.set_skill_enabled(name, payload.enabled)
+            if (
+                payload.description is None
+                and payload.instructions is None
+                and payload.prompt_hint is None
+                and payload.tool_names is None
+            ):
+                return _to_dict(spec)
+        spec = skills_module.update_skill(
+            name,
+            description=payload.description,
+            instructions=payload.instructions,
+            prompt_hint=payload.prompt_hint,
+            tool_names=payload.tool_names,
+        )
+        return _to_dict(spec)
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/upload")

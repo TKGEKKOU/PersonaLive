@@ -17,6 +17,7 @@ import os
 import re
 import shutil
 from dataclasses import asdict, dataclass, field
+from dataclasses import replace
 from pathlib import Path
 
 from langchain.messages import ToolMessage
@@ -33,6 +34,7 @@ from settings import Settings
 
 SKILL_DIR = Path(__file__).resolve().parent / "skills"
 USER_SKILL_DIR = Settings.load().project_root / "data" / "skills"
+SKILL_STATE_PATH = USER_SKILL_DIR / "skills_state.json"
 NAME_PATTERN = re.compile(r"[a-z0-9_-]+")
 
 
@@ -48,7 +50,36 @@ class SkillSpec:
     prompt_hint: str = ""
     builtin: bool = False
     format: str = "json"
+    enabled: bool = True
     metadata: dict = field(default_factory=dict)
+
+
+def _load_skill_states() -> dict[str, bool]:
+    """读取技能启停状态；缺省视为启用。"""
+
+    if not SKILL_STATE_PATH.is_file():
+        return {}
+    try:
+        raw = json.loads(SKILL_STATE_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    states: dict[str, bool] = {}
+    if isinstance(raw, dict):
+        for name, value in raw.items():
+            if isinstance(value, bool):
+                states[name] = value
+            elif isinstance(value, dict) and isinstance(value.get("enabled"), bool):
+                states[name] = value["enabled"]
+    return states
+
+
+def _save_skill_state(name: str, enabled: bool) -> None:
+    states = _load_skill_states()
+    states[name] = enabled
+    SKILL_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = SKILL_STATE_PATH.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(states, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, SKILL_STATE_PATH)
 
 
 def _scan_dir(directory: Path, known: set[str], builtin: bool) -> dict[str, SkillSpec]:
@@ -98,10 +129,15 @@ def _load_skills() -> dict[str, SkillSpec]:
     """扫描内置与自定义目录；内置技能优先，同名自定义配置被忽略。"""
 
     known = {spec.name for spec in tool_specs()}
+    states = _load_skill_states()
     loaded = _scan_dir(SKILL_DIR, known, builtin=True)
     for name, spec in _scan_dir(USER_SKILL_DIR, known, builtin=False).items():
         if name not in loaded:
             loaded[name] = spec
+    for name, spec in loaded.items():
+        enabled = states.get(name, True)
+        if not enabled:
+            loaded[name] = replace(spec, enabled=False)
     return loaded
 
 
@@ -185,8 +221,58 @@ def delete_skill(name: str) -> bool:
         shutil.rmtree(dir_target)
     else:
         raise KeyError(name)
+    states = _load_skill_states()
+    if name in states:
+        states.pop(name)
+        SKILL_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = SKILL_STATE_PATH.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(states, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp, SKILL_STATE_PATH)
     refresh_skills()
     return True
+
+
+def set_skill_enabled(name: str, enabled: bool) -> SkillSpec:
+    """切换技能启用状态（内置与自定义均可停用）。"""
+
+    get_skill(name)
+    _save_skill_state(name, bool(enabled))
+    refresh_skills()
+    return get_skill(name)
+
+
+def update_skill(
+    name: str,
+    *,
+    description: str | None = None,
+    instructions: str | None = None,
+    prompt_hint: str | None = None,
+    tool_names: list[str] | None = None,
+) -> SkillSpec:
+    """编辑自定义 JSON 技能字段；内置技能与 SKILL.md 技能包只读。"""
+
+    spec = get_skill(name)
+    if spec.builtin:
+        raise ValueError("内置技能不可编辑")
+    if spec.format != "json":
+        raise ValueError("标准 SKILL.md 技能包暂不支持编辑，仅支持启用/停用")
+    target = USER_SKILL_DIR / f"{name}.json"
+    if not target.is_file():
+        raise KeyError(name)
+    data = json.loads(target.read_text(encoding="utf-8"))
+    if description is not None:
+        data["description"] = str(description)
+    if instructions is not None:
+        data["instructions"] = str(instructions)
+    if prompt_hint is not None:
+        data["prompt_hint"] = str(prompt_hint)
+    if tool_names is not None:
+        data["tool_names"] = [str(item) for item in tool_names]
+    tmp = target.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, target)
+    refresh_skills()
+    return get_skill(name)
 
 
 @tool("load_skill")
@@ -194,6 +280,20 @@ def load_skill(skill_name: str, runtime: ToolRuntime[PersonaAgentContext]) -> Co
     """Load an agent skill by name, exposing its tools to the current conversation."""
 
     skill = get_skill(skill_name)
+    if not skill.enabled:
+        return Command(
+            update={
+                "messages": [
+                    ToolMessage(
+                        content=json.dumps(
+                            {"status": "disabled", "skill": skill_name, "instructions": ""},
+                            ensure_ascii=False,
+                        ),
+                        tool_call_id=runtime.tool_call_id,
+                    )
+                ]
+            }
+        )
     persona_id = runtime.context.persona_id
     visible_tools = [
         name for name in skill.tool_names if is_mcp_tool_visible(persona_id, name)
