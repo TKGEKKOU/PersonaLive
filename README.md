@@ -1,8 +1,11 @@
 # YUMENO
 
+[![Release](https://img.shields.io/github/v/release/TKGEKKOU/yumeno)](https://github.com/TKGEKKOU/yumeno/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows-0078d6)](https://github.com/TKGEKKOU/yumeno/releases)
+
 > 曾用名 PersonaLive；代码、容器名、API 校验头等内部标识仍沿用 `personalive` 前缀，作为工程别名保留。
 
-YUMENO 是一个**本地优先、生产级**的角色化多 Agent RAG 平台。它以 LangGraph 1.x 为底层运行时，将
+YUMENO 是一个**本地优先、生产级**的角色化多 Agent RAG 平台。它以 LangGraph 1.2.9 为底层运行时，将
 **人设驱动的多 Agent 编排**与**自适应纠错式 RAG** 深度耦合：每个角色拥有独立的身份设定、知识空间、
 会话状态与记忆，通过 Supervisor 多 Agent 架构统一调度知识检索、联网查询、长期记忆与角色管理四类
 专业 Worker，通过质量门与有界纠错机制抑制幻觉，最终以角色口吻生成接地、可信、可追溯的回复。
@@ -38,7 +41,7 @@ YUMENO 是一个**本地优先、生产级**的角色化多 Agent RAG 平台。�
 对话层采用 **LangGraph Supervisor 集中式监督架构**（星形拓扑）：仅 `persona_supervisor` 对用户可见，
 四个 Worker 负责执行受限领域的子任务，最终答复统一由 Supervisor 结合完整人设资料整合生成。
 
-**构建方式**：基于 LangChain 1.0 的 `create_agent()` 标准入口，底层封装 LangGraph 执行机制
+**构建方式**：基于 LangChain 1.3.14 的 `create_agent()` 标准入口，底层封装 LangGraph 执行机制
 （模型调用 → 工具决策 → 执行 → 结果整合的闭环）；通过**中间件（Middleware）**的 `dynamic_prompt`
 钩子在每次模型调用前动态注入角色人设、持久记忆与回复约束，无需为每个角色维护静态提示词模板；
 通过 `context_schema` 将角色/会话上下文（`PersonaAgentContext`）作为不可变上下文注入工具运行时，
@@ -169,8 +172,8 @@ LangGraph `interrupt()` 触发中断，返回待审批的操作详情（工具�
 
 | 领域 | 选型 |
 |---|---|
-| 编排框架 | LangGraph 1.x（`StateGraph` / `create_agent` / Middleware / Checkpoint） |
-| Agent 入口 | LangChain 1.x `create_agent()` + `dynamic_prompt` 中间件 |
+| 编排框架 | LangGraph 1.2.9（`StateGraph` / `create_agent` / Middleware / Checkpoint） |
+| Agent 入口 | LangChain 1.3.14 `create_agent()` + `dynamic_prompt` 中间件 |
 | 状态持久化 | `langgraph-checkpoint-sqlite` / `MemorySaver` |
 | 向量数据库 | Milvus（Dense HNSW-IP + BM25 sparse + RRF） |
 | 文档解析 | MarkItDown → 结构感知分块（jieba 中文分词） |
@@ -186,11 +189,19 @@ LangGraph `interrupt()` 触发中断，返回待审批的操作详情（工具�
 - Docker Desktop（运行 Milvus、etcd、MinIO 与 Attu）
 - OpenAI-compatible Chat 与 Embedding 接口（LLM / Embedding 供应商无关）
 
-## 本地启动
+## 快速开始（桌面端）
+
+1. 从 [GitHub Releases](https://github.com/TKGEKKOU/yumeno/releases) 下载安装程序
+   `YUMENO-Setup-0.1.1.exe` 并安装（或下载便携版 zip，解压后双击 `YUMENO.exe`）；
+2. 首次使用前请安装并启动 [Docker Desktop](https://www.docker.com/products/docker-desktop/)；
+3. 双击桌面快捷方式启动 YUMENO——启动页会自动检查 Docker、拉起 Milvus 与本地服务；
+4. 在"设置"页配置 LLM API Key（OpenAI 兼容接口），然后创建角色、上传资料、开始对话。
+
+## 从源码运行（开发）
 
 以下命令均在项目根目录执行。
 
-### 一键启动（推荐）
+### 一键启动
 
 首次运行会自动创建 `.venv`、安装依赖、生成 `.env`，并拉起 Docker 基础设施；
 之后重复运行直接复用已有环境。
@@ -204,25 +215,19 @@ LangGraph `interrupt()` 触发中断，返回待审批的操作详情（工具�
 前置条件：安装 [Python 3.11](https://www.python.org/downloads/)（勾选 Add to PATH）
 与 [Docker Desktop](https://www.docker.com/products/docker-desktop/)。
 
-### 首次启动
+### 手动启动
 
-1. 创建本地配置（不要将 `.env` 提交到 Git）：
-
-```powershell
-Copy-Item .env.example .env
-```
-
-应用数据存储于本地 SQLite 文件（`data/yumeno.db`，随 `data/` 目录被 Git 忽略），
-无需额外初始化；首次启动时自动建库建表。
-
-2. 创建 Python 3.11 虚拟环境并安装依赖：
+1. 创建 Python 3.11 虚拟环境并安装依赖：
 
 ```powershell
 py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e . -r requirements-dev.txt
 ```
 
-3. 启动基础设施并等待健康：
+应用数据存储于本地 SQLite 文件（`data/yumeno.db`，随 `data/` 目录被 Git 忽略），
+无需额外初始化；首次启动时自动建库建表。
+
+2. 启动基础设施并等待健康：
 
 ```powershell
 docker compose up -d
@@ -231,27 +236,18 @@ docker compose ps
 
 等待 `etcd`、`standalone` 显示为 `healthy` 后再启动应用。
 
-4. 启动 FastAPI：
+3. 启动服务端或桌面端：
 
 ```powershell
+# 服务端（浏览器访问 http://127.0.0.1:17000）
 .\.venv\Scripts\python.exe -B main.py
-```
 
-### 日常启动
-
-```powershell
-docker compose up -d
-.\.venv\Scripts\python.exe -B main.py
-```
-
-### Windows 桌面开发模式
-
-```powershell
+# 或桌面端（先安装桌面依赖）
 .\.venv\Scripts\python.exe -m pip install -r requirements-desktop.txt
 .\.venv\Scripts\python.exe -B desktop_main.py
 ```
 
-桌面窗口关闭时停止 FastAPI 与 ASR Worker，Docker 容器默认继续运行。生成 Windows onedir 包：
+桌面窗口关闭时停止 FastAPI 与 ASR Worker，Docker 容器默认继续运行。生成 Windows onedir 包与安装程序：
 
 ```powershell
 .\scripts\build_windows.ps1
