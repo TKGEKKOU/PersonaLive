@@ -2,33 +2,15 @@
   <div class="panel integrations-panel">
     <div class="panel-heading"><div><h2>接入</h2><p class="panel-subtitle">把角色接到 QQ：官方机器人直连官方网关，或通过 OneBot 11（NapCat）转发。</p></div></div>
 
-    <details class="fold-card" open>
-      <summary><div><strong>QQ 官方机器人</strong><p class="panel-subtitle">官方 WebSocket 直连，支持群聊与单聊；需开放平台主体认证与 IP 白名单。</p></div><span id="qq-official-status-pill" class="status-pill">未启用</span></summary>
-      <form id="qq-official-form" class="settings-form">
-        <div class="settings-grid settings-grid-form">
-          <label class="toggle-field settings-feature-toggle"><input id="qq-official-enabled" type="checkbox"><span>启用 QQ 官方机器人</span></label>
-          <label class="field"><span>AppID</span><input id="qq-official-appid" autocomplete="off" placeholder="开放平台 → 开发设置"></label>
-          <label class="field key-field"><span>AppSecret</span><span class="secret-input"><input id="qq-official-secret" type="password" autocomplete="off" placeholder="留空则不修改"><span class="secret-actions"><button id="toggle-qq-official-secret" type="button" title="显示或隐藏" aria-label="显示或隐藏"><i data-lucide="eye"></i></button></span></span></label>
-          <label class="toggle-field"><input id="qq-official-sandbox" type="checkbox"><span>沙箱环境</span></label>
-          <label class="field provider-field"><span>群聊触发</span><select id="qq-official-group-trigger"><option value="at">@机器人</option><option value="prefix">关键词前缀</option></select></label>
-          <label id="qq-official-prefix-field" class="field is-hidden"><span>触发前缀</span><input id="qq-official-prefix" placeholder="例如：机器人，"></label>
-          <label class="field"><span>默认角色</span><select id="qq-official-default-persona"><option value="">未设置</option></select></label>
+    <details class="fold-card">
+      <summary><div><strong>QQ 官方机器人</strong><p class="panel-subtitle">官方 WebSocket 直连通道，当前暂不可用。</p></div><span id="qq-official-status-pill" class="status-pill">暂不可用</span></summary>
+      <div class="integrations-unavailable">
+        <i data-lucide="clock"></i>
+        <div>
+          <strong>暂不可用</strong>
+          <p>官方网关要求机器人完成开放平台主体认证、IP 白名单与群聊权限配置，当前账号环境暂未满足，因此该接入暂不可用。待权限开通后此入口会自动恢复，无需重新安装。</p>
         </div>
-        <div class="asr-resource-bar"><div><strong id="qq-official-state">未启用</strong><p id="qq-official-status" class="inline-status"></p></div><div class="asr-actions"><button id="save-qq-official" class="button button-primary" type="submit">保存配置</button></div></div>
-        <div id="qq-official-notice" class="integrations-notice" hidden>
-          <i data-lucide="shield-alert"></i>
-          <div>
-            <strong id="qq-official-notice-title">官方通道当前未连接</strong>
-            <p>开放平台要求机器人完成以下配置后，官方网关才会接受连接。请先在开放平台完成配置，再回到这里保存重试：</p>
-            <ol>
-              <li>完成机器人主体认证（未认证机器人无法接收群聊与主动消息）</li>
-              <li>在开发设置中将本机公网 IP 加入白名单</li>
-              <li>在沙箱 / 环境配置中添加允许对话的 QQ 号或测试群</li>
-            </ol>
-          </div>
-        </div>
-        <p id="qq-official-save-status" class="inline-status"></p>
-      </form>
+      </div>
     </details>
 
     <details class="fold-card">

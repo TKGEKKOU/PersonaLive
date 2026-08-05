@@ -632,38 +632,29 @@ input:focus, textarea:focus, select:focus { border-color: var(--primary); box-sh
 
 /* 接入页与插件页 */
 .integrations-panel .settings-grid { max-width: 720px; }
-.integrations-notice {
+.integrations-unavailable {
   margin-top: 14px;
   padding: 12px 14px;
   display: flex;
   gap: 10px;
   align-items: flex-start;
-  border: 1px solid var(--warning-border);
+  border: 1px solid var(--line);
   border-radius: 4px;
-  background: var(--warning-bg);
+  background: var(--surface-soft);
   color: var(--ink);
 }
-.integrations-notice[hidden] { display: none; }
-.integrations-notice > i {
+.integrations-unavailable > i {
   flex: none;
   margin-top: 2px;
-  color: var(--warning);
+  color: var(--subtle);
 }
-.integrations-notice strong { font-size: 13px; font-weight: 650; }
-.integrations-notice p {
+.integrations-unavailable strong { font-size: 13px; font-weight: 650; }
+.integrations-unavailable p {
   margin: 4px 0 0;
   font-size: 12px;
   line-height: 1.6;
   color: var(--muted);
 }
-.integrations-notice ol {
-  margin: 8px 0 0;
-  padding-left: 18px;
-  font-size: 12px;
-  line-height: 1.7;
-  color: var(--muted);
-}
-.integrations-notice li + li { margin-top: 2px; }
 .create-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
 .create-grid:has(details[open]) { grid-template-columns: 1fr; }
 .create-panel .create-fields { grid-template-columns: 1fr; }
