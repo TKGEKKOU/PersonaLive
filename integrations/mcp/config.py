@@ -118,7 +118,12 @@ def load_servers(path: Path) -> list[MCPServerConfig]:
 
 
 def default_servers() -> list[MCPServerConfig]:
-    """首次启动默认预置：内置免 key 联网搜索（free-search）。"""
+    """首次启动默认预置：内置免 key 联网搜索（free-search）。
+
+    free-search 默认引擎是 DuckDuckGo / Mojeek / GoogleNews / Bing，在国内网络
+    环境下大多不可达，每次搜索会等满超时并返回空结果。这里把默认引擎换成
+    国内可直连的百度 / 搜狗 / 360，保证开箱即用；海外网络同样可用（结果偏中文）。
+    """
 
     return [
         MCPServerConfig(
@@ -129,6 +134,7 @@ def default_servers() -> list[MCPServerConfig]:
             env={
                 "UV_DEFAULT_INDEX": "https://mirrors.aliyun.com/pypi/simple/",
                 "SEARCH_MCP_DOWNLOAD_ENABLED": "false",
+                "SEARCH_MCP_DEFAULT_ENGINES": "baidu,sogou,so360",
             },
             enabled=True,
             description="免 API key 联网搜索（本地优先）",
