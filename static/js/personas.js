@@ -796,16 +796,19 @@ function renderEvalMetrics(metrics) {
     .map(([key, label]) => {
       const number = Number(metrics[key]);
       let value;
+      let tone = "";
       if (EVAL_PERCENT_KEYS.has(key) && Number.isFinite(number)) {
         value = `${Math.round(number * 100)}%`;
+        tone = number >= 0.8 ? "is-good" : number <= 0.5 ? "is-bad" : "";
       } else if (key === "scope_isolation_ok") {
         value = metrics[key] ? "通过" : "未通过";
+        tone = metrics[key] ? "is-good" : "is-bad";
       } else if (typeof metrics[key] === "number" && Number.isFinite(number)) {
         value = Number.isInteger(number) ? String(number) : number.toFixed(3);
       } else {
         value = String(metrics[key]);
       }
-      return `<div class="eval-metric"><span>${label}</span><b>${value}</b></div>`;
+      return `<div class="eval-metric"><span>${label}</span><b${tone ? ` class="${tone}"` : ""}>${value}</b></div>`;
     });
   $("eval-metrics").innerHTML = `<div class="eval-metric-grid">${rows.join("")}</div>`;
   $("eval-metrics").classList.remove("is-hidden");
@@ -815,17 +818,26 @@ function renderEvalCases(cases) {
   cases = cases || [];
   const list = cases.map((caseItem, index) => {
     const answer = (caseItem.answer || "").slice(0, 120);
+    const verdict = caseItem.is_probe
+      ? (caseItem.refused ? ["符合预期", "is-ok"] : ["未通过", "is-bad"])
+      : (caseItem.grounded === null || caseItem.grounded === undefined)
+        ? ["待判定", ""]
+        : (caseItem.accepted ? ["符合预期", "is-ok"] : ["未通过", "is-bad"]);
+    const boolFlag = (name, value) =>
+      value === null || value === undefined
+        ? `${name}=—`
+        : `<span class="${value ? "flag-ok" : "flag-bad"}">${name}=${value}</span>`;
     const flags = [
-      `grounded=${caseItem.grounded ?? "—"}`,
-      `useful=${caseItem.useful ?? "—"}`,
+      boolFlag("grounded", caseItem.grounded),
+      boolFlag("useful", caseItem.useful),
       `confidence=${caseItem.confidence ?? "—"}`,
-      caseItem.refused ? "拒答" : "",
+      caseItem.refused ? `<span class="${caseItem.is_probe ? "flag-ok" : "flag-bad"}">拒答</span>` : "",
       caseItem.rewrite_used ? "查询改写" : "",
       caseItem.corrected ? "生成纠错" : "",
       caseItem.is_complex ? "复杂题" : "",
       caseItem.is_probe ? "无关探针" : "",
     ].filter(Boolean).join(" · ");
-    return `<div class="eval-case"><b>${index + 1}. ${caseItem.question}</b><p>${answer}</p><span>${flags}</span></div>`;
+    return `<div class="eval-case ${verdict[1]}"><div class="eval-case-head"><b>${index + 1}. ${caseItem.question}</b><span class="eval-verdict ${verdict[1]}">${verdict[0]}</span></div><p>${answer}</p><span class="eval-flags">${flags}</span></div>`;
   });
   $("eval-cases").innerHTML = list.join("");
   $("eval-details").classList.remove("is-hidden");

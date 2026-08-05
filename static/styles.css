@@ -674,11 +674,21 @@ input:focus, textarea:focus, select:focus { border-color: var(--primary); box-sh
 .eval-metric { padding: 10px 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface-soft); display: grid; gap: 4px; }
 .eval-metric span { color: var(--muted); font-size: 11px; }
 .eval-metric b { font-size: 15px; color: var(--ink); }
+.eval-metric b.is-good { color: var(--success); }
+.eval-metric b.is-bad { color: var(--danger); }
 .eval-cases { display: grid; gap: 8px; margin-top: 8px; }
 .eval-case { padding: 10px 12px; border: 1px solid var(--line); border-radius: 4px; }
+.eval-case.is-ok { border-color: var(--status-ok-border); background: var(--status-ok-bg); }
+.eval-case.is-bad { border-color: var(--danger-border); background: var(--danger-tint); }
+.eval-case-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .eval-case b { font-size: 12px; color: var(--ink-soft); }
 .eval-case p { margin: 6px 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
-.eval-case span { font-size: 11px; color: var(--subtle); }
+.eval-verdict { font-size: 11px; white-space: nowrap; color: var(--subtle); }
+.eval-verdict.is-ok { color: var(--success); }
+.eval-verdict.is-bad { color: var(--danger); }
+.eval-flags { font-size: 11px; color: var(--subtle); }
+.eval-flags .flag-ok { color: var(--success); }
+.eval-flags .flag-bad { color: var(--danger); }
 .eval-analysis { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface-soft); color: var(--ink-soft); font-size: 12px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
 .eval-panel > summary { list-style: none; cursor: pointer; }
 .eval-panel > summary::-webkit-details-marker { display: none; }
