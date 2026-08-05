@@ -633,6 +633,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--primary); box-sh
 /* 接入页与插件页 */
 .integrations-panel .settings-grid { max-width: 720px; }
 .create-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.create-grid:has(details[open]) { grid-template-columns: 1fr; }
 .create-panel .create-fields { grid-template-columns: 1fr; }
 .create-panel .panel-heading { gap: 12px; }
 .create-panel .panel-heading .panel-subtitle { margin-bottom: 0; }

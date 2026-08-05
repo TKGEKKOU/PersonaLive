@@ -1,7 +1,8 @@
 <section id="plugins-view" class="view">
   <div class="create-grid">
-    <section id="skill-create-form" class="panel create-panel">
-      <div class="panel-heading"><div><h2 id="skill-create-title">新增技能</h2><p class="panel-subtitle">提示词包，可附加工具；也可上传标准 SKILL.md 技能包。</p></div><button id="skill-upload-btn" class="button button-secondary" type="button">上传技能包</button><input id="skill-upload-input" type="file" accept=".zip" hidden></div>
+    <details id="skill-create-form" class="fold-card create-panel">
+      <summary><div><strong id="skill-create-title">新增技能</strong><p class="panel-subtitle">提示词包，可附加工具；也可上传标准 SKILL.md 技能包。</p></div></summary>
+      <div class="panel-actions"><button id="skill-upload-btn" class="button button-secondary" type="button">上传技能包</button><input id="skill-upload-input" type="file" accept=".zip" hidden></div>
       <div class="settings-grid one-column create-fields">
         <label class="field"><span>名称</span><input id="skill-name" placeholder="小写字母、数字、-、_，如 data_analysis"></label>
         <label class="field"><span>描述</span><input id="skill-description" placeholder="技能做什么"></label>
@@ -10,10 +11,10 @@
         <div class="field"><span>可附加工具（可选）</span><div id="skill-tools" class="skill-tools"></div></div>
       </div>
       <div class="module-actions"><p id="skills-status" class="inline-status"></p><button id="skill-create-submit" class="button button-primary" type="button"><i data-lucide="save"></i>保存技能</button></div>
-    </section>
+    </details>
 
-    <section id="mcp-create-form" class="panel create-panel">
-      <div class="panel-heading"><div><h2 id="mcp-create-title">新增服务器</h2><p class="panel-subtitle">连接外部 MCP 服务器，工具注册后可被技能引用。</p></div></div>
+    <details id="mcp-create-form" class="fold-card create-panel">
+      <summary><div><strong id="mcp-create-title">新增服务器</strong><p class="panel-subtitle">连接外部 MCP 服务器，工具注册后可被技能引用。</p></div></summary>
       <div class="settings-grid one-column create-fields">
         <label class="field"><span>名称</span><input id="mcp-name" placeholder="小写字母、数字、-、_，如 filesystem"></label>
         <label class="field"><span>描述（可选）</span><input id="mcp-description" placeholder="这台服务器提供什么能力"></label>
@@ -35,7 +36,7 @@
         </div>
       </div>
       <div class="module-actions"><p id="mcp-status" class="inline-status"></p><button id="mcp-create-submit" class="button button-primary" type="button"><i data-lucide="save"></i>保存服务器</button></div>
-    </section>
+    </details>
   </div>
 
   <details class="fold-card skills-panel" open>

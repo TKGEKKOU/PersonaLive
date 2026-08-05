@@ -5,6 +5,12 @@ let editingSkillName = null;
 
 async function initPlugins() {
   window.clearInterval(window.__mcpPollTimer);
+  const skillForm = $("skill-create-form");
+  const mcpForm = $("mcp-create-form");
+  if (skillForm && mcpForm) {
+    skillForm.addEventListener("toggle", () => { if (skillForm.open) mcpForm.open = false; });
+    mcpForm.addEventListener("toggle", () => { if (mcpForm.open) skillForm.open = false; });
+  }
   await renderSkillList();
   renderToolOptions(await loadSkillTools());
   $("skill-create-submit").addEventListener("click", createSkill);
@@ -183,6 +189,7 @@ async function createSkill() {
       setSkillStatus("技能已保存。", false);
     }
     resetSkillForm();
+    $("skill-create-form").open = false;
     renderToolOptions(await loadSkillTools());
     await renderSkillList();
   } catch (reason) {
@@ -218,6 +225,7 @@ function editSkill(skill) {
   const title = $("skill-create-title");
   if (title) title.textContent = `编辑技能：${skill.name}`;
   $("skill-create-submit").textContent = "保存修改";
+  form.open = true;
   form.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
