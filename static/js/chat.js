@@ -4,25 +4,6 @@ window.PL.modules.chat = { init: initChat };
 
 let chatGlobalEventsBound = false;
 
-const CHAT_PROCESS_VISIBLE_KEY = "yumeno:chat-process-visible";
-const CHAT_PROCESS_POS_KEY = "yumeno:chat-process-pos";
-const SPECIALIST_LABELS = {
-  conversation: "综合对话",
-  web: "联网检索",
-  memory: "记忆管理",
-  management: "资料管理",
-};
-const PROCESS_NODE_LABELS = {
-  route_query: "问题路由",
-  retrieve: "知识检索",
-  batch_grade_documents: "证据筛选",
-  generate: "生成回答",
-  quality_gate: "质量门",
-  prepare_correction: "自我纠错",
-  rewrite_query: "改写问题",
-  web_search: "联网检索",
-};
-
 function formatMessageTime(iso) {
   const date = iso ? new Date(iso) : new Date();
   if (Number.isNaN(date.getTime())) return "";
@@ -83,7 +64,6 @@ function initChat() {
   bindChatEvents();
   bindChatGlobalEvents();
   observeChatStatus();
-  initChatProcessPanel();
   updateChatStatusCard();
   renderPersonaList();
   if (state.activePersona) {
@@ -95,7 +75,6 @@ function initChat() {
 function bindChatEvents() {
   ensureVoiceChatButton();
   $("question-form").addEventListener("submit", submitQuestion);
-  $("chat-process-toggle").addEventListener("click", toggleChatProcess);
   $("question").addEventListener("input", resizeComposer);
   $("voice-chat").addEventListener("click", toggleVoiceChat);
   $("confirm-action").addEventListener("click", () => resumeAgent(true));
@@ -111,15 +90,6 @@ function bindChatEvents() {
   $("chat-settings-toggle").addEventListener("click", (event) => { event.stopPropagation(); toggleChatSettingsMenu(); });
   document.querySelectorAll("#chat-settings-menu button").forEach((button) => button.addEventListener("click", closeChatSettingsMenu));
   $("assistant-voice-toggle").addEventListener("change", () => localStorage.setItem("yumeno:assistant-voice", $("assistant-voice-toggle").checked ? "on" : "off"));
-  const processSetting = $("chat-process-setting");
-  if (processSetting) {
-    processSetting.checked = isChatProcessVisible();
-    processSetting.addEventListener("change", () => {
-      localStorage.setItem(CHAT_PROCESS_VISIBLE_KEY, processSetting.checked ? "on" : "off");
-      if (!processSetting.checked) $("chat-process-panel")?.classList.add("is-hidden");
-      updateChatStatusCard();
-    });
-  }
 }
 function connectRealtime() {
   if (!state.activePersona) return;
@@ -184,112 +154,8 @@ function setSendButton(busy) {
   button.setAttribute("aria-label", button.title);
   if (window.lucide) window.lucide.createIcons();
 }
-function toggleChatProcess() {
-  const body = $("chat-process-body");
-  const hidden = body.classList.toggle("is-hidden");
-  $("chat-process-toggle").setAttribute("aria-expanded", String(!hidden));
-}
 function resetChatProcess() {
   updateChatStatusCard();
-  $("chat-process-body").classList.add("is-hidden");
-  $("chat-process-toggle").setAttribute("aria-expanded", "false");
-  $("chat-process-summary").textContent = "等待中";
-  $("chat-process-content").replaceChildren();
-}
-function isChatProcessVisible() {
-  return localStorage.getItem(CHAT_PROCESS_VISIBLE_KEY) === "on";
-}
-function processGroup(title, rows) {
-  const group = document.createElement("div");
-  group.className = "chat-process-group";
-  const heading = document.createElement("span");
-  heading.className = "chat-process-group-title";
-  heading.textContent = title;
-  group.append(heading);
-  for (const item of rows) {
-    const row = document.createElement("div");
-    row.className = "chat-process-row";
-    const label = document.createElement("span");
-    label.textContent = item.label;
-    const value = document.createElement("span");
-    value.textContent = item.value;
-    row.append(label, value);
-    group.append(row);
-  }
-  return group;
-}
-function renderChatProcess(result) {
-  const panel = $("chat-process-panel");
-  if (!panel || !isChatProcessVisible()) return;
-  const traces = result?.trace || [];
-  const toolCalls = result?.tool_calls || [];
-  if (!traces.length && !toolCalls.length) return;
-  panel.classList.remove("is-hidden");
-  updateChatStatusCard();
-  const summary = [];
-  if (result?.specialist && SPECIALIST_LABELS[result.specialist]) summary.push(SPECIALIST_LABELS[result.specialist]);
-  if (result?.duration_seconds != null) summary.push(`${result.duration_seconds.toFixed(1)}s`);
-  if (toolCalls.length) summary.push(`工具 ${toolCalls.length}`);
-  if (traces.length) summary.push(`检索 ${traces.length}`);
-  $("chat-process-summary").textContent = summary.join(" · ") || "等待中";
-  const content = $("chat-process-content"); content.replaceChildren();
-  if (result?.loaded_skills?.length) {
-    content.append(processGroup("技能", result.loaded_skills.map((name) => ({ label: name, value: "已加载" }))));
-  }
-  if (toolCalls.length) {
-    const counts = new Map();
-    for (const tool of toolCalls) { const name = tool.name || String(tool); counts.set(name, (counts.get(name) || 0) + 1); }
-    content.append(processGroup("工具调用", [...counts].map(([name, count]) => ({ label: name, value: `${count} 次` }))));
-  }
-  if (traces.length) {
-    const rows = traces.map((step, index) => {
-      const previous = index > 0 ? traces[index - 1].ts : null;
-      const elapsed = previous != null && step.ts != null ? Math.max(0, (step.ts - previous) * 1000) : null;
-      const parts = [];
-      if (elapsed != null) parts.push(elapsed >= 1000 ? `${(elapsed / 1000).toFixed(1)}s` : `${Math.round(elapsed)}ms`);
-      if (step.document_count != null) parts.push(`${step.document_count} 片段`);
-      if (step.confidence != null) parts.push(`置信 ${Math.round(step.confidence * 100)}%`);
-      return { label: PROCESS_NODE_LABELS[step.node] || step.node || "处理步骤", value: parts.join(" · ") || "完成" };
-    });
-    content.append(processGroup("处理步骤", rows));
-  }
-}
-function initChatProcessPanel() {
-  const panel = $("chat-process-panel");
-  const handle = $("chat-process-toggle");
-  if (!panel || !handle) return;
-  try {
-    const saved = JSON.parse(localStorage.getItem(CHAT_PROCESS_POS_KEY) || "null");
-    if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
-      panel.style.left = `${saved.x}px`;
-      panel.style.top = `${saved.y}px`;
-      panel.style.right = "auto";
-    }
-  } catch { /* 忽略损坏的位置缓存 */ }
-  handle.addEventListener("mousedown", (event) => {
-    if (event.button !== 0) return;
-    const rect = panel.getBoundingClientRect();
-    const offsetX = event.clientX - rect.left;
-    const offsetY = event.clientY - rect.top;
-    const onMove = (moveEvent) => {
-      const x = Math.min(Math.max(moveEvent.clientX - offsetX, 4), window.innerWidth - 90);
-      const y = Math.min(Math.max(moveEvent.clientY - offsetY, 4), window.innerHeight - 36);
-      panel.style.left = `${x}px`;
-      panel.style.top = `${y}px`;
-      panel.style.right = "auto";
-    };
-    const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      localStorage.setItem(CHAT_PROCESS_POS_KEY, JSON.stringify({
-        x: parseFloat(panel.style.left) || 0,
-        y: parseFloat(panel.style.top) || 0,
-      }));
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-    event.preventDefault();
-  });
 }
 function showReplyLoading() {
   if (state.pendingReplyNode) return state.pendingReplyNode;
@@ -339,7 +205,6 @@ function handleRealtimeEvent(event) {
     if (target) {
       finishPacing(target, event.answer || "");
       flushStreamVoice(true, target);
-      renderChatProcess(event);
       drainPacedText(() => { if (state.realtimeAnswerNode === target) state.realtimeAnswerNode = null; });
     }
     state.pendingAction = null;
@@ -473,15 +338,10 @@ function resetPacing() {
   state.paceNode = null;
 }
 function updateChatStatusCard() {
-  const panel = $("chat-process-panel");
-  if (!panel) return;
-  if (!isChatProcessVisible()) {
-    panel.classList.add("is-hidden");
-    return;
-  }
+  const status = $("chat-inline-status");
+  if (!status) return;
   const hasStatus = ["audio-status", "question-status", "chat-error"].some((id) => $(id)?.textContent.trim());
-  const hasProcess = Boolean($("chat-process-content")?.children.length);
-  panel.classList.toggle("is-hidden", !(hasStatus || hasProcess));
+  status.classList.toggle("is-hidden", !hasStatus);
 }
 function observeChatStatus() {
   const targets = ["audio-status", "question-status", "chat-error"].map((id) => $(id)).filter(Boolean);
@@ -858,11 +718,10 @@ function handleAgentResult(result) {
   if (result.answer) {
     const node = replaceReplyLoading(state.pendingReplyNode, result.answer);
     appendResultDetails(node, result);
-    renderChatProcess(result);
     synthesizeAnswer(result.answer, node);
   } else if (state.pendingReplyNode) { state.pendingReplyNode.remove(); state.pendingReplyNode = null; }
 }
-function appendAnswer(result) { const node = replaceReplyLoading(state.pendingReplyNode, ""); renderChatProcess(result); appendPacedText(result.answer, node); synthesizeAnswer(result.answer, node); }
+function appendAnswer(result) { const node = replaceReplyLoading(state.pendingReplyNode, ""); appendPacedText(result.answer, node); synthesizeAnswer(result.answer, node); }
 function collectStreamVoice(text, node) {
   if (!state.activePersona?.profile?.tts?.enabled || !$("assistant-voice-toggle").checked) return;
   state.voiceStreamBuffer += text;
