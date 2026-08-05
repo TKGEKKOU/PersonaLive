@@ -33,6 +33,22 @@ CONNECT_TIMEOUT_SECONDS = 20
 MCP_TOOL_TIMEOUT_SECONDS = 60
 
 
+_FREE_SEARCH_ENGINE_HINT = (
+    "\n\n【引擎提示】本服务器默认已启用国内可直接访问的百度引擎。调用 search / research 时"
+    "不要手动传 engines 参数——尤其不要传 duckduckgo、mojeek、googlenews、bing、startpage、"
+    "brave、google、searx 等引擎，它们在国内网络下会长时间超时并返回空结果。"
+    '只有需要搜索 B 站视频时才传 engines=["bilibili"]。'
+)
+
+
+def _patch_free_search_description(name: str, description: str, server: str = "") -> str:
+    """修正 free-search 服务端工具描述中的引擎误导。"""
+
+    if server == "free-search" and name in {"search", "research"}:
+        return description + _FREE_SEARCH_ENGINE_HINT
+    return description
+
+
 def _friendly_error(exc: Exception, limit: int = 300) -> str:
     """提取 MCP 连接失败的真实原因。
 
@@ -89,14 +105,16 @@ def _tool_info(name: str, server: str, tool: BaseTool) -> MCPToolInfo:
     requires_confirmation, mutates_data = classify_mcp_tool(tool)
     return MCPToolInfo(
         name=name,
-        description=str(tool.description or ""),
+        description=_patch_free_search_description(
+            name, str(tool.description or ""), server
+        ),
         server=server,
         requires_confirmation=requires_confirmation,
         mutates_data=mutates_data,
     )
 
 
-def _make_sync_tool(original: BaseTool) -> BaseTool:
+def _make_sync_tool(original: BaseTool, server_name: str = "") -> BaseTool:
     """把仅支持异步调用的 MCP 工具包装为可在同步 Agent 链路中调用。
 
     YUMENO 的 workflow 是同步 invoke，并在工作线程（anyio.to_thread /
@@ -113,7 +131,12 @@ def _make_sync_tool(original: BaseTool) -> BaseTool:
             original.ainvoke(args), timeout=MCP_TOOL_TIMEOUT_SECONDS
         )
 
-    @make_tool(original.name, description=original.description or "")
+    @make_tool(
+        original.name,
+        description=_patch_free_search_description(
+            original.name, original.description or "", server_name
+        ),
+    )
     def sync_tool(**kwargs):
         return asyncio.run(_run(kwargs))
 
@@ -248,7 +271,7 @@ class MCPManager:
                 ToolSpec(
                     name=info.name,
                     specialist="mcp",
-                    tool=_make_sync_tool(tool),
+                    tool=_make_sync_tool(tool, server_name),
                     requires_confirmation=info.requires_confirmation,
                     mutates_data=info.mutates_data,
                     server=server_name,
