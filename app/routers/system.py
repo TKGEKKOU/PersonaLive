@@ -104,10 +104,18 @@ async def web_search_keyless_set(request: Request, payload: dict) -> dict:
             name=KEYLESS_SERVER_NAME,
             transport="stdio",
             command="uvx",
-            args=["free-search-mcp"],
+            args=[
+                "--from",
+                "free-search-mcp==0.4.2",
+                "--with",
+                "mcp==1.29.0",
+                "free-search-mcp",
+            ],
             env={
                 "UV_DEFAULT_INDEX": "https://mirrors.aliyun.com/pypi/simple/",
                 "SEARCH_MCP_DOWNLOAD_ENABLED": "false",
+                # 0.4.2 用 pydantic-settings 解析 list 字段，环境变量必须是 JSON 数组
+                "SEARCH_MCP_DEFAULT_ENGINES": '["baidu"]',
             },
             enabled=True,
             description="免 API key 联网搜索（本地优先）",

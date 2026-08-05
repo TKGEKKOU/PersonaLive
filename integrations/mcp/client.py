@@ -33,6 +33,22 @@ CONNECT_TIMEOUT_SECONDS = 20
 MCP_TOOL_TIMEOUT_SECONDS = 60
 
 
+def _friendly_error(exc: Exception, limit: int = 300) -> str:
+    """提取 MCP 连接失败的真实原因。
+
+    langchain-mcp-adapters 用 anyio TaskGroup 聚合子进程错误，直接 ``str()``
+    只会得到 "unhandled errors in a TaskGroup"，真实异常被包在
+    ``BaseExceptionGroup`` 里。这里递归取第一个子异常，保留可读的错误消息。
+    """
+
+    if isinstance(exc, BaseExceptionGroup):
+        if exc.exceptions:
+            return _friendly_error(exc.exceptions[0], limit)
+        return str(exc)[:limit]
+    message = str(exc).strip()
+    return message[:limit] if message else type(exc).__name__
+
+
 @dataclass(frozen=True)
 class MCPToolInfo:
     """注册进 ToolSpec 前的 MCP 工具元数据（前端展示与安全分类共用）。"""
@@ -194,8 +210,13 @@ class MCPManager:
                     )
                     self._mark(config.name, "connected", len(entries))
             except Exception as exc:
-                logger.warning("MCP 服务器 %s 连接失败: %s", config.name, exc)
-                self._mark(config.name, "error", 0, str(exc))
+                logger.warning(
+                    "MCP 服务器 %s 连接失败: %s",
+                    config.name,
+                    _friendly_error(exc),
+                    exc_info=True,
+                )
+                self._mark(config.name, "error", 0, _friendly_error(exc))
         return dict(self._status)
 
     def _mark(self, name: str, status: str, tool_count: int, error: str = "") -> dict:
@@ -281,8 +302,13 @@ class MCPManager:
         try:
             return await self.enable_server(config)
         except Exception as exc:
-            logger.warning("MCP 服务器 %s 重连失败: %s", name, exc)
-            return self._mark(name, "error", 0, str(exc))
+            logger.warning(
+                "MCP 服务器 %s 重连失败: %s",
+                name,
+                _friendly_error(exc),
+                exc_info=True,
+            )
+            return self._mark(name, "error", 0, _friendly_error(exc))
 
     def registered_tools(self) -> list[MCPToolInfo]:
         return list(self._registered)

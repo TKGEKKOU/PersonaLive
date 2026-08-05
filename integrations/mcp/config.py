@@ -120,9 +120,11 @@ def load_servers(path: Path) -> list[MCPServerConfig]:
 def default_servers() -> list[MCPServerConfig]:
     """首次启动默认预置：内置免 key 联网搜索（free-search）。
 
-    free-search 默认引擎是 DuckDuckGo / Mojeek / GoogleNews / Bing，在国内网络
-    环境下大多不可达，每次搜索会等满超时并返回空结果。这里把默认引擎换成
-    国内可直连的百度 / 搜狗 / 360，保证开箱即用；海外网络同样可用（结果偏中文）。
+    固定到 free-search-mcp==0.4.2 + mcp==1.29.0：0.7+ 已切换到 MCP
+    2026-07-28 新协议（mcp>=2.0.0），与本项目使用的 mcp 1.x 客户端不兼容，
+    握手会失败；且 0.4.2 的 mcp 依赖无上限，uvx 默认会装到 2.x，必须用
+    --with 一并钉住服务端 SDK 版本。其默认引擎 DuckDuckGo/Mojeek/GoogleNews/
+    Bing 在国内大多不可达，这里覆盖为百度，保证开箱即用。
     """
 
     return [
@@ -130,11 +132,18 @@ def default_servers() -> list[MCPServerConfig]:
             name="free-search",
             transport="stdio",
             command="uvx",
-            args=["free-search-mcp"],
+            args=[
+                "--from",
+                "free-search-mcp==0.4.2",
+                "--with",
+                "mcp==1.29.0",
+                "free-search-mcp",
+            ],
             env={
                 "UV_DEFAULT_INDEX": "https://mirrors.aliyun.com/pypi/simple/",
                 "SEARCH_MCP_DOWNLOAD_ENABLED": "false",
-                "SEARCH_MCP_DEFAULT_ENGINES": "baidu,sogou,so360",
+                # 0.4.2 用 pydantic-settings 解析 list 字段，环境变量必须是 JSON 数组
+                "SEARCH_MCP_DEFAULT_ENGINES": '["baidu"]',
             },
             enabled=True,
             description="免 API key 联网搜索（本地优先）",
