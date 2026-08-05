@@ -33,3 +33,20 @@ if (-not (Test-Path $ttsRuntime)) {
   desktop_main.py
 
 Write-Host "Built:" (Join-Path $projectRoot "dist\YUMENO\YUMENO.exe")
+
+# ---- 生成安装包（Inno Setup） ----
+$isccCandidates = @(
+  (Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 7\ISCC.exe"),
+  (Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe"),
+  (Join-Path ${env:ProgramFiles(x86)} "Inno Setup 7\ISCC.exe"),
+  (Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe")
+)
+$iscc = $isccCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $iscc) {
+  Write-Warning "未找到 Inno Setup（ISCC.exe），跳过安装包生成。可到 https://jrsoftware.org/isdl.php 安装后重试。"
+} else {
+  Write-Host "生成安装包（Inno Setup）..."
+  & $iscc (Join-Path $projectRoot "scripts\YUMENO.iss")
+  if ($LASTEXITCODE -ne 0) { throw "Inno Setup 编译失败" }
+  Write-Host "安装包:" (Join-Path $projectRoot "dist\YUMENO-Setup-0.1.1.exe")
+}
