@@ -1,9 +1,61 @@
 "use strict";
 window.PL = window.PL || { modules: {} };
 
+function ensureExitDialog() {
+  const existing = $("exit-confirm-dialog");
+  if (existing) return existing;
+  const dialog = document.createElement("dialog");
+  dialog.id = "exit-confirm-dialog";
+  dialog.className = "settings-confirm-dialog";
+  dialog.setAttribute("aria-labelledby", "exit-confirm-title");
+  dialog.innerHTML = [
+    '<form method="dialog">',
+    '<h2 id="exit-confirm-title">退出 YUMENO？</h2>',
+    '<div class="exit-confirm-detail">',
+    '<label class="exit-option"><input type="radio" name="exit-policy" value="pause" checked><span><b>停止服务（推荐）</b><em>暂停 Docker，下次启动自动恢复</em></span></label>',
+    '<label class="exit-option"><input type="radio" name="exit-policy" value="keep"><span><b>保持服务</b><em>Docker 保持运行，下次启动最快</em></span></label>',
+    '<label class="exit-option"><input type="radio" name="exit-policy" value="remove"><span><b>删除服务</b><em>删除 Docker 容器，数据保留</em></span></label>',
+    '</div>',
+    '<div class="settings-confirm-actions">',
+    '<button id="exit-confirm-cancel" class="button button-secondary" type="button">取消</button>',
+    '<button id="exit-confirm-submit" class="button button-danger" type="button"><span class="btn-spinner"></span><span id="exit-confirm-label">安全退出</span></button>',
+    '</div>',
+    '</form>',
+  ].join("");
+  document.body.append(dialog);
+  $("exit-confirm-cancel").addEventListener("click", () => dialog.close());
+  $("exit-confirm-submit").addEventListener("click", async () => {
+    const button = $("exit-confirm-submit");
+    button.classList.add("is-loading");
+    button.disabled = true;
+    const label = $("exit-confirm-label");
+    if (label) label.textContent = "正在退出…";
+    const selected = document.querySelector('input[name="exit-policy"]:checked')?.value || "pause";
+    try {
+      await fetch("/api/system/docker-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ on_exit: selected }),
+      });
+    } catch (e) {}
+    if (window.pywebview?.api?.do_exit) {
+      window.pywebview.api.do_exit();
+    } else {
+      if (selected === "remove") {
+        try { await fetch("/api/system/docker/remove", { method: "POST" }); } catch (e) {}
+      }
+      await fetch("/api/system/shutdown", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stop_docker: selected === "pause" }),
+      });
+    }
+  });
+  return dialog;
+}
+
 window.showExitConfirm = function showExitConfirm() {
-  const dialog = $("exit-confirm-dialog");
-  if (!dialog) return;
+  const dialog = ensureExitDialog();
   fetch("/api/system/docker-settings")
     .then((response) => response.json())
     .then((settings) => {

@@ -79,44 +79,6 @@ function bindShellEvents() {
   $("sidebar-toggle").addEventListener("click", () => setSidebarPinned(!document.body.classList.contains("sidebar-pinned")));
   $("settings-confirm-cancel").addEventListener("click", () => $("settings-confirm-dialog").close());
   $("settings-confirm-submit").addEventListener("click", confirmSettingsAction);
-  $("exit-confirm-cancel").addEventListener("click", () => $("exit-confirm-dialog").close());
-  $("exit-confirm-submit").addEventListener("click", async () => {
-    const btn = $("exit-confirm-submit");
-    btn.classList.add("is-loading");
-    btn.disabled = true;
-    const label = $("exit-confirm-label");
-    if (label) label.textContent = "正在退出…";
-    const selected = document.querySelector('input[name="exit-policy"]:checked')?.value || "pause";
-    if (window.pywebview?.api?.do_exit) {
-      try {
-        await fetch("/api/system/docker-settings", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ on_exit: selected }),
-        });
-      } catch (e) {}
-      window.pywebview.api.do_exit();
-    } else {
-      // 浏览器 / pywebview 未注入：走 HTTP 停止路径（桌面模式停服务并回到启动页）。
-      try {
-        await fetch("/api/system/docker-settings", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ on_exit: selected }),
-        });
-      } catch (e) {}
-      if (selected === "remove") {
-        try {
-          await fetch("/api/system/docker/remove", { method: "POST" });
-        } catch (e) {}
-      }
-      await fetch("/api/system/shutdown", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stop_docker: selected === "pause" }),
-      });
-    }
-  });
   document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
 }
 
