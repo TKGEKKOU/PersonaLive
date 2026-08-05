@@ -791,6 +791,18 @@ const EVAL_PERCENT_KEYS = new Set([
 
 function renderEvalMetrics(metrics) {
   metrics = metrics || {};
+  // 越高越好的核心质量指标:高值绿、极低才红(重大错误);触发率/改写率等行为统计保持中性黑色
+  const POSITIVE_PERCENT_KEYS = new Set([
+    "recall_at_k_answerable",
+    "precision_at_k_answerable",
+    "mrr_answerable",
+    "hit_at_1_answerable",
+    "grounded_rate",
+    "useful_rate",
+    "answer_rate",
+    "accepted_rate",
+    "mean_confidence",
+  ]);
   const rows = Object.entries(EVAL_METRIC_LABELS)
     .filter(([key]) => metrics[key] !== undefined && metrics[key] !== null)
     .map(([key, label]) => {
@@ -799,7 +811,9 @@ function renderEvalMetrics(metrics) {
       let tone = "";
       if (EVAL_PERCENT_KEYS.has(key) && Number.isFinite(number)) {
         value = `${Math.round(number * 100)}%`;
-        tone = number >= 0.8 ? "is-good" : number <= 0.5 ? "is-bad" : "";
+        if (POSITIVE_PERCENT_KEYS.has(key)) {
+          tone = number >= 0.8 ? "is-good" : number <= 0.2 ? "is-bad" : "";
+        }
       } else if (key === "scope_isolation_ok") {
         value = metrics[key] ? "通过" : "未通过";
         tone = metrics[key] ? "is-good" : "is-bad";
@@ -823,14 +837,14 @@ function renderEvalSummary(metrics) {
   const isolation = Boolean(metrics.scope_isolation_ok);
   const fmtPct = (v) => (Number.isFinite(v) ? `${Math.round(v * 100)}%` : "—");
   const items = [
-    { label: "符合预期", value: `${accepted}/${total}`, good: total > 0 && accepted === total },
-    { label: "通过率", value: fmtPct(passRate), good: Number.isFinite(passRate) && passRate >= 0.8 },
-    { label: "角色隔离", value: isolation ? "通过" : "未通过", good: isolation },
-    { label: "平均置信度", value: fmtPct(confidence), good: Number.isFinite(confidence) && confidence >= 0.8 },
+    { label: "符合预期", value: `${accepted}/${total}`, tone: total > 0 && accepted === total ? "is-good" : "" },
+    { label: "通过率", value: fmtPct(passRate), tone: Number.isFinite(passRate) ? (passRate >= 0.8 ? "is-good" : passRate <= 0.2 ? "is-bad" : "") : "" },
+    { label: "角色隔离", value: isolation ? "通过" : "未通过", tone: isolation ? "is-good" : "is-bad" },
+    { label: "平均置信度", value: fmtPct(confidence), tone: Number.isFinite(confidence) && confidence >= 0.8 ? "is-good" : "" },
   ];
   $("eval-summary").innerHTML = items
-    .map(({ label, value, good }) =>
-      `<div class="eval-summary-item${good ? " is-good" : ""}"><span>${label}</span><b>${value}</b></div>`
+    .map(({ label, value, tone }) =>
+      `<div class="eval-summary-item${tone ? ` ${tone}` : ""}"><span>${label}</span><b>${value}</b></div>`
     )
     .join("");
   $("eval-summary").classList.remove("is-hidden");
@@ -928,7 +942,6 @@ async function pollEvalResult() {
       if (metricsNode && !metricsNode.classList.contains("is-hidden")) {
         metricsNode.scrollIntoView({ behavior: "smooth", block: "nearest" });
       }
-      autoAnalyze();
       break;
     }
     if (status.state === "error") {
