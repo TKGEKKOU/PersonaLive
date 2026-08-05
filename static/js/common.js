@@ -198,7 +198,7 @@ function renderSystemStatusDetail(status) {
     : [status.sqlite === "unavailable" ? "连接失败" : "未初始化"]);
   setDetail("milvus", [
     status.milvus === "ok"
-      ? "本地向量数据库已连接"
+      ? "本地 Milvus 向量数据库已连接"
       : status.milvus === "collection_missing"
         ? "缺少集合，请重建"
         : status.milvus === "unavailable" ? "服务不可用" : "检查中",
