@@ -2,7 +2,6 @@
   <div class="create-grid">
     <details id="skill-create-form" class="fold-card create-panel">
       <summary><div><strong id="skill-create-title">新增技能</strong><p class="panel-subtitle">提示词包，可附加工具；也可上传标准 SKILL.md 技能包。</p></div></summary>
-      <div class="panel-actions"><button id="skill-upload-btn" class="button button-secondary" type="button">上传技能包</button><input id="skill-upload-input" type="file" accept=".zip" hidden></div>
       <div class="settings-grid one-column create-fields">
         <label class="field"><span>名称</span><input id="skill-name" placeholder="小写字母、数字、-、_，如 data_analysis"></label>
         <label class="field"><span>描述</span><input id="skill-description" placeholder="技能做什么"></label>
@@ -40,7 +39,7 @@
   </div>
 
   <details class="fold-card skills-panel" open>
-    <summary><div><strong>技能</strong><p class="panel-subtitle">对话中按需加载的提示词包，可附加工具；支持上传标准 SKILL.md 技能包。</p></div><span id="skills-count" class="status-pill">0 个技能</span></summary>
+    <summary><div><strong>技能</strong><p class="panel-subtitle">对话中按需加载的提示词包，可附加工具；支持上传标准 SKILL.md 技能包。</p></div><span class="summary-actions"><button id="skill-upload-btn" class="button button-primary" type="button"><i data-lucide="upload"></i>上传技能包</button><span id="skills-count" class="status-pill">0 个技能</span><input id="skill-upload-input" type="file" accept=".zip" hidden></span></summary>
     <div id="skill-list" class="plugin-list"></div>
   </details>
 

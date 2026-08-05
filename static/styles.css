@@ -798,6 +798,8 @@ input:focus, textarea:focus, select:focus { border-color: var(--primary); box-sh
 .fold-card > summary strong { font-size: 15px; font-weight: 650; color: var(--ink); }
 .fold-card > summary .panel-subtitle { margin: 3px 0 0; }
 .fold-card > summary .status-pill { flex: none; }
+.fold-card > summary .summary-actions { display: flex; align-items: center; gap: 10px; flex: none; }
+.fold-card > summary .summary-actions .button { margin: 0; white-space: nowrap; }
 .fold-card > summary::after { content: "+"; width: 24px; flex: none; text-align: center; color: var(--muted); font-size: 18px; font-weight: 300; }
 .fold-card[open] > summary::after { content: "−"; }
 .fold-card > :not(summary) { margin: 0 16px 16px; }

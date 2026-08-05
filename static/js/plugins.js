@@ -14,7 +14,11 @@ async function initPlugins() {
   await renderSkillList();
   renderToolOptions(await loadSkillTools());
   $("skill-create-submit").addEventListener("click", createSkill);
-  $("skill-upload-btn").addEventListener("click", () => $("skill-upload-input").click());
+  $("skill-upload-btn").addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    $("skill-upload-input").click();
+  });
   $("skill-upload-input").addEventListener("change", (event) =>
     uploadSkillPackage(event.target.files?.[0])
   );
