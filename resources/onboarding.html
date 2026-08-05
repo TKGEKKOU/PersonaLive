@@ -268,8 +268,8 @@
     let isPreview = false;
     const PROGRESS_SPEED = 32;
 
-    const STEP_ORDER = ["docker", "containers", "mysql", "milvus", "attu", "service"];
-    const STEP_WEIGHTS = { docker: 0.15, containers: 0.38, mysql: 0.56, milvus: 0.74, attu: 0.84, service: 0.94 };
+    const STEP_ORDER = ["docker", "containers", "milvus", "attu", "service"];
+    const STEP_WEIGHTS = { docker: 0.15, containers: 0.38, milvus: 0.62, attu: 0.80, service: 0.93 };
 
     // 兜底默认速度：动画循环内连续以 2%/秒匀速推进（每 0.5s 涨 1%），
     // 保证进度条在任何情况下都不会冻结，且视觉丝滑不跳格；
@@ -399,7 +399,7 @@
         const parts = String(text).split(" · ");
         parts.forEach((part, i) => {
           if (i > 0) node.append(document.createTextNode(" · "));
-          if (/^(MySQL|etcd|MinIO|Milvus|Attu)/i.test(part.trim())) {
+          if (/^(etcd|MinIO|Milvus|Attu)/i.test(part.trim())) {
             const span = document.createElement("span");
             span.className = "phase-dim";
             span.textContent = part;
@@ -534,7 +534,7 @@
         if (s && s.app) { enterMain(); return; }
         if (s) {
           const ready = [];
-          if (s.mysql === "ok") ready.push("MySQL");
+          if (s.sqlite === "ok") ready.push("SQLite");
           if (s.milvus === "ok") ready.push("Milvus");
           setTarget(ready.length ? 45 + ready.length * 20 : 12);
           setPhase(ready.length ? `已连接 ${ready.join("、")}，正在启动本地服务…` : "正在启动本地服务…", "running");

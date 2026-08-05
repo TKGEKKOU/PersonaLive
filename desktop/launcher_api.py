@@ -13,8 +13,8 @@ from desktop.server_manager import ServerManager
 from settings import Settings
 
 
-_STEP_ORDER = ("docker", "containers", "mysql", "milvus", "attu", "service")
-_STEP_WEIGHTS = {"docker": 0.15, "containers": 0.38, "mysql": 0.56, "milvus": 0.74, "attu": 0.84, "service": 0.94}
+_STEP_ORDER = ("docker", "containers", "milvus", "attu", "service")
+_STEP_WEIGHTS = {"docker": 0.15, "containers": 0.38, "milvus": 0.62, "attu": 0.80, "service": 0.93}
 
 
 class LauncherApi:
@@ -40,7 +40,6 @@ class LauncherApi:
         self._steps: dict[str, dict] = {
             "docker": {"label": "Docker", "state": "pending", "detail": "准备中"},
             "containers": {"label": "容器", "state": "pending", "detail": "准备中"},
-            "mysql": {"label": "MySQL", "state": "pending", "detail": "准备中"},
             "milvus": {"label": "Milvus", "state": "pending", "detail": "准备中"},
             "attu": {"label": "Attu", "state": "pending", "detail": "准备中"},
             "service": {"label": "本地服务", "state": "pending", "detail": "准备中"},
@@ -102,12 +101,10 @@ class LauncherApi:
         return {
             "docker_ready": self.docker.is_ready(),
             "containers_up": self._containers_up(),
-            "mysql_up": self._port_open(self.settings.mysql_port),
             "milvus_up": self._port_open(milvus_port),
             "service_running": self.server.is_running(),
             "url": self.server.url,
             "port": self.settings.app_port,
-            "mysql_port": self.settings.mysql_port,
             "milvus_port": milvus_port,
             "attu_port": 17003,
             "version": self._app_version(),
@@ -258,7 +255,7 @@ class LauncherApi:
         return False
 
     def _compose_summary(self) -> str:
-        """读取 docker compose ps，汇总各容器状态（MySQL / etcd / MinIO / Milvus / Attu）。"""
+        """读取 docker compose ps，汇总各容器状态（etcd / MinIO / Milvus / Attu）。"""
         try:
             result = self.docker._run(
                 [self.docker.docker, "compose", "ps", "--format", "{{.Name}}|{{.Status}}"]
@@ -266,7 +263,6 @@ class LauncherApi:
             if result.returncode != 0 or not result.stdout.strip():
                 return "容器状态读取中…"
             names = {
-                "yumeno-mysql": "MySQL",
                 "yumeno-etcd": "etcd",
                 "yumeno-minio": "MinIO",
                 "yumeno-milvus": "Milvus",
@@ -313,13 +309,6 @@ class LauncherApi:
             self._tick_step_detail("containers", self._compose_summary)
             self.docker.compose_up()
             self._set_step("containers", "ok", "容器已创建，正在启动服务…")
-            self._set_step("mysql", "running", f"正在启动 MySQL（127.0.0.1:{self.settings.mysql_port}）…")
-            if not self._wait_port(
-                self.settings.mysql_port,
-                on_tick=lambda: self._set_step("mysql", "running", self._compose_summary()),
-            ):
-                raise RuntimeError("MySQL 启动超时，请检查 Docker 容器状态")
-            self._set_step("mysql", "ok", "MySQL 已连接")
             milvus_port = self._milvus_port()
             self._set_step("milvus", "running", f"正在启动 Milvus（127.0.0.1:{milvus_port}）…")
             if not self._wait_port(

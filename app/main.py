@@ -9,7 +9,7 @@ from fastapi.responses import RedirectResponse
 from starlette.staticfiles import StaticFiles
 from langgraph.checkpoint.memory import MemorySaver
 
-from agents.checkpoint import create_mysql_checkpointer
+from agents.checkpoint import create_sqlite_checkpointer
 from agents.context_factory import build_agent_runner
 from agents.service import PersonaAgentService
 from app.database import Base, build_engine, build_session_factory, upgrade_persona_schema
@@ -158,10 +158,10 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     if initialize_database:
         Base.metadata.create_all(engine)
         upgrade_persona_schema(engine)
-        # 生产环境使用 MySQL 持久化 LangGraph 检查点：会话状态（对话历史、中断点、Worker 结果）
-        # 全部落库，服务重启后可按 thread_id 恢复；langgraph-checkpoint-mysql 实现了
+        # 会话状态（对话历史、中断点、Worker 结果）持久化到本地 SQLite；
+        # 服务重启后可按 thread_id 恢复；langgraph-checkpoint-sqlite 实现了
         # BaseCheckpointSaver 接口，对上层 PersonaAgentService 透明。
-        checkpoint_resource = create_mysql_checkpointer(settings)
+        checkpoint_resource = create_sqlite_checkpointer(settings)
         app.state.checkpoint_resource = checkpoint_resource
         app.state.agent_service = PersonaAgentService(checkpoint_resource.saver)
     else:

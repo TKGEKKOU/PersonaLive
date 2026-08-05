@@ -553,7 +553,7 @@ function openSettingsConfirmation(action) {
   $("settings-confirm-title").textContent = isSave ? "保存前确认" : "确认重置配置";
   $("settings-confirm-detail").textContent = isSave
     ? buildConfigDetail()
-    : "将清除本机前端保存的 LLM、Embedding、联网搜索配置和 Key。不会影响 .env 中的 MySQL、Milvus 或端口配置。";
+    : "将清除本机前端保存的 LLM、Embedding、联网搜索配置和 Key。不会影响 .env 中的 Milvus 或端口配置。";
   $("settings-confirm-submit").textContent = isSave ? "确认保存" : "确认重置";
   $("settings-confirm-dialog").showModal();
 }

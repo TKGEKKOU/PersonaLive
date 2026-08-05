@@ -9,7 +9,7 @@ YUMENO 是一个**本地优先、生产级**的角色化多 Agent RAG 平台。�
 
 平台强调**本地优先与离线可用**：LLM 与 Embedding 通过任意 OpenAI-compatible 接口接入，语音识别
 （Qwen3-ASR）、语音合成（Qwen3-TTS）与向量化（Qwen3-Embedding）均可本地部署、按需安装；
-全部角色数据、对话历史与向量知识由 Docker 托管的 MySQL / Milvus 持久化，无需注册与登录。
+角色、对话与记忆等应用数据存本地 SQLite，向量知识由 Docker 托管的 Milvus 持久化，无需注册与登录。
 
 ---
 
@@ -68,7 +68,7 @@ LangGraph `interrupt()` 触发中断，返回待审批的操作详情（工具�
 
 **上下文工程：记忆分层**（短期记忆 + 长期记忆）：
 
-- **短期记忆（线程范围）**：`langgraph-checkpoint-mysql` 将会话状态持久化到 MySQL，按
+- **短期记忆（线程范围）**：`langgraph-checkpoint-sqlite` 将会话状态持久化到本地 SQLite，按
   `thread_id = persona_id:conversation_id` 隔离不同会话；无数据库时自动回退 `MemorySaver`。
 - **长期记忆（跨会话）**：`persona_memories` 表按角色持久化用户偏好等事实，由 memory Worker
   写入，Supervisor 每次请求经中间件注入，实现跨会话的个性化响应。
@@ -167,19 +167,19 @@ LangGraph `interrupt()` 触发中断，返回待审批的操作详情（工具�
 |---|---|
 | 编排框架 | LangGraph 1.x（`StateGraph` / `create_agent` / Middleware / Checkpoint） |
 | Agent 入口 | LangChain 1.x `create_agent()` + `dynamic_prompt` 中间件 |
-| 状态持久化 | `langgraph-checkpoint-mysql` / `MemorySaver` |
+| 状态持久化 | `langgraph-checkpoint-sqlite` / `MemorySaver` |
 | 向量数据库 | Milvus（Dense HNSW-IP + BM25 sparse + RRF） |
 | 文档解析 | MarkItDown → 结构感知分块（jieba 中文分词） |
 | 联网搜索 | Tavily / 博查 / 自定义协议，或内置免 key 搜索（free-search-mcp，本地优先、无需 API key） |
-| 后端 | FastAPI / Uvicorn / SQLAlchemy / PyMySQL |
-| 基础设施 | Docker Compose（MySQL / etcd / MinIO / Milvus / Attu） |
+| 后端 | FastAPI / Uvicorn / SQLAlchemy / SQLite |
+| 基础设施 | Docker Compose（etcd / MinIO / Milvus / Attu）+ 本地 SQLite |
 | 语音 | Qwen3-TTS（本地）/ Qwen3-ASR（本地）/ Silero VAD / Web Audio |
 | 角色渲染 | PIXI.js + Live2D Cubism 2/3/4 + VTube Studio |
 
 ## 环境要求
 
 - Python 3.11
-- Docker Desktop（运行 MySQL、Milvus、etcd、MinIO 与 Attu）
+- Docker Desktop（运行 Milvus、etcd、MinIO 与 Attu）
 - OpenAI-compatible Chat 与 Embedding 接口（LLM / Embedding 供应商无关）
 
 ## 本地启动
@@ -194,8 +194,8 @@ LangGraph `interrupt()` 触发中断，返回待审批的操作详情（工具�
 Copy-Item .env.example .env
 ```
 
-首次创建 MySQL 数据卷前，应修改 `.env` 中的 `MYSQL_PASSWORD` 与 `MYSQL_ROOT_PASSWORD`；
-MySQL 仅在空数据卷首次初始化时读取这些凭据。
+应用数据存储于本地 SQLite 文件（`data/yumeno.db`，随 `data/` 目录被 Git 忽略），
+无需额外初始化；首次启动时自动建库建表。
 
 2. 创建 Python 3.11 虚拟环境并安装依赖：
 
@@ -211,7 +211,7 @@ docker compose up -d
 docker compose ps
 ```
 
-等待 `mysql`、`etcd`、`standalone` 显示为 `healthy` 后再启动应用。
+等待 `etcd`、`standalone` 显示为 `healthy` 后再启动应用。
 
 4. 启动 FastAPI：
 
@@ -253,9 +253,9 @@ DEFAULT_CONFIDENCE_THRESHOLD=0.75    # 高置信度直通阈值
 COLLECTION_NAME=yumeno_content  # Milvus 集合名（更换 Embedding 维度时需换新集合）
 ```
 
-> **多副本注意**：`docker-compose.yml` 使用固定容器名与全局数据卷
-> `yumeno_mysql_data`，同一台机器运行第二个副本时请按 README 末尾的
-> "下载副本与 Docker 重名冲突"一节调整容器名、卷名与宿主机端口，不要删除数据卷。
+> **多副本注意**：`docker-compose.yml` 使用固定容器名与绑定数据目录，
+> 同一台机器运行第二个副本时请按 README 末尾的
+> "下载副本与 Docker 重名冲突"一节调整容器名与宿主机端口，不要删除数据目录。
 
 ## 主要接口
 

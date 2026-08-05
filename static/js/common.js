@@ -19,6 +19,7 @@ const state = {
   personas: [],
   activePersona: null,
   editPersona: null,
+  manageSelectedId: null,
   conversationId: crypto.randomUUID(),
   poller: null,
   editPoller: null,
@@ -104,7 +105,7 @@ document.addEventListener("click", (event) => {
 async function loadStatus() {
   try {
     const status = await api(fetch("/api/status"));
-    renderServiceStatus("mysql", "MySQL", status.mysql);
+    renderServiceStatus("sqlite", "SQLite", status.sqlite);
     renderServiceStatus("milvus", "Milvus", status.milvus);
     renderSystemStatusDetail(status);
     const milvusLink = $("settings-open-milvus");
@@ -113,7 +114,7 @@ async function loadStatus() {
       milvusLink.href = `http://127.0.0.1:${attuPort}`;
     }
   } catch {
-    renderServiceStatus("mysql", "MySQL", "unavailable");
+    renderServiceStatus("sqlite", "SQLite", "unavailable");
     renderServiceStatus("milvus", "Milvus", "unavailable");
     const detail = $("system-status-detail");
     if (detail) detail.textContent = "无法获取详细状态，请稍后重试。";
@@ -183,10 +184,9 @@ function renderSystemStatusDetail(status) {
   setDetail("tts", tts.ready
     ? [`${base(tts.model_dir || tts.runtime)}`, `GPU ${tts.use_gpu ? "加速" : "关闭"} · 首次合成时运行`]
     : [tts.installing ? "安装中" : (tts.error || "未安装")]);
-
-  setDetail("mysql", status.mysql === "ok"
-    ? [status.mysql_version ? `MySQL ${status.mysql_version} · 已连接` : "本地数据库已连接"]
-    : [status.mysql === "unavailable" ? "连接失败" : "检查中"]);
+  setDetail("sqlite", status.sqlite === "ok"
+    ? ["本地数据库已连接"]
+    : [status.sqlite === "unavailable" ? "连接失败" : "未初始化"]);
   setDetail("milvus", [
     status.milvus === "ok"
       ? "知识库已就绪"

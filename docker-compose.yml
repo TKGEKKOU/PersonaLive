@@ -1,23 +1,6 @@
-services:
-  mysql:
-    image: mysql:8.4
-    container_name: yumeno-mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-    ports:
-      - "127.0.0.1:17001:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 20s
+name: yumeno
 
+services:
   etcd:
     image: quay.io/coreos/etcd:v3.5.18
     container_name: yumeno-etcd
@@ -90,7 +73,3 @@ services:
     depends_on:
       standalone:
         condition: service_healthy
-
-volumes:
-  mysql_data:
-    name: yumeno_mysql_data

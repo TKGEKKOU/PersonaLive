@@ -1,7 +1,7 @@
 from collections.abc import Generator
 
 from fastapi import Request
-from sqlalchemy import URL, Engine, create_engine, inspect, text
+from sqlalchemy import Engine, create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from settings import Settings
@@ -11,19 +11,20 @@ class Base(DeclarativeBase):
     pass
 
 
-def database_url(settings: Settings) -> URL:
-    return URL.create(
-        "mysql+pymysql",
-        username=settings.mysql_user,
-        password=settings.mysql_password or None,
-        host=settings.mysql_host,
-        port=settings.mysql_port,
-        database=settings.mysql_database,
-    )
+def database_url(settings: Settings) -> str:
+    return f"sqlite:///{settings.sqlite_path.as_posix()}"
 
 
 def build_engine(settings: Settings) -> Engine:
-    return create_engine(database_url(settings), pool_pre_ping=True)
+    settings.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+    engine = create_engine(
+        database_url(settings),
+        connect_args={"check_same_thread": False},
+    )
+    # WAL 模式:读写并发更稳,桌面端单用户场景足够
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA journal_mode=WAL"))
+    return engine
 
 
 def build_session_factory(engine: Engine) -> sessionmaker[Session]:

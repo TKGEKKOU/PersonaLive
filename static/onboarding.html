@@ -38,7 +38,7 @@
       <details class="guide-block" open>
         <summary>手动启动 / 停止</summary>
         <div class="guide-body">
-          <p>启动：先 <code>docker compose up -d</code> 准备 MySQL / Milvus，再运行 <code>.\.venv\Scripts\python.exe -B main.py</code>；页面地址 <code>http://127.0.0.1:17000/static/index.html</code>。</p>
+          <p>启动：先 <code>docker compose up -d</code> 准备 Milvus（应用数据存本地 SQLite），再运行 <code>.\.venv\Scripts\python.exe -B main.py</code>；页面地址 <code>http://127.0.0.1:17000/static/index.html</code>。</p>
           <p>停止：桌面版关闭窗口时按【退出时】策略处理 Docker；浏览器版请手动停止 Python 进程，需要保留容器用 <code>docker compose stop</code>。</p>
         </div>
       </details>
@@ -67,12 +67,12 @@
         const response = await fetch("/api/status");
         if (!response.ok) throw new Error("unavailable");
         const status = await response.json();
-        const mysql = status.mysql === "ok" ? "MySQL 正常" : "MySQL 不可用";
+        const sqlite = status.sqlite === "ok" ? "SQLite 正常" : "SQLite 未初始化";
         const milvus = status.milvus === "ok" ? "Milvus 正常" : status.milvus === "collection_missing" ? "Milvus 缺少集合" : "Milvus 不可用";
         const version = status.app?.version ? `v${status.app.version}` : "";
         host.replaceChildren(
           pill("服务运行中", true),
-          pill(mysql, status.mysql === "ok"),
+          pill(sqlite, status.sqlite === "ok"),
           pill(milvus, status.milvus === "ok"),
           pill(version, true),
         );

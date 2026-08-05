@@ -18,11 +18,7 @@ class Settings:
     app_host: str
     app_port: int
     workspace_id: str
-    mysql_host: str
-    mysql_port: int
-    mysql_database: str
-    mysql_user: str
-    mysql_password: str
+    sqlite_path: Path
     milvus_uri: str
     milvus_user: str
     milvus_password: str
@@ -54,8 +50,7 @@ class Settings:
     @classmethod
     def load(cls, root: Path | None = None) -> "Settings":
         """合并基础设施配置与 UI 配置，并返回不可变的运行时快照。
-
-        `.env` 只负责 MySQL、Milvus、监听地址和 RAG 控制参数；模型、Embedding
+        `.env` 只负责 SQLite、Milvus、监听地址和 RAG 控制参数；模型、Embedding
         与联网搜索凭据来自 `data/local_settings.json`，避免页面保存后仍被旧环境
         变量覆盖。
         """
@@ -96,11 +91,7 @@ class Settings:
             app_host=get("APP_HOST", "127.0.0.1"),
             app_port=int(get("APP_PORT", "17000")),
             workspace_id="local-default",
-            mysql_host=get("MYSQL_HOST", "127.0.0.1"),
-            mysql_port=int(get("MYSQL_PORT", "17001")),
-            mysql_database=get("MYSQL_DATABASE", "yumeno"),
-            mysql_user=get("MYSQL_USER", "yumeno"),
-            mysql_password=get("MYSQL_PASSWORD", ""),
+            sqlite_path=project_root / str(get("DB_PATH", "data/yumeno.db")),
             milvus_uri=get("MILVUS_URI", "http://127.0.0.1:17002"),
             milvus_user=get("MILVUS_USER", ""),
             milvus_password=get("MILVUS_PASSWORD", ""),

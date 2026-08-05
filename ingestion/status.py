@@ -179,28 +179,21 @@ def _resource_status(builder) -> dict:
 
 def get_system_status() -> dict:
     settings = Settings.load()
-    result = {"mysql": "unavailable", "milvus": "unavailable"}
+    result = {"sqlite": "unavailable", "milvus": "unavailable"}
 
-    engine = create_engine(
-        database_url(settings),
-        pool_pre_ping=True,
-        pool_timeout=2,
-        connect_args={"connect_timeout": 2},
-    )
-    try:
-        with engine.connect() as connection:
-            connection.execute(text("SELECT 1")).fetchone()
-            try:
-                version_row = connection.execute(text("SELECT VERSION()")).fetchone()
-                result["mysql_version"] = str(version_row[0] or "") if version_row else ""
-            except Exception:
-                result["mysql_version"] = ""
-        result["mysql"] = "ok"
-    except Exception:
-        result["mysql"] = "unavailable"
-        result["mysql_version"] = ""
-    finally:
-        engine.dispose()
+    if settings.sqlite_path.is_file():
+        engine = create_engine(
+            database_url(settings),
+            connect_args={"check_same_thread": False},
+        )
+        try:
+            with engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
+            result["sqlite"] = "ok"
+        except Exception:
+            result["sqlite"] = "unavailable"
+        finally:
+            engine.dispose()
 
     connection_args = {"uri": settings.milvus_uri, "timeout": 2}
     if settings.milvus_user and settings.milvus_password:
@@ -226,7 +219,6 @@ def get_system_status() -> dict:
         milvus_port = 19530
     ports = {
         "app": settings.app_port,
-        "mysql": settings.mysql_port,
         "milvus": milvus_port,
         "attu": _ATTU_PORT,
         "asr": _ASR_PORT,
