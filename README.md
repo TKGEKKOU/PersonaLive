@@ -190,6 +190,20 @@ LangGraph `interrupt()` 触发中断，返回待审批的操作详情（工具�
 
 以下命令均在项目根目录执行。
 
+### 一键启动（推荐）
+
+首次运行会自动创建 `.venv`、安装依赖、生成 `.env`，并拉起 Docker 基础设施；
+之后重复运行直接复用已有环境。
+
+```powershell
+.\scripts\start.ps1              # 桌面端（默认，自动拉起 Docker 与本地服务）
+.\scripts\start.ps1 -Server      # 仅启动 FastAPI 服务端，浏览器访问 http://127.0.0.1:17000
+.\scripts\start.ps1 -NoInstall   # 跳过依赖安装（环境已就绪时更快）
+```
+
+前置条件：安装 [Python 3.11](https://www.python.org/downloads/)（勾选 Add to PATH）
+与 [Docker Desktop](https://www.docker.com/products/docker-desktop/)。
+
 ### 首次启动
 
 1. 创建本地配置（不要将 `.env` 提交到 Git）：
