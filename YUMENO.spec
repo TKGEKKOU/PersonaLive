@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('static', 'static'), ('resources', 'resources'), ('runtime/tts', 'runtime/tts'), ('data/live2d', 'data/live2d'), ('docker-compose.yml', '.'), ('.env.example', '.')]
+datas = [('static', 'static'), ('resources', 'resources'), ('runtime/tts', 'runtime/tts'), ('audios', 'audios'), ('data/live2d', 'data/live2d'), ('docker-compose.yml', '.'), ('.env.example', '.')]
 binaries = []
 hiddenimports = []
 tmp_ret = collect_all('webview')

@@ -3,7 +3,8 @@
 const MODULES = {
   chat: { view: "chat", init: window.PL.modules.chat?.init },
   create: { view: "create", init: window.PL.modules.create?.init },
-  manage: { view: "manage", init: window.PL.modules.manage?.init },
+  manage: { view: "manage", init: window.PL.modules.manage?.init, onShow: window.PL.modules.manage?.onShow },
+  voice: { view: "voice", init: window.PL.modules.voice?.init },
   integrations: { view: "integrations", init: window.PL.modules.integrations?.init },
   plugins: { view: "plugins", init: window.PL.modules.plugins?.init },
   test: { view: "test", init: window.PL.modules.test?.init },
@@ -111,6 +112,7 @@ async function switchView(view) {
   Object.entries(VIEW_NODES).forEach(([key, viewNode]) => {
     viewNode.classList.toggle("is-hidden", key !== view);
   });
+  if (entry.onShow) entry.onShow();
   icons();
 }
 

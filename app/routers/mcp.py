@@ -11,6 +11,7 @@ from integrations.mcp.config import MCPServerConfig
 
 
 router = APIRouter(prefix="/api/mcp", tags=["mcp"])
+SECRET_MASK = "********"
 
 
 class MCPServerPayload(BaseModel):
@@ -23,6 +24,10 @@ class MCPServerPayload(BaseModel):
     headers: dict[str, str] = Field(default_factory=dict)
     enabled: bool = True
     description: str = ""
+
+
+class MCPServerGrantsPayload(BaseModel):
+    allowed_persona_ids: list[str] = Field(default_factory=list)
 
 
 def _manager(request: Request):
@@ -38,9 +43,9 @@ def _to_dict(config: MCPServerConfig, status_info: dict | None = None) -> dict:
         "transport": config.transport,
         "command": config.command,
         "args": list(config.args),
-        "env": dict(config.env),
+        "env": {key: SECRET_MASK for key in config.env},
         "url": config.url,
-        "headers": dict(config.headers),
+        "headers": {key: SECRET_MASK for key in config.headers},
         "enabled": config.enabled,
         "description": config.description,
         "allowed_persona_ids": list(config.allowed_persona_ids),
@@ -48,6 +53,13 @@ def _to_dict(config: MCPServerConfig, status_info: dict | None = None) -> dict:
     if status_info is not None:
         payload["status"] = status_info
     return payload
+
+
+def _merge_masked_secrets(values: dict[str, str], existing: dict[str, str]) -> dict[str, str]:
+    return {
+        key: existing[key] if value == SECRET_MASK and key in existing else value
+        for key, value in values.items()
+    }
 
 
 @router.get("/servers")
@@ -67,16 +79,26 @@ async def upsert_server_api(request: Request, payload: MCPServerPayload) -> dict
     """新增或更新服务器配置；保存后自动热重连（无需重启应用）。"""
 
     manager = _manager(request)
+    existing_config = manager.get_config(payload.name.strip())
     config = MCPServerConfig(
         name=payload.name.strip(),
         transport=payload.transport,
         command=payload.command.strip(),
         args=[str(item) for item in payload.args],
-        env={str(k): str(v) for k, v in payload.env.items()},
+        env=_merge_masked_secrets(
+            {str(k): str(v) for k, v in payload.env.items()},
+            existing_config.env if existing_config else {},
+        ),
         url=payload.url.strip(),
-        headers={str(k): str(v) for k, v in payload.headers.items()},
+        headers=_merge_masked_secrets(
+            {str(k): str(v) for k, v in payload.headers.items()},
+            existing_config.headers if existing_config else {},
+        ),
         enabled=payload.enabled,
         description=payload.description.strip(),
+        allowed_persona_ids=(
+            list(existing_config.allowed_persona_ids) if existing_config else []
+        ),
     )
     try:
         servers = manager.list_configs()
@@ -176,6 +198,26 @@ async def test_server_api(request: Request, name: str) -> dict:
         ],
         "elapsed_ms": round((time.monotonic() - started) * 1000, 1),
     }
+
+
+@router.patch("/servers/{name}/grants")
+def update_grants_api(request: Request, name: str, payload: MCPServerGrantsPayload) -> dict:
+    """更新服务器的角色授权并即时生效。"""
+
+    manager = _manager(request)
+    config = manager.get_config(name)
+    if config is None:
+        raise HTTPException(status_code=404, detail="MCP 服务器不存在")
+    config.allowed_persona_ids = [str(item).strip() for item in payload.allowed_persona_ids]
+    servers = [c if c.name != name else config for c in manager.list_configs()]
+    try:
+        manager.save_configs(servers)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    from agents.mcp_grants import refresh_grants
+
+    refresh_grants()
+    return _to_dict(config)
 
 
 @router.get("/tools")

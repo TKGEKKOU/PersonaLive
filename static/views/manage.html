@@ -18,6 +18,7 @@
       <div class="basic-fields">
         <label class="field"><span>名称</span><input id="edit-persona-name" maxlength="255" required></label>
         <label class="field"><span>人设</span><textarea id="edit-persona-profile" rows="4"></textarea></label>
+        <label class="field"><span>回复语言</span><select id="edit-persona-language"><option value="">自动（跟随对话）</option><option value="zh">中文</option><option value="en">英语</option><option value="ja">日语</option></select></label>
       </div>
       <div id="edit-files-drop" class="upload-drop" tabindex="0" role="button" aria-label="选择文件">
         <i data-lucide="file-plus-2"></i>
@@ -47,31 +48,18 @@
       </details>
 
       <details class="fold-card edit-tts-panel" open>
-        <summary><div><strong>角色声音</strong><p class="panel-subtitle">上传参考音频（可多选），生成示例语音确认效果。</p></div><span id="edit-tts-reference-status" class="status-pill">未配置</span></summary>
-        <div id="edit-tts-drop" class="upload-drop" tabindex="0" role="button" aria-label="选择参考音频">
-          <i data-lucide="audio-lines"></i>
-          <b>拖入 WAV，或点击选择</b>
-          <span>建议 2~5 条、合计 10~20 秒</span>
-          <input id="edit-tts-reference" type="file" accept="audio/wav,.wav" multiple>
-        </div>
-        <ul id="edit-tts-selected" class="file-chip-list is-hidden"></ul>
-        <div class="voice-reference-actions">
+        <summary><div><strong>角色声音</strong><p class="panel-subtitle">选择已保存的音色，或前往声音工坊从视频 / 音频新建。</p></div><span id="edit-tts-reference-status" class="status-pill">未配置</span></summary>
+        <div class="voice-select-row"><label class="field voice-select-field"><span>训练音色（GPT-SoVITS）</span><select id="edit-tts-asset"><option value="">未选择（角色不生成语音）</option></select></label><label class="field voice-select-field" style="max-width:140px"><span>语言</span><select id="edit-tts-asset-lang"><option value="zh">中文</option><option value="ja">日文</option><option value="en">英文</option></select></label><button id="edit-tts-preview-asset" class="button button-secondary" type="button" disabled>试听</button><button id="edit-tts-remove-asset" class="button button-secondary" type="button" disabled>移除</button></div>        <div class="voice-reference-actions">
           <label class="toggle-field"><input id="edit-tts-enabled" type="checkbox"><span>生成语音</span></label>
           <label class="toggle-field"><input id="edit-tts-auto-play" type="checkbox"><span>自动播放</span></label>
-          <button id="edit-tts-preview-reference" class="button button-secondary" type="button" disabled>播放参考音频</button>
-          <button id="edit-tts-remove-reference" class="button button-secondary" type="button" disabled>移除音色</button>
+          <button id="edit-tts-open-studio" class="button button-secondary" type="button"><i data-lucide="mic-vocal"></i>声音工坊</button>
         </div>
-        <div class="voice-sample-row">
-          <label class="field"><span>示例文案</span><input id="edit-tts-preview-text" value="你好，我是这个角色，很高兴和你聊天。" maxlength="200"></label>
-          <button id="edit-tts-generate-preview" class="button button-secondary" type="button" disabled>生成示例语音</button>
-          <audio id="edit-tts-preview-audio" class="is-hidden" controls preload="none"></audio>
-        </div>
+
         <div class="module-actions">
           <p id="edit-tts-message" class="inline-status"></p>
           <button id="edit-tts-confirm" class="button button-primary" type="button"><i data-lucide="save"></i>保存声音</button>
         </div>
         <p id="edit-tts-preview-status" class="inline-status"></p>
-        <button id="edit-tts-open-settings" class="button button-secondary is-hidden" type="button">前往设置安装 TTS 模型</button>
       </details>
 
       <details class="fold-card edit-mcp-grants-panel" open>

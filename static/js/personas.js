@@ -1,7 +1,7 @@
 "use strict";
 window.PL = window.PL || { modules: {} };
 window.PL.modules.create = { init: initCreatePage };
-window.PL.modules.manage = { init: initManagePage };
+window.PL.modules.manage = { init: initManagePage, onShow: refreshManageReference };
 window.PL.modules.test = { init: initTestPage };
 
 const DRAFT_STATUS_LABELS = { analyzing: "分析中", draft: "待确认", confirmed: "已创建" };
@@ -52,13 +52,14 @@ function bindManageEvents() {
   bindSafe("edit-files-confirm", "click", () => saveEditFiles());
   bindSafe("edit-live2d-confirm", "click", () => saveEditLive2d());
   bindSafe("edit-tts-confirm", "click", () => saveEditVoice());
+  bindSafe("edit-tts-preview-asset", "click", previewEditAsset);
+  bindSafe("edit-tts-remove-asset", "click", removeEditAsset);
   bindSafe("edit-document-files", "change", () => addSelectedFiles("edit-document-files", "edit-files-selected", "files"));
-  bindSafe("edit-tts-reference", "change", () => addSelectedFiles("edit-tts-reference", "edit-tts-selected", "audio"));
   setupDropZone("edit-files-drop", "edit-document-files", "edit-files-selected", "files");
-  setupDropZone("edit-tts-drop", "edit-tts-reference", "edit-tts-selected", "audio");
+  bindSafe("edit-tts-voice", "change", syncEditTtsControls);
   bindSafe("edit-tts-preview-reference", "click", playEditReference);
   bindSafe("edit-tts-generate-preview", "click", generateEditPreview);
-  bindSafe("edit-tts-open-settings", "click", openTtsSettings);
+  bindSafe("edit-tts-open-studio", "click", openVoiceStudio);
   bindSafe("edit-tts-remove-reference", "click", removeEditReference);
   bindSafe("edit-tts-enabled", "change", syncEditTtsControls);
   bindSafe("edit-mcp-grants-save", "click", saveEditMCPGrants);
@@ -131,6 +132,14 @@ function setupDropZone(zoneId, inputId, listId, kind) {
     zone.classList.remove("is-dragging");
     const files = [...(event.dataTransfer?.files || [])];
     if (!files.length) return;
+    if (kind === "video") {
+      const input = $(inputId);
+      const transfer = new DataTransfer();
+      transfer.items.add(files[0]);
+      input.files = transfer.files;
+      input.dispatchEvent(new Event("change"));
+      return;
+    }
     const key = selectedFilesKey(kind);
     if (kind === "audio") {
       const invalid = files.find((file) => !file.name.toLowerCase().endsWith(".wav") || file.size > 10 * 1024 * 1024);
@@ -248,6 +257,7 @@ function renderDraft() {
   $("draft-editor").classList.remove("is-hidden");
   $("draft-name").value = state.draft.suggested_name;
   $("draft-profile").value = state.draft.profile?.description || "";
+  loadCreateVoiceOptions();
   $("draft-status").textContent = DRAFT_STATUS_LABELS[state.draft.status] || state.draft.status;
   setText("create-status", DRAFT_STATUS_LABELS[state.draft.status] || state.draft.status);
   renderCandidates();
@@ -304,9 +314,34 @@ async function selectCandidate(candidateId) {
 async function saveDraft(required = false) {
   if (!state.draft) return;
   try {
-    state.draft = await api(fetch(`/api/persona-drafts/${state.draft.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: $("draft-name").value.trim(), profile: { ...(state.draft.profile || {}), description: $("draft-profile").value.trim(), generation_mode: state.draft.mode } }) }));
+    const assetId = $("create-tts-asset")?.value || "";
+    const tts = assetId ? { voice_asset_id: assetId, voice_lang: $("create-tts-asset-lang")?.value || "zh" } : {};
+    state.draft = await api(fetch(`/api/persona-drafts/${state.draft.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: $("draft-name").value.trim(), profile: { ...(state.draft.profile || {}), description: $("draft-profile").value.trim(), generation_mode: state.draft.mode, tts } }) }));
     renderDraft();
   } catch (reason) { setText("upload-error", reason); if (required) throw reason; }
+}
+async function loadCreateVoiceOptions() {
+  try {
+    const data = await api(fetch("/api/voice-assets", { cache: "no-store" }));
+    const assets = (data.items || []).filter((item) => item.status === "ready");
+    const select = $("create-tts-asset");
+    if (!select) return;
+    const current = select.value;
+    select.replaceChildren();
+    const empty = document.createElement("option");
+    empty.value = "";
+    empty.textContent = "创建后绑定";
+    select.append(empty);
+    assets.forEach((asset) => {
+      const option = document.createElement("option");
+      option.value = asset.id;
+      option.textContent = `${asset.name}（GPT-SoVITS）`;
+      select.append(option);
+    });
+    select.value = current;
+  } catch (reason) {
+    // voice list unavailable; creation still works without a bound voice
+  }
 }
 async function confirmDraft() {
   if (!state.draft) return;
@@ -318,7 +353,7 @@ async function confirmDraft() {
     await switchView("manage");
     await loadPersonas();
     await selectManagePersona(state.draft.persona.id);
-    moduleMessage("edit-files-message", "角色已创建，请配置参考音色后保存");
+    moduleMessage("edit-files-message", "角色已创建，可到“角色声音”绑定训练音色");
     pollDraft();
   } catch (reason) { setText("upload-error", reason); }
   finally { $("confirm-draft").disabled = false; }
@@ -387,8 +422,17 @@ function renderManagePersonaList() {
     const name = document.createElement("b");
     name.textContent = persona.name;
     const description = document.createElement("span");
+    description.className = "persona-card-desc";
     description.textContent = (persona.profile?.description || "暂无设定描述").slice(0, 60);
-    button.append(name, description);
+    const meta = document.createElement("span");
+    meta.className = "persona-card-meta";
+    const kind = persona.persona_type === "knowledge_expert" ? "KNOWLEDGE" : "CHARACTER";
+    meta.textContent = `// ${kind} · ${String(persona.id || "").slice(0, 8) || "----"}`;
+    const bound = !!(persona.profile?.tts?.voice_asset_id);
+    const tag = document.createElement("span");
+    tag.className = "persona-card-tag" + (bound ? " is-bound" : "");
+    tag.textContent = bound ? "已绑定音色" : "未绑定音色";
+    button.append(name, description, meta, tag);
     button.addEventListener("click", () => selectManagePersona(persona.id));
     list.append(button);
   }
@@ -411,17 +455,15 @@ async function loadEditPersona(personaId = null) {
     $("delete-persona").disabled = !state.editPersona;
     if (!state.editPersona) return;
     state.editSelectedFiles = [];
-    state.editSelectedAudio = [];
     $("edit-document-files").value = "";
-    $("edit-tts-reference").value = "";
     $("edit-direct-text").value = "";
     renderSelectedChips("edit-files-selected", "files");
-    renderSelectedChips("edit-tts-selected", "audio");
     moduleMessage("edit-files-message", "");
     moduleMessage("edit-live2d-message", "");
     moduleMessage("edit-tts-message", "");
     $("edit-persona-name").value = state.editPersona.name;
     $("edit-persona-profile").value = state.editPersona.profile?.description || "";
+    if ($("edit-persona-language")) $("edit-persona-language").value = state.editPersona.profile?.reply_language || "";
     $("edit-tts-enabled").checked = Boolean(state.editPersona.profile?.tts?.enabled);
     $("edit-tts-auto-play").checked = state.editPersona.profile?.tts?.auto_play !== false;
     await syncEditLive2dModel();
@@ -535,25 +577,95 @@ async function syncEditLive2dModel() {
 }
 async function loadEditReference() {
   if (!state.editPersona) return;
-  const info = await api(fetch(`/api/tts/personas/${state.editPersona.id}/reference`, { headers: { "X-YUMENO-Request": "web" } }));
-  const duration = info.duration_seconds ? ` · 约 ${Math.round(info.duration_seconds)} 秒` : "";
-  setText("edit-tts-reference-status", info.configured ? `已配置：${info.name}${info.count > 1 ? `（已合并 ${info.count} 条${duration}）` : duration}` : "未配置参考音色");
-  $("edit-tts-preview-reference").disabled = !info.configured;
-  $("edit-tts-remove-reference").disabled = !info.configured;
-  syncEditTtsPreview(info.configured);
-  markTtsStep("select", info.configured ? "已配置参考音色" : "选择 WAV 音频");
-  markTtsStep("upload", info.configured ? "音色文件已处理" : "点击确认上传并处理");
-  markTtsStep("preview", info.configured ? "可生成示例语音试听" : "生成示例语音并试听");
+  await loadEditAssets();
 }
-function markTtsStep(step, text, active = false) {
-  const item = $("edit-tts-steps")?.querySelector(`[data-step="${step}"]`);
-  if (!item) return;
-  item.textContent = text; item.classList.toggle("is-active", active); item.classList.toggle("is-complete", !active && text.includes("已"));
+async function loadEditAssets() {
+  try {
+    const data = await api(fetch("/api/voice-assets", { cache: "no-store" }));
+    const assets = (data.items || []).filter((item) => item.status === "ready");
+    const select = $("edit-tts-asset");
+    if (!select) return;
+    const current = state.editPersona?.profile?.tts?.voice_asset_id || "";
+    select.replaceChildren();
+    const empty = document.createElement("option");
+    empty.value = "";
+    empty.textContent = "未选择（使用上方参考音色）";
+    select.append(empty);
+    assets.forEach((asset) => {
+      const option = document.createElement("option");
+      option.value = asset.id;
+      option.textContent = `${asset.name}（GPT-SoVITS）`;
+      select.append(option);
+    });
+    select.value = current;
+    const lang = $("edit-tts-asset-lang");
+    if (lang) lang.value = state.editPersona?.profile?.tts?.voice_lang || "zh";
+    $("edit-tts-preview-asset").disabled = !current;
+    $("edit-tts-remove-asset").disabled = !current;
+  } catch (reason) {
+    // trained-voice binding stays empty when assets are unavailable
+  }
 }
-function syncEditTtsControls() { $("edit-tts-auto-play").disabled = !$("edit-tts-enabled").checked; }
+async function previewEditAsset() {
+  const assetId = $("edit-tts-asset")?.value;
+  if (!assetId) return;
+  try {
+    const response = await fetch(`/api/voice-assets/${assetId}/synthesize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-YUMENO-Request": "web" },
+      body: JSON.stringify({ text: "你好，这是我的声音。很高兴认识你。" }),
+    });
+    if (!response.ok) throw new Error((await response.json().catch(() => null))?.detail || "试听失败");
+    if (window.PL && window.PL.unlockAudio) window.PL.unlockAudio();
+    const audio = new Audio(URL.createObjectURL(await response.blob()));
+    audio.play().catch(() => {});
+  } catch (reason) {
+    moduleMessage("edit-tts-message", reason, true);
+  }
+}
+function removeEditAsset() {
+  $("edit-tts-asset").value = "";
+  $("edit-tts-preview-asset").disabled = true;
+  $("edit-tts-remove-asset").disabled = true;
+}
+async function loadVoiceOptions() {
+  try {
+    const data = await api(fetch("/api/voice-studio/voices", { cache: "no-store", headers: { "X-YUMENO-Request": "web" } }));
+    const voices = data.voices || [];
+    const select = $("edit-tts-voice");
+    if (select) {
+      const current = select.value;
+      select.replaceChildren();
+      const empty = document.createElement("option");
+      empty.value = "";
+      empty.textContent = "未选择";
+      select.append(empty);
+      voices.forEach((voice) => {
+        const option = document.createElement("option");
+        option.value = voice.voice_id;
+        option.textContent = `${voice.name}${voice.duration_seconds ? `（${Math.round(voice.duration_seconds)} 秒）` : ""}`;
+        select.append(option);
+      });
+      select.value = voices.some((voice) => voice.voice_id === current) ? current : "";
+    }
+    return voices;
+  } catch (reason) {
+    moduleMessage("edit-tts-message", `加载音色失败：${reason.message || reason}`, true);
+    return [];
+  }
+}
+
+function refreshManageReference() {
+  if (!state.manageSelectedId || !state.editPersona) return;
+  loadEditReference().catch(() => {});
+}
+function syncEditTtsControls() {
+  const enabled = $("edit-tts-enabled")?.checked;
+  if ($("edit-tts-auto-play")) $("edit-tts-auto-play").disabled = !enabled;
+  if ($("edit-tts-voice")) $("edit-tts-voice").disabled = !enabled;
+}
 function syncEditTtsPreview(referenceConfigured) {
-  $("edit-tts-generate-preview").disabled = !referenceConfigured;
-  $("edit-tts-open-settings").classList.toggle("is-hidden", state.ttsConfigured);
+  if ($("edit-tts-generate-preview")) $("edit-tts-generate-preview").disabled = !referenceConfigured;
 }
 async function playEditReference() {
   if (!state.editPersona) return;
@@ -569,12 +681,15 @@ async function playEditReference() {
   } catch (reason) { moduleMessage("edit-tts-message", reason, true); }
 }
 async function removeEditReference() {
-  if (!state.editPersona || !window.confirm("移除当前角色的参考音色？")) return;
+  if (!state.editPersona || !window.confirm("移除当前角色绑定的音色？音色本身仍保留在声音工坊中。")) return;
   try {
-    await api(fetch(`/api/tts/personas/${state.editPersona.id}/reference`, { method: "DELETE", headers: { "X-YUMENO-Request": "web" } }));
-    state.editPersona.profile = { ...(state.editPersona.profile || {}), tts: { ...(state.editPersona.profile?.tts || {}) } };
-    delete state.editPersona.profile.tts.reference_audio;
-    moduleMessage("edit-tts-message", "参考音色已移除"); await loadEditReference();
+    const tts = { ...(state.editPersona.profile?.tts || {}) };
+    delete tts.reference_audio;
+    delete tts.voice_id;
+    delete tts.voice_name;
+    const profile = { ...(state.editPersona.profile || {}), tts };
+    state.editPersona = await api(fetch(`/api/personas/${state.editPersona.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profile }) }));
+    moduleMessage("edit-tts-message", "音色已移除"); await loadEditReference();
   } catch (reason) { moduleMessage("edit-tts-message", reason, true); }
 }
 async function generateEditPreview() {
@@ -597,6 +712,7 @@ async function generateEditPreview() {
   finally { await loadEditReference(); }
 }
 function openTtsSettings() { switchView("settings"); const section = $("tts-settings-anchor"); section.open = true; section.scrollIntoView({ behavior: "smooth", block: "start" }); }
+function openVoiceStudio() { switchView("voice"); }
 function requestPersonaDeletion() {
   if (!state.editPersona) return;
   state.deletePersona = state.editPersona;
@@ -645,6 +761,9 @@ async function saveEditFiles(fromAll = false) {
   moduleMessage("edit-files-message", "正在保存资料…");
   try {
     const profile = { ...(state.editPersona.profile || {}), description: $("edit-persona-profile").value.trim() };
+    const language = $("edit-persona-language")?.value || "";
+    if (language) profile.reply_language = language;
+    else delete profile.reply_language;
     state.editPersona = await api(fetch(`/api/personas/${state.editPersona.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, profile }) }));
     await loadPersonas();
     state.manageSelectedId = state.editPersona.id;
@@ -688,19 +807,19 @@ async function saveEditVoice(fromAll = false) {
   const confirm = $("edit-tts-confirm");
   if (!fromAll) confirm.disabled = true;
   try {
-    const pending = state.editSelectedAudio || [];
-    if (pending.length) {
-      moduleMessage("edit-tts-message", `正在上传 ${pending.length} 条参考音频…`);
-      const form = new FormData();
-      pending.forEach((file) => form.append("files", file));
-      state.editPersona = await api(fetch(`/api/tts/personas/${state.editPersona.id}/reference`, { method: "POST", headers: { "X-YUMENO-Request": "web" }, body: form }));
-      state.editSelectedAudio = [];
-      renderSelectedChips("edit-tts-selected", "audio");
+    const tts = { enabled: $("edit-tts-enabled").checked, auto_play: $("edit-tts-auto-play").checked };
+    const assetId = $("edit-tts-asset")?.value || "";
+    if (assetId) {
+      tts.voice_asset_id = assetId;
+      tts.voice_lang = $("edit-tts-asset-lang")?.value || "zh";
+    } else {
+      delete tts.voice_asset_id;
+      delete tts.voice_lang;
     }
-    const profile = { ...(state.editPersona.profile || {}), tts: { ...(state.editPersona.profile?.tts || {}), enabled: $("edit-tts-enabled").checked, auto_play: $("edit-tts-auto-play").checked } };
+    const profile = { ...(state.editPersona.profile || {}), tts };
     state.editPersona = await api(fetch(`/api/personas/${state.editPersona.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profile }) }));
     await loadEditReference();
-    moduleMessage("edit-tts-message", "声音设置已保存");
+    moduleMessage("edit-tts-message", assetId ? "声音设置已保存" : "声音设置已保存（未绑定训练音色）");
     return true;
   } catch (reason) { moduleMessage("edit-tts-message", reason, true); return false; }
   finally { if (!fromAll) confirm.disabled = false; }
@@ -716,14 +835,13 @@ async function deleteEditDocument(documentId) {
 function requestSaveAll() {
   if (!state.editPersona) return;
   const pendingFiles = (state.editSelectedFiles || []).length + ($("edit-direct-text").value.trim() ? 1 : 0);
-  const pendingAudio = (state.editSelectedAudio || []).length;
   const summary = [
     `名称：${$("edit-persona-name").value.trim() || "（未填写）"}`,
     `人设：${$("edit-persona-profile").value.trim().slice(0, 80) || "（未填写）"}`,
     `Live2D：${$("edit-live2d-model")?.value || "默认（不绑定）"}`,
     `语音：${$("edit-tts-enabled").checked ? "生成语音" : "关闭"}${$("edit-tts-auto-play").checked ? " · 自动播放" : ""}`,
     `资料：${pendingFiles ? `${pendingFiles} 个待上传` : "无新增"}`,
-    `参考音色：${pendingAudio ? `${pendingAudio} 条待上传` : "无新增"}`,
+    `音色：${$("edit-tts-voice")?.value ? ($("edit-tts-voice").selectedOptions?.[0]?.textContent || "已选择") : "未绑定音色"}`,
   ].join("\n");
   setText("save-all-detail", summary);
   setText("save-all-error");

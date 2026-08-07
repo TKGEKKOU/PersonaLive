@@ -239,13 +239,13 @@
     let isPreview = false;
     const PROGRESS_SPEED = 32;
 
-    const STEP_ORDER = ["docker", "containers", "milvus", "attu", "service"];
-    const STEP_WEIGHTS = { docker: 0.15, containers: 0.38, milvus: 0.62, attu: 0.80, service: 0.93 };
+    const STEP_ORDER = ["docker", "containers", "milvus", "attu", "service", "gpt_sovits"];
+    const STEP_WEIGHTS = { docker: 0.15, containers: 0.38, milvus: 0.62, attu: 0.80, service: 0.93, gpt_sovits: 0.97 };
 
-    // 兜底默认速度：动画循环内连续以 2%/秒匀速推进（每 0.5s 涨 1%），
+    // 兜底默认速度：动画循环内连续以 1%/秒匀速推进（每 1s 涨 1%），
     // 保证进度条在任何情况下都不会冻结，且视觉丝滑不跳格；
     // 若服务尚未加载完就已到 99，则停在 99 等待完成。
-    const DEFAULT_RATE = 2;   // 兜底默认速度（%/秒）
+    const DEFAULT_RATE = 1;   // 兜底默认速度（%/秒）
     const MAX_LEAD = 99;      // 服务完成前兜底前进的展示上限
 
     // 暗夜渐晓：前段保持深色（启动期反馈靠文字），接近就绪时加速变白
@@ -347,7 +347,7 @@
         goal = targetPercent;
         speed = PROGRESS_SPEED;
       } else {
-        // 兜底：连续匀速前进（2%/秒），封顶 99
+        // 兜底：连续匀速前进（1%/秒），封顶 99
         goal = Math.min(MAX_LEAD, currentPercent + DEFAULT_RATE * dt);
         speed = DEFAULT_RATE;
       }

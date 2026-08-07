@@ -134,6 +134,33 @@ class ConversationMessage(Base):
     )
 
 
+class VoiceAsset(Base):
+    __tablename__ = "voice_assets"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    workspace_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    engine: Mapped[str] = mapped_column(String(32), nullable=False, default="gpt_sovits")
+    dir_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="created", index=True)
+    training_stage: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    gpt_weights_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    sovits_weights_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    refer_audio_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    dataset_dir: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    preview_audio_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
 class ConversationSummary(Base):
     __tablename__ = "conversation_summaries"
     __table_args__ = (

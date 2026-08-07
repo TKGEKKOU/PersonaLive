@@ -34,7 +34,7 @@
     <section id="draft-editor" class="panel draft-panel is-hidden">
       <div class="panel-heading"><div><h2>确认角色</h2><p class="panel-subtitle">核对名称与设定，可继续调整后写入 Milvus 向量库。</p></div><span id="draft-status" class="status-pill"></span></div>
       <section id="candidate-picker" class="candidate-picker is-hidden"><b>候选人物</b><div id="candidate-list" class="candidate-list"></div></section>
-      <div class="draft-fields"><label class="field"><span>名称</span><input id="draft-name" maxlength="255"></label><label class="field field-wide"><span>人设</span><textarea id="draft-profile" rows="5"></textarea></label></div>
+      <div class="draft-fields"><label class="field"><span>名称</span><input id="draft-name" maxlength="255"></label><label class="field field-wide"><span>人设</span><textarea id="draft-profile" rows="5"></textarea></label><div class="voice-select-row"><label class="field voice-select-field"><span>训练音色（GPT-SoVITS，可选）</span><select id="create-tts-asset"><option value="">创建后绑定</option></select></label><label class="field voice-select-field" style="max-width:140px"><span>语言</span><select id="create-tts-asset-lang"><option value="zh">中文</option><option value="ja">日文</option><option value="en">英文</option></select></label></div></div>
       <div class="section-heading"><b>资料</b></div><div id="document-list" class="document-list"></div>
       <div class="module-actions"><button id="save-draft" class="button button-secondary" type="button">保存草稿</button><button id="confirm-draft" class="button button-primary" type="button">确认创建并入库</button></div>
     </section>

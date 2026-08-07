@@ -159,6 +159,7 @@ class LocalTTS:
     ) -> None:
         self.runtime_path = Path(runtime_path)
         self.model_dir = Path(model_dir)
+        self.engine = "lunar"
         if port is None:
             with socket.socket() as probe:
                 probe.bind(("127.0.0.1", 0))
@@ -173,12 +174,23 @@ class LocalTTS:
         self._using_gpu: bool | None = None
         self._process_lock = threading.Lock()
         self._job_handle = _create_kill_on_close_job()
-        project_root = self.model_dir.parents[1] if self.model_dir.parent.name == "models" else self.model_dir.parent
+        project_root = self._find_project_root(self.model_dir)
         self.log_path = project_root / "data" / "logs" / "tts-service.log"
         atexit.register(self.stop_service)
 
         self.max_tokens = DEFAULT_MAX_AUDIO_TOKENS
         self.chunk_chars = DEFAULT_CHUNK_CHARS
+
+    @staticmethod
+    def _find_project_root(model_dir: Path) -> Path:
+        """Locate the repository root from a model directory by walking up
+        until a directory that owns ``voice/`` or ``main.py`` is found."""
+        for parent in model_dir.resolve().parents:
+            if (parent / "voice").is_dir() or (parent / "main.py").is_file():
+                return parent
+        if model_dir.parent.name == "models":
+            return model_dir.parents[1]
+        return model_dir.parent
 
     @property
     def base_url(self) -> str:
@@ -387,7 +399,11 @@ class LocalTTS:
     # 合成
     # ------------------------------------------------------------------
 
-    def _synthesize_request(self, text: str, reference_audio: Path | None) -> bytes:
+    def _synthesize_request(
+        self,
+        text: str,
+        reference_audio: Path | None,
+    ) -> bytes:
         payload = {"text": text.strip(), "max_tokens": int(self.max_tokens)}
         if reference_audio:
             payload["ref_audio"] = str(reference_audio)
@@ -411,7 +427,11 @@ class LocalTTS:
             raise TTSGenerationError("Lunar TTS 没有返回音频")
         return audio
 
-    def _synthesize_chunk(self, text: str, reference_audio: Path | None) -> bytes:
+    def _synthesize_chunk(
+        self,
+        text: str,
+        reference_audio: Path | None,
+    ) -> bytes:
         """合成单个文本片段，异常采样（过短/失控说满）时重启服务重试。"""
         minimum = self.estimate_min_audio_seconds(text)
         cap_seconds = self.max_tokens / 12.5
@@ -439,21 +459,38 @@ class LocalTTS:
             raise TTSGenerationError("合成失败")
         return last_audio
 
-    def synthesize(self, text: str, output: Path, reference_audio: Path | None = None) -> Path:
-        if not text.strip():
-            raise TTSGenerationError("合成文本为空")
+    def synthesize(
+        self,
+        text: str,
+        output: Path,
+        reference_audio: Path | None = None,
+    ) -> Path:
         output = Path(output)
         output.parent.mkdir(parents=True, exist_ok=True)
+        merged = self.synthesize_to_bytes(text, reference_audio)
+        temporary = output.with_suffix(output.suffix + ".tmp")
+        temporary.write_bytes(merged)
+        temporary.replace(output)
+        return output
+
+    def synthesize_to_bytes(
+        self,
+        text: str,
+        reference_audio: Path | None = None,
+    ) -> bytes:
+        """合成文本并直接返回合并后的 WAV 字节，避免临时文件往返。
+
+        文本按 chunk_chars 边界切分，逐段调用引擎后合并；异常采样
+        重试逻辑与 synthesize() 完全一致。
+        """
+        if not text.strip():
+            raise TTSGenerationError("合成文本为空")
         self._ensure_ready()
         chunks = self.split_chunks(text, self.chunk_chars)
         if not chunks:
             raise TTSGenerationError("合成文本为空")
         parts = [self._synthesize_chunk(chunk, reference_audio) for chunk in chunks]
-        merged = self.merge_wavs(parts)
-        temporary = output.with_suffix(output.suffix + ".tmp")
-        temporary.write_bytes(merged)
-        temporary.replace(output)
-        return output
+        return self.merge_wavs(parts)
 
     def stop_service(self) -> None:
         with self._process_lock:

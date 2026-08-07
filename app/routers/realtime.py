@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from app.chat_store import try_persist_text_message
 from app.routers.agents import context_for, response_for
+from agents.service import AgentTurnResult
 from realtime.protocol import (
     CancelEvent,
     ConfirmationEvent,
@@ -17,39 +18,6 @@ from realtime.session import RealtimeSession, TurnInProgressError
 
 
 router = APIRouter(tags=["realtime"])
-
-
-def chunk_text(text: str, max_chars: int = 80) -> list[str]:
-    """Split visible answers into short sentence-aware chunks for incremental UI/TTS."""
-    remaining = text.strip()
-    chunks: list[str] = []
-    punctuation = "。！？!?；;\n"
-    while remaining:
-        if len(remaining) <= max_chars:
-            chunks.append(remaining)
-            break
-        window = remaining[: max_chars + 1]
-        boundary = max((window.rfind(mark) for mark in punctuation), default=-1)
-        if boundary >= 0:
-            cut = boundary + 1
-        else:
-            cut = max_chars
-        chunks.append(remaining[:cut])
-        remaining = remaining[cut:]
-    return chunks
-
-
-def voice_limited_answer(answer: str, persona_profile: dict) -> str:
-    """Keep TTS input bounded (display is not truncated); chunked synthesis plays it sentence by sentence."""
-    tts = persona_profile.get("tts") or {}
-    if not tts.get("enabled"):
-        return answer
-    limit = 300
-    if len(answer) <= limit:
-        return answer
-    shortened = answer[:limit]
-    boundary = max((shortened.rfind(mark) for mark in "。！？!?；;\n"), default=-1)
-    return shortened[: boundary + 1 if boundary >= 0 else limit].rstrip() + "…"
 
 
 @router.websocket("/ws/personas/{persona_id}/conversations/{conversation_id}")
@@ -107,14 +75,24 @@ async def persona_realtime(
                     role="user",
                     content=question,
                 )
-                result = await websocket.app.state.realtime_executions.run(
+                result: AgentTurnResult | None = None
+                async for event in websocket.app.state.realtime_executions.run_stream(
                     f"{persona_id}:{conversation_id}",
-                    lambda: websocket.app.state.agent_service.query(question, context),
-                )
+                    lambda: websocket.app.state.agent_service.stream_query(question, context),
+                ):
+                    if not realtime.is_current(turn_id):
+                        continue
+                    if event.get("kind") == "stage":
+                        await send_if_current(turn_id, "agent.stage", stage=event.get("stage") or "")
+                    elif event.get("kind") == "token":
+                        await send_if_current(turn_id, "text.delta", text=event.get("text") or "")
+                    elif event.get("kind") == "result":
+                        result = event.get("result")
+                if result is None:
+                    raise RuntimeError("Agent turn finished without a result")
                 if not realtime.is_current(turn_id):
                     return
                 response = response_for(result).model_dump()
-                response["answer"] = voice_limited_answer(response["answer"], context.persona_profile)
                 if response["status"] == "completed":
                     try_persist_text_message(
                         websocket.app.state.session_factory,
@@ -131,9 +109,6 @@ async def persona_realtime(
                         **response,
                     )
                     return
-                for chunk in chunk_text(response["answer"]):
-                    await send_if_current(turn_id, "text.delta", text=chunk)
-                    await asyncio.sleep(0)
                 await send_if_current(turn_id, "text.final", **response)
             except asyncio.CancelledError:
                 raise
@@ -159,18 +134,28 @@ async def persona_realtime(
         ) -> None:
             try:
                 await send_if_current(turn_id, "turn.started")
-                result = await websocket.app.state.realtime_executions.run(
+                result: AgentTurnResult | None = None
+                async for ev in websocket.app.state.realtime_executions.run_stream(
                     f"{persona_id}:{conversation_id}",
-                    lambda: websocket.app.state.agent_service.resume(
+                    lambda: websocket.app.state.agent_service.stream_resume(
                         context,
                         event.specialist,
                         event.approved,
                     ),
-                )
+                ):
+                    if not realtime.is_current(turn_id):
+                        continue
+                    if ev.get("kind") == "stage":
+                        await send_if_current(turn_id, "agent.stage", stage=ev.get("stage") or "")
+                    elif ev.get("kind") == "token":
+                        await send_if_current(turn_id, "text.delta", text=ev.get("text") or "")
+                    elif ev.get("kind") == "result":
+                        result = ev.get("result")
+                if result is None:
+                    raise RuntimeError("Agent turn finished without a result")
                 if not realtime.is_current(turn_id):
                     return
                 response = response_for(result).model_dump()
-                response["answer"] = voice_limited_answer(response["answer"], context.persona_profile)
                 if response["status"] == "completed":
                     try_persist_text_message(
                         websocket.app.state.session_factory,
@@ -180,9 +165,9 @@ async def persona_realtime(
                         role="assistant",
                         content=response["answer"],
                     )
-                for chunk in chunk_text(response["answer"]):
-                    await send_if_current(turn_id, "text.delta", text=chunk)
-                    await asyncio.sleep(0)
+                if response["status"] == "pending_confirmation":
+                    await send_if_current(turn_id, "confirmation.required", **response)
+                    return
                 await send_if_current(turn_id, "text.final", **response)
             except asyncio.CancelledError:
                 raise

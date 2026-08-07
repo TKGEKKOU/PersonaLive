@@ -39,19 +39,39 @@ def test_local_asr_install_controls_are_present():
     assert 'fetch("/api/asr/install"' in script
 
 
-def test_local_tts_install_controls_are_present():
+def test_local_gptsovits_install_controls_are_present():
     html = read_view("settings") + read_view("manage")
     script = read_script("settings") + read_script("personas")
-    for control in ["tts-enabled", "tts-use-gpu", "tts-state", "install-tts", "cancel-tts", "remove-tts", "open-tts-directory", "tts-preview-text", "preview-tts", "tts-preview-audio"]:
+    for control in [
+        "gptsovits-state",
+        "gptsovits-progress",
+        "gptsovits-progress-detail",
+        "gptsovits-preset",
+        "gptsovits-download-url",
+        "gptsovits-install-dir",
+        "install-gptsovits",
+        "cancel-gptsovits",
+        "remove-gptsovits",
+        "open-gptsovits-directory",
+        "start-gptsovits-service",
+        "stop-gptsovits-service",
+    ]:
         assert f'id="{control}"' in html
-    for control in ["tts-progress", "tts-progress-detail"]:
+    assert 'fetch("/api/gpt-sovits/status")' in script
+    assert 'fetch("/api/gpt-sovits/install"' in script
+    for control in [
+        "edit-tts-asset",
+        "edit-tts-asset-lang",
+        "edit-tts-preview-asset",
+        "edit-tts-remove-asset",
+        "edit-tts-enabled",
+        "edit-tts-auto-play",
+        "edit-tts-confirm",
+        "edit-tts-open-studio",
+    ]:
         assert f'id="{control}"' in html
-    assert 'fetch("/api/tts/status")' in script
-    assert 'fetch("/api/tts/install"' in script
-    for control in ["edit-tts-enabled", "edit-tts-auto-play", "edit-tts-reference", "edit-tts-reference-status", "edit-tts-preview-reference", "edit-tts-remove-reference"]:
-        assert f'id="{control}"' in html
-    assert "/reference`" in script
-    assert "/reference/audio`" in script
+    assert "/api/voice-studio/voices" in script
+    assert "/api/voice-assets" in script
 
 
 def test_tts_workflows_have_guidance_and_chat_controls():
@@ -62,16 +82,17 @@ def test_tts_workflows_have_guidance_and_chat_controls():
         "chat-persona-menu",
         "assistant-voice-toggle",
         "edit-tts-confirm",
-        "edit-tts-drop",
+        "edit-tts-asset",
         "edit-tts-message",
-        "edit-tts-open-settings",
-        "edit-tts-preview-text",
+        "edit-tts-open-studio",
+        "edit-tts-preview-asset",
         "tts-settings-anchor",
     ]:
         assert f'id="{control}"' in html
     assert "reference/preview" in script
     assert "assistant-voice-toggle" in script
-    assert "collectStreamVoice" in script
+    assert "feedVoiceText" in script
+    assert "synthesize/ws" in script
     assert "voicePlaybackQueue" in script
 
 
@@ -108,12 +129,15 @@ def test_settings_service_status_covers_required_local_dependencies():
     assert "renderServiceStatus" in script
 
 
-def test_managed_embedding_controls_and_model_sources_are_present():
+def test_fixed_local_embedding_controls_are_present():
     html = read_view("settings")
     script = read_script("settings")
-    for control in ["embedding-provider", "managed-embedding-preset", "embedding-model-source", "embedding-device", "embedding-state", "embedding-progress", "install-embedding", "cancel-embedding", "remove-embedding", "open-embedding-directory"]:
+    for control in ["embedding-device", "embedding-state", "embedding-progress", "install-embedding", "cancel-embedding", "remove-embedding", "open-embedding-directory"]:
         assert f'id="{control}"' in html
-    assert "Qwen/Qwen3-Embedding-0.6B" in html
+    # 外部 API 相关控件已移除，模型固定为本地 Qwen3-Embedding-0.6B
+    for removed in ["embedding-provider", "managed-embedding-preset", "embedding-model-source", "embedding-api-key", "embedding-base-url", "embedding-dimensions"]:
+        assert f'id="{removed}"' not in html
+    assert "Qwen3-Embedding-0.6B" in html
     assert "ModelScope" in html
     for endpoint in ["/api/embedding/status", "/api/embedding/install", "/api/embedding/model-directory"]:
         assert endpoint in script
@@ -122,7 +146,7 @@ def test_managed_embedding_controls_and_model_sources_are_present():
 def test_api_key_fields_support_reveal_and_copy():
     html = read_view("settings")
     script = read_script("settings")
-    for field in ["openai-api-key", "embedding-api-key", "web-search-api-key"]:
+    for field in ["openai-api-key", "web-search-api-key"]:
         assert f'id="toggle-{field}"' in html
         assert f'id="copy-{field}"' in html
     assert "/api/settings/reveal-key" in script
@@ -133,9 +157,9 @@ def test_api_key_fields_support_reveal_and_copy():
 def test_resource_install_buttons_explain_ready_and_installing_states():
     script = read_script("settings")
     assert 'textContent = "已安装"' in script
-    assert 'textContent = "安装中"' in script
-    assert 'textContent = "下载并启用"' in script
-    assert "markEmbeddingSelectionChanged" in script
+    assert 'textContent = "安装中…"' in script
+    assert 'textContent = "安装"' in script
+    assert "markEmbeddingSelectionChanged" not in script
 
 
 def test_primary_navigation_uses_collapsible_sidebar_with_chat_first():
@@ -179,11 +203,13 @@ def test_chat_layout_keeps_header_and_composer_visible():
     assert ".voice-play-button" in styles
 
 
-def test_streaming_voice_is_synthesized_once_after_final_text():
+def test_streaming_voice_feed_starts_on_first_sentence_and_finishes_at_final():
     source = read_script("chat")
 
-    assert "flushStreamVoice(false" not in source
-    assert "flushStreamVoice(true" in source
+    assert "feedVoiceText(" in source
+    assert "VOICE_SENTENCE_MARKS" in source
+    assert "finishVoiceFeed(" in source
+    assert "synthesize/ws" in source
 
 
 def test_chat_process_panel_removed_and_loading_state_exists():

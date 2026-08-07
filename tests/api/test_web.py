@@ -75,19 +75,22 @@ def test_web_workbench_exposes_shell_and_module_views(client):
             "reset-settings",
             "llm-provider",
             "openai-api-key",
-            "embedding-provider",
-            "embedding-api-key",
-            "managed-embedding-preset",
-            "embedding-model-source",
             "embedding-device",
-            "embedding-dimensions",
-            "embedding-dimension-warning",
+            "embedding-state",
+            "embedding-progress",
+            "install-embedding",
+            "remove-embedding",
+            "open-embedding-directory",
+            "chunk-size",
+            "chunk-overlap",
             "web-search-provider",
             "web-search-api-key",
             "web-search-base-url",
             "web-search-guide",
             "open-asr-directory",
-            "open-tts-directory",
+            "open-gptsovits-directory",
+            "install-gptsovits",
+            "gptsovits-preset",
         ),
         "integrations": (
             "integrations-view",
@@ -125,13 +128,18 @@ def test_web_workbench_exposes_shell_and_module_views(client):
             'fetch("/api/eval/results")',
         ),
         "/static/js/chat.js": (
-            'fetch(`/api/personas/${state.activePersona.id}/agent/query`',
             'fetch(`/api/personas/${state.activePersona.id}/agent/resume`',
+            'agent.stage',
+            '/agent/stream',
         ),
         "/static/js/settings.js": (
             'fetch("/api/settings"',
             'method: "DELETE"',
             '确认重置配置',
+        ),
+        "/static/js/plugins.js": (
+            'encodeURIComponent(name)}/grants',
+            'category',
         ),
     }
     for path, contracts in scripts.items():
@@ -143,7 +151,8 @@ def test_web_workbench_exposes_shell_and_module_views(client):
     assert "...(state.draft.profile || {})" in client.get("/static/js/personas.js").text
     assert "https://api.deepseek.com" in client.get("/static/js/common.js").text
     assert "https://dashscope.aliyuncs.com/compatible-mode/v1" in client.get("/static/js/common.js").text
-    assert "text-embedding-v4" in client.get("/static/js/common.js").text
+    assert "text-embedding-v4" not in client.get("/static/js/common.js").text
+    assert "Qwen3-Embedding-0.6B" in client.get("/static/js/settings.js").text
     assert "请输入 API Key" in client.get("/static/js/settings.js").text
     assert "已保存，可输入新 Key 替换" in client.get("/static/js/settings.js").text
     assert "已配置，留空保持" not in client.get("/static/js/settings.js").text

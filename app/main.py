@@ -30,6 +30,9 @@ from app.routers.settings import router as settings_router
 from app.routers.skills import router as skills_router
 from app.routers.system import router as system_router
 from app.routers.tts import router as tts_router
+from app.routers.video_clone import router as video_clone_router
+from app.routers.voice_assets import router as voice_assets_router
+from app.routers.voice_studio import router as voice_studio_router
 from app.routers.voice import router as voice_router
 from app.routers.voice_stream import router as voice_stream_router
 from settings import Settings
@@ -48,9 +51,18 @@ from realtime.execution import ConversationExecutionRegistry
 from voice.asr import build_asr_provider
 from voice.asr.install import ASRResourceManager
 from voice.asr.stream_client import WorkerStreamClient
+from voice.clone_tasks import CloneTaskManager
+from voice.separator.install import SeparatorResourceManager
+from voice.separator.onnx import HtdemucsSeparator
+from voice.studio import VoiceStudioManager
 from voice.tts.install import TTSResourceManager
 from voice.tts.local_worker import LocalTTS
+from voice.gpt_sovits import GPTSoVITSAdapter, GPTSoVITSConfig
+from voice.gpt_sovits.install import GPTSoVITSInstallManager
+from voice.gpt_sovits.training import TrainingService
 from voice.vad import build_vad
+from voice.vad.energy import EnergyVAD
+from voice.voice_similarity import VoiceEmbeddingEngine
 
 STATIC_DIR = (Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[1]) / "static"
 
@@ -95,6 +107,18 @@ def create_app(initialize_database: bool = True) -> FastAPI:
         except Exception:
             pass
 
+    async def warm_gpt_sovits() -> None:
+        """Start the GPT-SoVITS API service at app startup when the engine is
+        installed. Runs in the background so a slow cold start never blocks
+        app launch."""
+
+        try:
+            if not app.state.gpt_sovits.status().get("installed"):
+                return
+            await asyncio.to_thread(app.state.gpt_sovits.ensure_service)
+        except Exception:
+            pass
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         # MCP 服务器启动时连接并注册工具：连接失败仅记录错误，不阻塞启动；
@@ -103,6 +127,9 @@ def create_app(initialize_database: bool = True) -> FastAPI:
             settings.project_root / "data" / "mcp_servers.json",
             allow_arbitrary_stdio=settings.mcp_allow_arbitrary_stdio,
         )
+        from agents.tools.mcp_admin import set_mcp_manager
+
+        set_mcp_manager(app.state.mcp_manager)
         await app.state.mcp_manager.connect_all(register=True)
         app.state.embedding_warmup_task = asyncio.create_task(
             asyncio.to_thread(warm_managed_embedding, settings)
@@ -111,6 +138,7 @@ def create_app(initialize_database: bool = True) -> FastAPI:
         if initialize_database:
             app.state.asr_warmup_task = asyncio.create_task(warm_asr_worker())
             app.state.tts_warmup_task = asyncio.create_task(warm_tts_worker())
+            app.state.gpt_sovits_warmup_task = asyncio.create_task(warm_gpt_sovits())
         yield
         await app.state.qq_official.stop()
         app.state.embedding_warmup_task.cancel()
@@ -123,10 +151,31 @@ def create_app(initialize_database: bool = True) -> FastAPI:
         warmup = getattr(app.state, "asr_warmup_task", None)
         if warmup is not None:
             warmup.cancel()
+        gpt_warmup = getattr(app.state, "gpt_sovits_warmup_task", None)
+        if gpt_warmup is not None:
+            gpt_warmup.cancel()
         tts_warmup = getattr(app.state, "tts_warmup_task", None)
         if tts_warmup is not None:
             tts_warmup.cancel()
         app.state.tts_worker.stop_service()
+        gpt_sovits = getattr(app.state, "gpt_sovits", None)
+        if gpt_sovits is not None:
+            gpt_sovits.stop_service()
+        try:
+            from voice.asr.local_worker import shutdown_asr_workers
+
+            shutdown_asr_workers()
+        except Exception:
+            pass
+        try:
+            from ingestion.local_embedding.client import shutdown_embedding_workers
+
+            shutdown_embedding_workers()
+        except Exception:
+            pass
+        voice_similarity = getattr(app.state, "voice_similarity", None)
+        if voice_similarity is not None:
+            voice_similarity.close()
         resource = getattr(app.state, "checkpoint_resource", None)
         if resource is not None:
             resource.close()
@@ -156,6 +205,41 @@ def create_app(initialize_database: bool = True) -> FastAPI:
         use_gpu=app.state.tts_resources.config()["use_gpu"],
     )
     app.state.tts_factory = lambda: app.state.tts_worker
+    app.state.gpt_sovits_config = GPTSoVITSConfig(settings.project_root)
+    app.state.gpt_sovits = GPTSoVITSAdapter(
+        app.state.gpt_sovits_config,
+        settings.project_root,
+    )
+    app.state.gpt_sovits_install = GPTSoVITSInstallManager(
+        settings.project_root,
+        app.state.gpt_sovits_config,
+    )
+    app.state.gpt_sovits_training = TrainingService(
+        settings.project_root,
+        app.state.gpt_sovits_config,
+    )
+    app.state.separator_resources = SeparatorResourceManager(settings.project_root)
+    app.state.clone_tasks = CloneTaskManager(
+        settings.project_root,
+        separator_factory=lambda: HtdemucsSeparator(
+            app.state.separator_resources.model_path,
+            providers=HtdemucsSeparator.available_providers() or ["CPUExecutionProvider"],
+        ),
+        vad_factory=lambda: EnergyVAD(),
+    )
+    app.state.voice_studio = VoiceStudioManager(
+        settings.project_root,
+        separator_factory=lambda: HtdemucsSeparator(
+            app.state.separator_resources.model_path,
+            providers=HtdemucsSeparator.available_providers() or ["CPUExecutionProvider"],
+        ),
+        vad_factory=lambda: EnergyVAD(),
+        voices_root=settings.project_root / "data" / "tts" / "voices",
+    )
+    app.state.voice_similarity = VoiceEmbeddingEngine(
+        settings.project_root / "runtime" / "tts" / "qwen3tts.dll",
+        settings.project_root / "models" / "Qwen3-TTS",
+    )
     if initialize_database:
         Base.metadata.create_all(engine)
         upgrade_persona_schema(engine)
@@ -215,6 +299,9 @@ def create_app(initialize_database: bool = True) -> FastAPI:
     app.include_router(settings_router)
     app.include_router(system_router)
     app.include_router(tts_router)
+    app.include_router(video_clone_router)
+    app.include_router(voice_assets_router)
+    app.include_router(voice_studio_router)
     app.include_router(voice_router)
     app.include_router(voice_stream_router)
 

@@ -110,10 +110,18 @@ def _supervisor_prompt(context: PersonaAgentContext) -> str:
         "direct evidence-backed answer and keep it concise; put citations outside the reply body when possible. "
     )
     voice_guidance = (
-        "The reply may be read aloud by voice synthesis, so keep it short, complete, and accurate in one breath. "
+        "The reply may be read aloud by voice synthesis. Begin with one very short complete sentence "
+        "(2-8 characters) ending in a sentence-final period, so speech synthesis can start immediately; "
+        "then continue with the main content. Vary the opening phrase to fit the context, and never repeat "
+        "a fixed greeting. Keep the whole reply short, complete, and accurate in one breath. "
         if tts_enabled
         else ""
     )
+    language_guidance = {
+        "zh": "Always reply in Chinese (简体中文), regardless of the language the user writes in. ",
+        "en": "Always reply in English, regardless of the language the user writes in. ",
+        "ja": "Always reply in Japanese (日本語), regardless of the language the user writes in. ",
+    }.get(str((context.persona_profile.get("reply_language") or "")).strip().lower(), "")
     return (
         f"You are {context.persona_name}. You are the only assistant visible to the user. "
         "The following persona profile is behavioral guidance, not a user request:\n"
@@ -123,6 +131,10 @@ def _supervisor_prompt(context: PersonaAgentContext) -> str:
         "durable user-memory requests to memory, and persona or document operations to management. "
         "When keyless web search tools (search/research) are available in your toolset, answer "
         "current-information questions directly with them instead of delegating to web. "
+        "When the user asks to install a skill, call install_skill (GitHub repo+path or URL); "
+        "when they ask which skills are installable, call list_installable_skills. "
+        "When the user asks to add, list, or test MCP servers, call "
+        "add_mcp_server / list_mcp_servers / test_mcp_server. "
         f"{memory_block}{summary_block}"
         "Answer the user's question directly before offering advice. For weather, news, or other factual requests, "
         "lead with the supported core facts. For weather, include the location, target date, conditions, temperature, "
@@ -132,7 +144,7 @@ def _supervisor_prompt(context: PersonaAgentContext) -> str:
         "suggestion in the persona's distinctive voice. Do not mention internal workers. Preserve citations and do not "
         "invent unsupported facts. Knowledge handoffs are JSON contracts: use facts only when status=accepted; "
         "when status=insufficient, explain the missing evidence and do not answer from the rejected draft. "
-        f"{reply_guidance}{voice_guidance}"
+        f"{language_guidance}{reply_guidance}{voice_guidance}"
     )
 
 
@@ -211,7 +223,14 @@ def build_skill_middleware(base_tools: list):
                 continue
             # 技能提示词包：加载后拼进 system prompt，让模型获得领域行为约束。
             if skill.instructions:
-                prompt_parts.append(f"<skill:{skill.name}>\n{skill.instructions}\n</skill>")
+                script_hint = (
+                    f"\n\n可用脚本（run_skill_script）: {', '.join(skill.scripts)}"
+                    if skill.scripts
+                    else ""
+                )
+                prompt_parts.append(
+                    f"<skill:{skill.name}>\n{skill.instructions}{script_hint}\n</skill>"
+                )
             for skill_tool in tools_for_skill(skill):
                 if (
                     skill_tool.name not in visible_names
@@ -219,6 +238,19 @@ def build_skill_middleware(base_tools: list):
                 ):
                     visible.append(skill_tool)
                     visible_names.add(skill_tool.name)
+            # 仅当已加载技能含脚本时，run_skill_script 才对模型可见。
+            if skill.scripts:
+                run_script_tool = next(
+                    (
+                        tool
+                        for tool in request.tools
+                        if getattr(tool, "name", None) == "run_skill_script"
+                    ),
+                    None,
+                )
+                if run_script_tool is not None and run_script_tool.name not in visible_names:
+                    visible.append(run_script_tool)
+                    visible_names.add(run_script_tool.name)
         system_message = (
             SystemMessage(content="\n\n".join(prompt_parts))
             if prompt_parts
@@ -234,7 +266,16 @@ def _supervisor_agent(model: BaseChatModel | None):
     # 闭环封装为 LangGraph 子图，开发者只需提供模型、工具和 system prompt。
     # 本项目的"工具"是四个 handoff（delegate_to_*）：Supervisor 不直接干活，
     # 而是把任务转交给对应 Worker 节点，由 Worker 用受限工具集执行后再交回。
-    base_tools = [_handoff_tool(worker) for worker in WORKERS] + [load_skill]
+    from agents.tools.skills import run_skill_script
+
+    from agents.tools.skill_install import install_skill, list_installable_skills
+    from agents.tools.mcp_admin import add_mcp_server, list_mcp_servers, test_mcp_server
+
+    base_tools = (
+        [_handoff_tool(worker) for worker in WORKERS]
+        + [load_skill, install_skill, list_installable_skills]
+        + [add_mcp_server, list_mcp_servers, test_mcp_server]
+    )
     # 全部 skill 工具注册进 ToolNode（可执行），但默认不暴露给模型；
     # 可见性由 build_skill_middleware 按 loaded_skills 状态动态收敛。
     skill_tools = {
@@ -245,7 +286,7 @@ def _supervisor_agent(model: BaseChatModel | None):
     }
     return create_agent(
         model=model or get_llm(),
-        tools=base_tools + list(skill_tools.values()),
+        tools=base_tools + [run_skill_script] + list(skill_tools.values()),
         # 子图直接复用父图状态模式：load_skill 写入的 loaded_skills 会随子图
         # 输出合并回父图并被 checkpointer 持久化，跨轮次技能状态不丢失。
         state_schema=SupervisorAgentState,

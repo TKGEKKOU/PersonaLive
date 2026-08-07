@@ -1,4 +1,7 @@
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from starlette.requests import HTTPConnection
 
@@ -56,6 +59,96 @@ def response_for(result) -> AgentTurnResponse:
         trace=list(result.trace),
         duration_seconds=result.duration_seconds,
         loaded_skills=list(result.loaded_skills),
+    )
+
+
+def _sse(event: dict) -> str:
+    return f"data: {json.dumps(event, ensure_ascii=False, default=str)}\n\n"
+
+
+def _finalize_agent_turn(app, context, result) -> None:
+    if result.status == "completed" and result.answer:
+        try_persist_text_message(
+            app.state.session_factory,
+            workspace_id=context.workspace_id,
+            persona_id=context.persona_id,
+            conversation_id=context.conversation_id,
+            role="assistant",
+            content=result.answer,
+        )
+        schedule_summary_after_turn(
+            app.state.session_factory,
+            workspace_id=context.workspace_id,
+            persona_id=context.persona_id,
+            conversation_id=context.conversation_id,
+        )
+
+
+@router.post("/{persona_id}/agent/stream")
+async def stream_agent_query(
+    persona_id: str,
+    payload: AgentQueryPayload,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> StreamingResponse:
+    """SSE 流式查询：stage / token / result / done 事件。"""
+    context = context_for(request, session, persona_id, payload.conversation_id)
+    try_persist_text_message(
+        request.app.state.session_factory,
+        workspace_id=context.workspace_id,
+        persona_id=persona_id,
+        conversation_id=payload.conversation_id,
+        role="user",
+        content=payload.question,
+    )
+    key = f"{persona_id}:{payload.conversation_id}"
+
+    async def generate():
+        async for event in request.app.state.realtime_executions.run_stream(
+            key,
+            lambda: request.app.state.agent_service.stream_query(payload.question, context),
+        ):
+            if event.get("kind") == "result":
+                _finalize_agent_turn(request.app, context, event["result"])
+            yield _sse(event)
+        yield _sse({"kind": "done"})
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/{persona_id}/agent/stream-resume")
+async def stream_agent_resume(
+    persona_id: str,
+    payload: AgentResumePayload,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> StreamingResponse:
+    """SSE 流式恢复确认回合：stage / token / result / done 事件。"""
+    context = context_for(request, session, persona_id, payload.conversation_id)
+    key = f"{persona_id}:{payload.conversation_id}"
+
+    async def generate():
+        async for event in request.app.state.realtime_executions.run_stream(
+            key,
+            lambda: request.app.state.agent_service.stream_resume(
+                context,
+                payload.specialist,
+                payload.approved,
+            ),
+        ):
+            if event.get("kind") == "result":
+                _finalize_agent_turn(request.app, context, event["result"])
+            yield _sse(event)
+        yield _sse({"kind": "done"})
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 

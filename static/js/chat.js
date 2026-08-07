@@ -61,6 +61,9 @@ function initChat() {
   state.voicePlaybackQueue = [];
   state.voicePlayingAudio = null;
   state.voiceStreamAbort = null;
+  state.voiceFeed = null;
+  state.voiceFeedFailed = false;
+  state.voiceFeedFullText = "";
   bindChatEvents();
   bindChatGlobalEvents();
   observeChatStatus();
@@ -184,7 +187,9 @@ function handleRealtimeEvent(event) {
     clearRealtimeSubmission();
     state.realtimeTurnId = event.turn_id;
     state.realtimeAnswerNode = null;
-    state.voiceStreamBuffer = "";
+    state.voiceFeed = null;
+    state.voiceFeedFailed = false;
+    state.voiceFeedFullText = "";
     resetPacing();
     resetChatProcess();
     showReplyLoading();
@@ -192,32 +197,47 @@ function handleRealtimeEvent(event) {
     return;
   }
   if (event.turn_id && event.turn_id !== state.realtimeTurnId) return;
-  if (event.type === "text.delta") {
+  if (event.type === "agent.stage") {
+    if (!state.realtimeAnswerNode) state.realtimeAnswerNode = showReplyLoading();
+    state.realtimeAnswerNode.classList.remove("message-loading");
+    const body = state.realtimeAnswerNode.querySelector("p");
+    body.classList.remove("loading-bubble");
+    body.textContent = "";
+    setReplyStage(state.realtimeAnswerNode, event.stage);
+  } else if (event.type === "text.delta") {
     if (!state.realtimeAnswerNode) state.realtimeAnswerNode = showReplyLoading();
     state.realtimeAnswerNode.classList.remove("message-loading");
     state.realtimeAnswerNode.querySelector("p").classList.remove("loading-bubble");
+    clearReplyStage(state.realtimeAnswerNode);
     appendPacedText(event.text, state.realtimeAnswerNode);
-    collectStreamVoice(event.text, state.realtimeAnswerNode);
+    feedVoiceText(event.text);
   } else if (event.type === "text.final") {
     if (window.PLLive2DHub) window.PLLive2DHub.setAgentState("idle");
     const target = state.realtimeAnswerNode || (event.answer ? showReplyLoading() : null);
+    if (target) clearReplyStage(target);
     state.pendingReplyNode = null;
     if (target) {
       finishPacing(target, event.answer || "");
-      flushStreamVoice(true, target);
+      finishVoiceFeed();
+      if (state.voiceFeedFailed) {
+        const fullText = (state.voiceFeedFullText || "").trim();
+        if (fullText) synthesizeAnswer(fullText, target);
+      }
+      state.voiceFeedFailed = false;
+      state.voiceFeedFullText = "";
       drainPacedText(() => { if (state.realtimeAnswerNode === target) state.realtimeAnswerNode = null; });
     }
     state.pendingAction = null;
     renderConfirmation();
     state.realtimeTurnId = null;
-    state.voiceStreamBuffer = "";
     setRealtimeBusy(false);
   } else if (event.type === "confirmation.required") {
     if (window.PLLive2DHub) window.PLLive2DHub.setAgentState("idle");
+    if (state.realtimeAnswerNode) clearReplyStage(state.realtimeAnswerNode);
     state.pendingAction = { action: event.pending_action, specialist: event.specialist };
     state.realtimeTurnId = null;
     state.realtimeAnswerNode = null;
-    state.voiceStreamBuffer = "";
+    abortVoiceStream();
     resetPacing();
     renderConfirmation();
     setRealtimeBusy(false);
@@ -272,7 +292,25 @@ function awaitRealtimeAcknowledgement(question) {
 }
 function cancelRealtimeTurn() {
   stopVoicePlayback();
+  if (state.agentStreamController) { state.agentStreamController.abort(); state.agentStreamController = null; }
   if (state.realtimeTurnId) sendRealtime({ type: "generation.cancel" });
+}
+
+function setReplyStage(node, stage) {
+  if (!node) return;
+  let status = node.querySelector(".voice-bubble-status.stage-status");
+  if (!status) {
+    status = document.createElement("span");
+    status.className = "voice-bubble-status is-generating stage-status";
+    node.append(status);
+  }
+  status.textContent = stage || "正在思考…";
+}
+
+function clearReplyStage(node) {
+  if (!node) return;
+  const status = node.querySelector(".voice-bubble-status.stage-status");
+  if (status) status.remove();
 }
 function stopVoicePlayback() {
   abortVoiceStream();
@@ -554,13 +592,73 @@ function sendQuestionText(question) {
     $("question-form").reset(); resizeComposer();
     return;
   }
-  void (async () => {
-    try {
-      const result = await api(fetch(`/api/personas/${state.activePersona.id}/agent/query`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question, conversation_id: state.conversationId }) }));
-      handleAgentResult(result); $("question-form").reset(); resizeComposer();
-    } catch (reason) { setText("chat-error", reason); }
-    finally { state.agentRequestPending = false; updateComposerControls(); }
-  })();
+  void streamAgentQuery(question);
+  $("question-form").reset(); resizeComposer();
+}
+
+async function streamAgentQuery(question) {
+  state.agentRequestPending = true;
+  const controller = new AbortController();
+  state.agentStreamController = controller;
+  setSendButton(true);
+  try {
+    const response = await fetch(`/api/personas/${state.activePersona.id}/agent/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-YUMENO-Request": "web" },
+      body: JSON.stringify({ question, conversation_id: state.conversationId }),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error((await response.json().catch(() => null))?.detail || `HTTP ${response.status}`);
+    if (!response.body) throw new Error("浏览器不支持流式响应");
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop();
+      for (const part of parts) {
+        const line = part.split("\n").find((item) => item.startsWith("data: "));
+        if (!line) continue;
+        let event;
+        try { event = JSON.parse(line.slice(6)); } catch { continue; }
+        handleAgentStreamEvent(event);
+      }
+    }
+  } catch (reason) {
+    if (reason && reason.name !== "AbortError") setText("chat-error", reason.message || reason);
+  } finally {
+    state.agentStreamController = null;
+    state.agentRequestPending = false;
+    setSendButton(false);
+    updateComposerControls();
+  }
+}
+
+function handleAgentStreamEvent(event) {
+  if (event.kind === "stage") {
+    if (!state.pendingReplyNode) state.pendingReplyNode = showReplyLoading();
+    state.pendingReplyNode.classList.remove("message-loading");
+    const body = state.pendingReplyNode.querySelector("p");
+    body.classList.remove("loading-bubble");
+    body.textContent = "";
+    setReplyStage(state.pendingReplyNode, event.stage);
+  } else if (event.kind === "token") {
+    if (!state.pendingReplyNode) state.pendingReplyNode = showReplyLoading();
+    state.pendingReplyNode.classList.remove("message-loading");
+    const body = state.pendingReplyNode.querySelector("p");
+    body.classList.remove("loading-bubble");
+    clearReplyStage(state.pendingReplyNode);
+    appendPacedText(event.text, state.pendingReplyNode);
+    feedVoiceText(event.text);
+  } else if (event.kind === "result") {
+    if (state.pendingReplyNode) clearReplyStage(state.pendingReplyNode);
+    handleAgentResult(event.result);
+  } else if (event.kind === "error") {
+    setText("chat-error", event.message || event.error || "生成失败");
+  }
 }
 function resizeComposer() {
   const input = $("question");
@@ -722,15 +820,145 @@ function handleAgentResult(result) {
   } else if (state.pendingReplyNode) { state.pendingReplyNode.remove(); state.pendingReplyNode = null; }
 }
 function appendAnswer(result) { const node = replaceReplyLoading(state.pendingReplyNode, ""); appendPacedText(result.answer, node); synthesizeAnswer(result.answer, node); }
-function collectStreamVoice(text, node) {
-  if (!state.activePersona?.profile?.tts?.enabled || !$("assistant-voice-toggle").checked) return;
-  state.voiceStreamBuffer += text;
+const VOICE_FEED_MAX_CHARS = 300;
+const VOICE_FEED_FORCE_CHARS = 60;
+const VOICE_SENTENCE_MARKS = "。！？!?；;\n";
+
+function startVoiceFeed() {
+  const voice = state.activePersona?.profile?.tts;
+  const node = state.realtimeAnswerNode;
+  if (!state.ttsConfigured || !voice?.enabled || !$("assistant-voice-toggle").checked || !node) return;
+  if (state.voiceFeed) return;
+  if (typeof WebSocket === "undefined") { state.voiceFeedFailed = true; return; }
+  if (window.PL && window.PL.unlockAudio) window.PL.unlockAudio();
+  const autoPlay = voice.auto_play !== false;
+  const epoch = state.voicePlaybackEpoch;
+  const status = document.createElement("span");
+  status.className = "voice-bubble-status is-generating";
+  status.textContent = "正在生成语音…";
+  node.append(status);
+  const scheme = location.protocol === "https:" ? "wss" : "ws";
+  const url = `${scheme}://${location.host}/api/tts/personas/${state.activePersona.id}/conversations/${state.conversationId}/synthesize/ws`;
+  const ws = new WebSocket(url);
+  const feed = {
+    ws, node, epoch, autoPlay, status,
+    sentChars: 0, buffer: "", closed: false, segments: 0, opened: false, finished: false,
+    pendingSends: [],
+  };
+  state.voiceFeed = feed;
+  state.voiceFeedFailed = false;
+  ws.addEventListener("open", () => {
+    feed.opened = true;
+    const pending = feed.pendingSends;
+    feed.pendingSends = [];
+    for (const payload of pending) {
+      if (feed.ws.readyState === WebSocket.OPEN) feed.ws.send(payload);
+    }
+  });
+  ws.addEventListener("message", (message) => {
+    let event;
+    try { event = JSON.parse(message.data); } catch { return; }
+    if (event.type === "segment") {
+      feed.segments += 1;
+      if (!autoPlay) return;
+      const blobUrl = URL.createObjectURL(b64ToWavBlob(event.audio));
+      const audio = document.createElement("audio");
+      audio.preload = "auto";
+      audio.src = blobUrl;
+      audio.dataset.lipText = event.text || "";
+      voiceQueueHost().append(audio);
+      const cleanup = () => { URL.revokeObjectURL(blobUrl); audio.remove(); };
+      audio.addEventListener("ended", cleanup, { once: true });
+      audio.addEventListener("error", cleanup, { once: true });
+      enqueueVoiceAudio(audio);
+    } else if (event.type === "done") {
+      feed.finished = true;
+      if (epoch !== state.voicePlaybackEpoch) { status.remove(); return; }
+      status.textContent = "语音已生成";
+      status.classList.remove("is-generating");
+      const audio = document.createElement("audio");
+      audio.controls = false;
+      audio.preload = "metadata";
+      audio.className = "voice-audio-source";
+      audio.loaded = loadAudioSource(audio, event.message.audio_url);
+      appendVoiceControl(node, audio);
+    } else if (event.type === "error") {
+      if (!feed.opened) state.voiceFeedFailed = true;
+      status.textContent = "语音生成失败";
+      status.classList.remove("is-generating");
+      setText("chat-error", `文字回复正常，语音生成失败：${event.message || "语音合成失败"}`);
+    }
+  });
+  ws.addEventListener("close", () => {
+    if (state.voiceFeed === feed) state.voiceFeed = null;
+    if (!feed.finished && !feed.errored) status.remove();
+  });
+  ws.addEventListener("error", () => {
+    feed.errored = true;
+    if (!feed.opened) state.voiceFeedFailed = true;
+    status.textContent = "语音生成失败";
+    status.classList.remove("is-generating");
+    setText("chat-error", "文字回复正常，语音连接失败");
+  });
 }
-function flushStreamVoice(force, node) {
-  if (!state.voiceStreamBuffer) return;
-  if (!force && state.voiceStreamBuffer.length < 60) return;
-  const text = state.voiceStreamBuffer.trim(); state.voiceStreamBuffer = "";
-  if (text) synthesizeAnswer(text, node, { queued: true });
+
+function feedVoiceText(text) {
+  if (!text) return;
+  if (state.voiceFeedFailed) return;
+  if (state.voiceFeedFullText.length < VOICE_FEED_MAX_CHARS * 4) state.voiceFeedFullText += text;
+  if (!state.voiceFeed) startVoiceFeed();
+  const feed = state.voiceFeed;
+  if (!feed || feed.closed) return;
+  feed.buffer += text;
+  let start = 0;
+  for (let i = 0; i < feed.buffer.length; i += 1) {
+    if (VOICE_SENTENCE_MARKS.includes(feed.buffer[i])) {
+      const sentence = feed.buffer.slice(start, i + 1).trim();
+      if (sentence) writeVoiceSentence(feed, sentence);
+      start = i + 1;
+    }
+  }
+  feed.buffer = feed.buffer.slice(start);
+  if (feed.buffer.length >= VOICE_FEED_FORCE_CHARS) {
+    const forced = feed.buffer.trim();
+    feed.buffer = "";
+    if (forced) writeVoiceSentence(feed, forced);
+  }
+}
+
+function writeVoiceSentence(feed, sentence) {
+  if (feed.closed || !sentence) return;
+  const room = VOICE_FEED_MAX_CHARS - feed.sentChars;
+  if (room <= 0) { finishVoiceFeed(); return; }
+  const part = sentence.length > room ? sentence.slice(0, room) : sentence;
+  if (!part) { finishVoiceFeed(); return; }
+  feed.sentChars += part.length;
+  const payload = JSON.stringify({ type: "text", text: part });
+  if (feed.ws.readyState === WebSocket.OPEN) feed.ws.send(payload);
+  else feed.pendingSends.push(payload);
+  if (part.length < sentence.length) finishVoiceFeed();
+}
+
+function finishVoiceFeed() {
+  const feed = state.voiceFeed;
+  if (!feed || feed.closed) return;
+  feed.closed = true;
+  state.voiceFeed = null;
+  const rest = feed.buffer.trim();
+  feed.buffer = "";
+  if (rest) {
+    const room = VOICE_FEED_MAX_CHARS - feed.sentChars;
+    if (room > 0) {
+      const part = rest.length > room ? rest.slice(0, room) : rest;
+      feed.sentChars += part.length;
+      const payload = JSON.stringify({ type: "text", text: part });
+      if (feed.ws.readyState === WebSocket.OPEN) feed.ws.send(payload);
+      else feed.pendingSends.push(payload);
+    }
+  }
+  const donePayload = JSON.stringify({ type: "done" });
+  if (feed.ws.readyState === WebSocket.OPEN) feed.ws.send(donePayload);
+  else feed.pendingSends.push(donePayload);
 }
 function enqueueVoiceAudio(audio) {
   state.voicePlaybackQueue.push(audio);
@@ -753,6 +981,11 @@ function voiceQueueHost() {
   return host;
 }
 function abortVoiceStream() {
+  const feed = state.voiceFeed;
+  if (feed) {
+    state.voiceFeed = null;
+    try { feed.ws.close(); } catch (e) { /* ignore */ }
+  }
   if (state.voiceStreamAbort) {
     try { state.voiceStreamAbort.abort(); } catch (e) { /* ignore */ }
     state.voiceStreamAbort = null;
@@ -762,6 +995,11 @@ function playNextVoiceAudio() {
   if (state.voicePlaybackActive || !state.voicePlaybackQueue.length) return;
   state.voicePlaybackActive = true;
   const audio = state.voicePlaybackQueue.shift();
+  if (!audio || !audio.src) {
+    state.voicePlaybackActive = false;
+    playNextVoiceAudio();
+    return;
+  }
   state.voicePlayingAudio = audio;
   const advance = () => {
     if (state.voicePlayingAudio === audio) {
@@ -774,14 +1012,6 @@ function playNextVoiceAudio() {
   const advanceClean = () => { clearTimeout(watchdog); advance(); };
   audio.addEventListener("ended", advanceClean, { once: true });
   audio.addEventListener("error", advanceClean, { once: true });
-  audio.addEventListener("pause", () => {
-    // 被其他音频打断（全局单音频策略）→ 取消剩余语音回复队列
-    clearTimeout(watchdog);
-    state.voicePlaybackActive = false;
-    state.voicePlaybackQueue = [];
-    state.voicePlayingAudio = null;
-    abortVoiceStream();
-  }, { once: true });
   (audio.loaded || Promise.resolve()).then(() => playAudioRobust(audio)).catch(advanceClean);
 }
 async function synthesizeAnswer(text, node, options = {}) {

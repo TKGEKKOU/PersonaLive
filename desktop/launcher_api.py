@@ -13,8 +13,8 @@ from desktop.server_manager import ServerManager
 from settings import Settings
 
 
-_STEP_ORDER = ("docker", "containers", "milvus", "attu", "service")
-_STEP_WEIGHTS = {"docker": 0.15, "containers": 0.38, "milvus": 0.62, "attu": 0.80, "service": 0.93}
+_STEP_ORDER = ("docker", "containers", "milvus", "attu", "service", "gpt_sovits")
+_STEP_WEIGHTS = {"docker": 0.15, "containers": 0.38, "milvus": 0.62, "attu": 0.80, "service": 0.93, "gpt_sovits": 0.97}
 
 
 class LauncherApi:
@@ -43,6 +43,7 @@ class LauncherApi:
             "milvus": {"label": "Milvus", "state": "pending", "detail": "准备中"},
             "attu": {"label": "Attu", "state": "pending", "detail": "准备中"},
             "service": {"label": "本地服务", "state": "pending", "detail": "准备中"},
+            "gpt_sovits": {"label": "GPT-SoVITS", "state": "pending", "detail": "准备中"},
         }
 
     def bind_window(self, window) -> None:
@@ -352,12 +353,35 @@ class LauncherApi:
                 raise RuntimeError("本地服务健康检查未通过，请稍后重试")
             self._register_shutdown_callback()
             self._set_step("service", "ok", "服务已就绪")
+            self._start_gpt_sovits_if_needed()
             self._start_result = {"ok": True, "url": self.server.url}
         except Exception as exc:
             self._fail_running_steps(str(exc))
             self._start_result = {"ok": False, "error": str(exc)}
         finally:
             self._start_done = True
+
+    def _start_gpt_sovits_if_needed(self) -> None:
+        """Start the GPT-SoVITS API service from the launch page when the
+        installation is ready. Uses the server app's tracked adapter so the
+        service is stopped together with the project on exit."""
+
+        try:
+            from voice.gpt_sovits.config import GPTSoVITSConfig
+
+            gpt_config = GPTSoVITSConfig(self.project_root)
+            if not gpt_config.probe().ok:
+                self._set_step("gpt_sovits", "ok", "GPT-SoVITS 未安装（跳过）")
+                return
+            adapter = self.server.app.state.gpt_sovits if self.server.app is not None else None
+            if adapter is None:
+                self._set_step("gpt_sovits", "ok", "GPT-SoVITS 服务组件未就绪（跳过）")
+                return
+            self._set_step("gpt_sovits", "running", "正在启动 GPT-SoVITS API 服务…")
+            adapter.ensure_service()
+            self._set_step("gpt_sovits", "ok", "GPT-SoVITS 服务已就绪")
+        except Exception as exc:
+            self._set_step("gpt_sovits", "ok", f"GPT-SoVITS 启动失败：{exc}（可稍后手动启动）")
 
     def show_main(self) -> None:
         if self._window is not None:
@@ -406,6 +430,7 @@ class LauncherApi:
         except Exception:
             pass
         self._stop_tts_worker()
+        self._stop_gpt_sovits()
         try:
             from voice.asr.local_worker import shutdown_asr_workers
 
@@ -432,6 +457,18 @@ class LauncherApi:
                 worker = getattr(app.state, "tts_worker", None)
                 if worker is not None:
                     worker.stop_service()
+        except Exception:
+            pass
+
+    def _stop_gpt_sovits(self) -> None:
+        """显式停止 GPT-SoVITS 子进程（含未被主 adapter 追踪的端口孤儿），
+        避免只依赖 uvicorn lifespan 关闭路径。"""
+        try:
+            app = self.server.app
+            if app is not None:
+                adapter = getattr(app.state, "gpt_sovits", None)
+                if adapter is not None:
+                    adapter.stop_service()
         except Exception:
             pass
 
@@ -490,6 +527,7 @@ class LauncherApi:
             except Exception:
                 pass
             self._stop_tts_worker()
+            self._stop_gpt_sovits()
             try:
                 from voice.asr.local_worker import shutdown_asr_workers
 

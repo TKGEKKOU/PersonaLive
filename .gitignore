@@ -7,7 +7,6 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
-tests/
 .idea/
 .vscode/
 *.log
@@ -16,6 +15,7 @@ Thumbs.db
 .worktrees/
 .superpowers/
 docs/superpowers/
+third_party/**/tests/
 data/
 milvus_data/
 
@@ -25,6 +25,9 @@ runtime/embedding/
 runtime/ffmpeg/
 runtime/modelscope-cache/
 runtime/tts/local_data/
+runtime/gpt_sovits/
+runtime/gpt_sovits.bak/
+audios/*.bak-*
 models/
 build/
 dist/
