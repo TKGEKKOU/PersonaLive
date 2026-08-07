@@ -10,6 +10,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.types import Command
 
 from agents.context import PersonaAgentContext
+from agents import registry as tool_registry
 from agents.registry import capability_summary, specialist_for_tool, tool_specs
 from agents.supervisor import Specialist
 from agents.workflow import build_persona_workflow
@@ -32,6 +33,24 @@ CAPABILITY_QUESTION_SIGNALS = (
     "可以调用什么",
     "可以调用哪些",
 )
+
+
+_STAGE_BY_NODE = {
+    "persona_supervisor": "正在思考…",
+    "knowledge_worker": "知识agent · 正在检索角色资料…",
+    "web_worker": "联网agent · 正在搜索…",
+    "memory_worker": "记忆agent · 正在读取记忆…",
+    "management_worker": "管理agent · 正在处理角色资料…",
+}
+
+
+def _stage_from_update(update: dict) -> str | None:
+    """把 LangGraph 节点更新映射为阶段文案；无匹配返回 None。"""
+    for key in update:
+        for node, label in _STAGE_BY_NODE.items():
+            if node in str(key):
+                return label
+    return None
 
 
 def is_capability_question(question: str) -> bool:
@@ -63,6 +82,7 @@ class PersonaAgentService:
         self.checkpointer = checkpointer
         self.model = model
         self._workflow = None
+        self._workflow_registry_revision = tool_registry.tool_registry_revision()
 
     @staticmethod
     def thread_id(context: PersonaAgentContext, specialist: Specialist) -> str:
@@ -72,11 +92,13 @@ class PersonaAgentService:
         return f"{context.persona_id}:{context.conversation_id}"
 
     def _graph(self):
-        if self._workflow is None:
+        revision = tool_registry.tool_registry_revision()
+        if self._workflow is None or self._workflow_registry_revision != revision:
             self._workflow = build_persona_workflow(
                 self.model or get_llm(),
                 self.checkpointer,
             )
+            self._workflow_registry_revision = revision
         return self._workflow
 
     def _config(self, context: PersonaAgentContext) -> dict:
@@ -114,6 +136,142 @@ class PersonaAgentService:
                 )
             raise
         return self._result(result, time.perf_counter() - started)
+
+    def stream_query(
+        self,
+        question: str,
+        context: PersonaAgentContext,
+    ):
+        """流式查询：边生成边产出 token 事件，最后产出完整结果事件。
+
+        事件格式：
+          {"kind": "token", "text": "<增量文本>"}
+          {"kind": "result", "result": AgentTurnResult}
+
+        只转发 persona_supervisor（唯一对用户可见的节点）的模型输出，
+        Worker 子图的内部生成会被过滤，避免内部交接文本泄漏到对话页。
+        """
+        graph = self._graph()
+        pending = self._find_pending(graph, context)
+        if pending is not None:
+            yield {"kind": "result", "result": pending}
+            return
+        if is_capability_question(question):
+            yield {
+                "kind": "result",
+                "result": AgentTurnResult(
+                    status="completed",
+                    answer=capability_summary(),
+                    specialist="conversation",
+                ),
+            }
+            return
+        config = self._config(context)
+        started = time.perf_counter()
+        failed = False
+        last_stage: str | None = None
+        try:
+            for _namespace, mode, payload in graph.stream(
+                {"messages": [{"role": "user", "content": question}], "active_worker": None},
+                config,
+                stream_mode=["messages", "updates"],
+                subgraphs=True,
+                context=context,
+            ):
+                if mode == "messages":
+                    chunk, metadata = payload
+                    if metadata.get("lc_agent_name") != "persona_supervisor":
+                        continue
+                    content = getattr(chunk, "content", None)
+                    if isinstance(content, str) and content:
+                        yield {"kind": "token", "text": content}
+                elif mode == "updates":
+                    stage = _stage_from_update(payload)
+                    if stage and stage != last_stage:
+                        last_stage = stage
+                        yield {"kind": "stage", "stage": stage}
+        except Exception as exc:
+            if not is_transient_provider_error(exc):
+                raise
+            logger.warning("Agent 流式查询时 LLM 服务瞬时故障，返回降级提示：%s", exc)
+            failed = True
+        if failed:
+            yield {
+                "kind": "result",
+                "result": AgentTurnResult(
+                    status="completed",
+                    answer=LLM_UNAVAILABLE_MESSAGE,
+                    specialist="conversation",
+                    duration_seconds=time.perf_counter() - started,
+                ),
+            }
+            return
+        state = graph.get_state(config)
+        yield {
+            "kind": "result",
+            "result": self._result(state.values or {}, time.perf_counter() - started),
+        }
+
+    def stream_resume(
+        self,
+        context: PersonaAgentContext,
+        specialist: Specialist,
+        approved: bool,
+    ):
+        """流式恢复被中断的确认回合，事件格式与 stream_query 一致。"""
+        graph = self._graph()
+        config = self._config(context)
+        started = time.perf_counter()
+        snapshot = graph.get_state(config)
+        if not snapshot.interrupts:
+            yield {
+                "kind": "result",
+                "result": self._result(snapshot.values or {}, time.perf_counter() - started),
+            }
+            return
+        failed = False
+        last_stage: str | None = None
+        try:
+            for _namespace, mode, payload in graph.stream(
+                Command(resume={"approved": approved}),
+                config,
+                stream_mode=["messages", "updates"],
+                subgraphs=True,
+                context=context,
+            ):
+                if mode == "messages":
+                    chunk, metadata = payload
+                    if metadata.get("lc_agent_name") != "persona_supervisor":
+                        continue
+                    content = getattr(chunk, "content", None)
+                    if isinstance(content, str) and content:
+                        yield {"kind": "token", "text": content}
+                elif mode == "updates":
+                    stage = _stage_from_update(payload)
+                    if stage and stage != last_stage:
+                        last_stage = stage
+                        yield {"kind": "stage", "stage": stage}
+        except Exception as exc:
+            if not is_transient_provider_error(exc):
+                raise
+            logger.warning("Agent 流式恢复时 LLM 服务瞬时故障，返回降级提示：%s", exc)
+            failed = True
+        if failed:
+            yield {
+                "kind": "result",
+                "result": AgentTurnResult(
+                    status="completed",
+                    answer=LLM_UNAVAILABLE_MESSAGE,
+                    specialist="conversation",
+                    duration_seconds=time.perf_counter() - started,
+                ),
+            }
+            return
+        state = graph.get_state(config)
+        yield {
+            "kind": "result",
+            "result": self._result(state.values or {}, time.perf_counter() - started),
+        }
 
     def _find_pending(self, graph, context: PersonaAgentContext) -> AgentTurnResult | None:
         snapshot = graph.get_state(self._config(context))

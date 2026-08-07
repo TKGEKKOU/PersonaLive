@@ -20,6 +20,7 @@ from dataclasses import asdict, dataclass, field
 from dataclasses import replace
 from pathlib import Path
 
+import yaml
 from langchain.messages import ToolMessage
 from langchain.tools import ToolRuntime, tool
 from langchain_core.tools import BaseTool
@@ -33,9 +34,32 @@ from settings import Settings
 
 
 SKILL_DIR = Path(__file__).resolve().parent / "skills"
+SKILL_CATALOG_PATH = Path(__file__).resolve().parent / "skill_catalog.json"
 USER_SKILL_DIR = Settings.load().project_root / "data" / "skills"
+RUNTIME_SKILL_DIR = Settings.load().project_root / "data" / "skills" / "runtime"
 SKILL_STATE_PATH = USER_SKILL_DIR / "skills_state.json"
 NAME_PATTERN = re.compile(r"[a-z0-9_-]+")
+
+
+def _skillmd_text(
+    name: str,
+    description: str,
+    tool_names: tuple[str, ...],
+    instructions: str,
+    prompt_hint: str = "",
+) -> str:
+    metadata: dict = {}
+    if prompt_hint:
+        metadata["prompt_hint"] = prompt_hint
+    frontmatter: dict = {
+        "name": name,
+        "description": description,
+        "tool-names": list(tool_names),
+    }
+    if metadata:
+        frontmatter["metadata"] = metadata
+    body = "---\n" + yaml.safe_dump(frontmatter, allow_unicode=True, sort_keys=False) + "---\n\n"
+    return body + str(instructions or "").strip() + "\n"
 
 
 @dataclass(frozen=True)
@@ -52,6 +76,10 @@ class SkillSpec:
     format: str = "json"
     enabled: bool = True
     metadata: dict = field(default_factory=dict)
+    scripts: tuple[str, ...] = ()
+    assets: tuple[str, ...] = ()
+    references: tuple[str, ...] = ()
+    source_dir: str = ""
 
 
 def _load_skill_states() -> dict[str, bool]:
@@ -107,6 +135,8 @@ def _scan_dir(directory: Path, known: set[str], builtin: bool) -> dict[str, Skil
             format="json",
         )
     for path in sorted(directory.glob("*/SKILL.md")):
+        if path.parent.name == "runtime":
+            continue
         parsed = parse_skill_dir(path.parent)
         if parsed is None or parsed["name"] in loaded:
             continue
@@ -117,10 +147,14 @@ def _scan_dir(directory: Path, known: set[str], builtin: bool) -> dict[str, Skil
             description=parsed["description"],
             instructions=parsed["instructions"],
             tool_names=parsed["tool_names"],
-            prompt_hint="",
+            prompt_hint=parsed.get("prompt_hint", ""),
             builtin=builtin,
             format="skillmd",
             metadata=parsed["metadata"],
+            scripts=parsed.get("scripts", ()),
+            assets=parsed.get("assets", ()),
+            references=parsed.get("references", ()),
+            source_dir=str(path.parent),
         )
     return loaded
 
@@ -149,6 +183,65 @@ def refresh_skills() -> None:
 
     global _SKILLS
     _SKILLS = _load_skills()
+
+
+def land_skill(skill: SkillSpec) -> Path:
+    """把技能包内 scripts/assets/references 幂等复制到运行目录。"""
+
+    target = RUNTIME_SKILL_DIR / skill.name
+    if not skill.source_dir:
+        return target
+    source = Path(skill.source_dir)
+    if not source.is_dir():
+        return target
+    for sub in ("scripts", "assets", "references"):
+        src = source / sub
+        if not src.is_dir():
+            continue
+        dst = target / sub
+        if dst.exists():
+            shutil.rmtree(dst)
+        shutil.copytree(src, dst)
+    return target
+
+
+def ensure_landed(skill: SkillSpec) -> bool:
+    """确保技能包已落地；含脚本的技能要求 scripts/ 已就绪。"""
+
+    try:
+        target = land_skill(skill)
+    except OSError:
+        return False
+    if skill.scripts and not (target / "scripts").is_dir():
+        return False
+    return True
+
+
+def list_installable_skills() -> dict:
+    """读取 curated 技能目录，标注已安装/内置同名冲突。"""
+    try:
+        data = json.loads(SKILL_CATALOG_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        data = {}
+    installed = {spec.name for spec in list_skills()}
+    builtin_names = {spec.name for spec in list_skills() if spec.builtin}
+    items = []
+    for entry in data.get("skills") or []:
+        name = str(entry.get("name") or "").strip()
+        if not name:
+            continue
+        items.append(
+            {
+                "name": name,
+                "description": str(entry.get("description") or ""),
+                "repo": str(entry.get("repo") or ""),
+                "path": str(entry.get("path") or ""),
+                "ref": str(entry.get("ref") or "main"),
+                "installed": name in installed,
+                "conflict": name in builtin_names,
+            }
+        )
+    return {"items": items}
 
 
 def list_skills() -> tuple[SkillSpec, ...]:
@@ -198,13 +291,22 @@ def create_skill(
         prompt_hint=str(prompt_hint or ""),
         builtin=False,
     )
-    target = USER_SKILL_DIR / f"{name}.json"
+    target = USER_SKILL_DIR / name / "SKILL.md"
     target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(asdict(spec), ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp = target.with_suffix(".md.tmp")
+    tmp.write_text(
+        _skillmd_text(
+            name,
+            str(description or ""),
+            tuple(tool_names),
+            str(instructions or ""),
+            str(prompt_hint or ""),
+        ),
+        encoding="utf-8",
+    )
     os.replace(tmp, target)
     refresh_skills()
-    return spec
+    return get_skill(name)
 
 
 def delete_skill(name: str) -> bool:
@@ -221,6 +323,7 @@ def delete_skill(name: str) -> bool:
         shutil.rmtree(dir_target)
     else:
         raise KeyError(name)
+    shutil.rmtree(RUNTIME_SKILL_DIR / name, ignore_errors=True)
     states = _load_skill_states()
     if name in states:
         states.pop(name)
@@ -249,27 +352,29 @@ def update_skill(
     prompt_hint: str | None = None,
     tool_names: list[str] | None = None,
 ) -> SkillSpec:
-    """编辑自定义 JSON 技能字段；内置技能与 SKILL.md 技能包只读。"""
+    """编辑自定义 SKILL.md 技能包；内置技能与旧版 JSON 技能只读。"""
 
     spec = get_skill(name)
     if spec.builtin:
         raise ValueError("内置技能不可编辑")
-    if spec.format != "json":
-        raise ValueError("标准 SKILL.md 技能包暂不支持编辑，仅支持启用/停用")
-    target = USER_SKILL_DIR / f"{name}.json"
+    if spec.format == "json":
+        raise ValueError("旧版 JSON 技能只读，请删除后重建 SKILL.md 技能包")
+    target = USER_SKILL_DIR / name / "SKILL.md"
     if not target.is_file():
         raise KeyError(name)
-    data = json.loads(target.read_text(encoding="utf-8"))
-    if description is not None:
-        data["description"] = str(description)
-    if instructions is not None:
-        data["instructions"] = str(instructions)
-    if prompt_hint is not None:
-        data["prompt_hint"] = str(prompt_hint)
-    if tool_names is not None:
-        data["tool_names"] = [str(item) for item in tool_names]
-    tmp = target.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    new_description = str(description) if description is not None else spec.description
+    new_instructions = str(instructions) if instructions is not None else spec.instructions
+    new_prompt_hint = str(prompt_hint) if prompt_hint is not None else spec.prompt_hint
+    new_tools = tuple(str(item) for item in tool_names) if tool_names is not None else spec.tool_names
+    known = {s.name for s in tool_specs()}
+    unknown = [item for item in new_tools if item not in known]
+    if unknown:
+        raise ValueError(f"未知工具：{unknown}")
+    tmp = target.with_suffix(".md.tmp")
+    tmp.write_text(
+        _skillmd_text(name, new_description, new_tools, new_instructions, new_prompt_hint),
+        encoding="utf-8",
+    )
     os.replace(tmp, target)
     refresh_skills()
     return get_skill(name)
@@ -301,6 +406,8 @@ def load_skill(skill_name: str, runtime: ToolRuntime[PersonaAgentContext]) -> Co
     hidden = [name for name in skill.tool_names if name not in visible_tools]
     loaded = list(runtime.state.get("loaded_skills") or [])
     instructions = skill.instructions
+    if skill.scripts and not ensure_landed(skill):
+        instructions += "\n（技能脚本未就绪，run_skill_script 暂不可用）"
     if hidden:
         instructions += f"\n（未授权工具已隐藏：{', '.join(hidden)}）"
     # 工具直接改 runtime.state 不会保留到下一次模型调用；必须通过

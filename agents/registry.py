@@ -55,6 +55,13 @@ MUTATION_TOOL_NAMES = tuple(spec.name for spec in _TOOL_SPECS if spec.requires_c
 # MCP 工具在应用启动时动态追加到这里（见 integrations/mcp/client.py），
 # 运行时注册的额外工具独立存放，避免与内置常量互相污染。
 _EXTRA_TOOL_SPECS: list[ToolSpec] = []
+_REGISTRY_REVISION = 0
+
+
+def tool_registry_revision() -> int:
+    """Return a monotonic revision used to invalidate workflow tool snapshots."""
+
+    return _REGISTRY_REVISION
 
 
 def tool_specs() -> tuple[ToolSpec, ...]:
@@ -66,6 +73,7 @@ def tool_specs() -> tuple[ToolSpec, ...]:
 def register_tool_specs(specs: list[ToolSpec]) -> int:
     """追加运行时注册的工具（如 MCP 工具）；同名工具跳过。"""
 
+    global _REGISTRY_REVISION
     known = {spec.name for spec in tool_specs()}
     added = 0
     for spec in specs:
@@ -74,12 +82,15 @@ def register_tool_specs(specs: list[ToolSpec]) -> int:
         _EXTRA_TOOL_SPECS.append(spec)
         known.add(spec.name)
         added += 1
+    if added:
+        _REGISTRY_REVISION += 1
     return added
 
 
 def unregister_tool_specs(names: list[str]) -> int:
     """按名称移除运行时注册的工具；不存在的名称忽略。"""
 
+    global _REGISTRY_REVISION
     removed = 0
     remaining: list[ToolSpec] = []
     for spec in _EXTRA_TOOL_SPECS:
@@ -88,6 +99,8 @@ def unregister_tool_specs(names: list[str]) -> int:
             continue
         remaining.append(spec)
     _EXTRA_TOOL_SPECS[:] = remaining
+    if removed:
+        _REGISTRY_REVISION += 1
     return removed
 
 

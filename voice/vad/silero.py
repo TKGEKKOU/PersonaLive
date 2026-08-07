@@ -59,6 +59,7 @@ class SileroVAD(VAD):
         self._silence_frames = 0
         self._onset_start = 0
         self._speech_active = False
+        self._last_stop_sample = 0
 
     def reset(self) -> None:
         self._model.reset_states()
@@ -68,6 +69,7 @@ class SileroVAD(VAD):
         self._silence_frames = 0
         self._onset_start = 0
         self._speech_active = False
+        self._last_stop_sample = 0
 
     def process(self, pcm: np.ndarray) -> list[VADEvent]:
         samples = np.asarray(pcm)
@@ -92,6 +94,7 @@ class SileroVAD(VAD):
                         self._speech_active = False
                         self._speech_frames = 0
                         self._silence_frames = 0
+                        self._last_stop_sample = frame_start
                         events.append(VADEvent("speech_stop", frame_start))
                 elif is_speech:
                     self._silence_frames = 0
@@ -103,7 +106,10 @@ class SileroVAD(VAD):
                 if self._speech_frames >= self._min_speech_frames:
                     self._speech_active = True
                     self._silence_frames = 0
-                    start = max(0, self._onset_start - self._speech_pad_samples)
+                    start = max(
+                        self._last_stop_sample + 1,
+                        self._onset_start - self._speech_pad_samples,
+                    )
                     events.append(VADEvent("speech_start", start))
             else:
                 self._speech_frames = 0

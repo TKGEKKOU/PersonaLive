@@ -80,8 +80,6 @@ const state = {
   pendingAction: null,
   settingsAction: null,
   deletePersona: null,
-  savedEmbeddingDimensions: 512,
-  embeddingKeyConfigured: false,
   webSearchKeyConfigured: false,
   realtimeSocket: null,
   realtimeTurnId: null,
@@ -108,7 +106,9 @@ const state = {
   paceCharsPerTick: 1,
   paceNode: null,
   editReferenceUrl: null,
-  voiceStreamBuffer: "",
+  voiceFeed: null,
+  voiceFeedFailed: false,
+  voiceFeedFullText: "",
   voicePlaybackQueue: [],
   voicePlaybackActive: false,
   pendingReplyNode: null,
@@ -121,11 +121,6 @@ const LLM_PRESETS = {
   qwen: { baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus" },
 };
 
-const EMBEDDING_PRESETS = {
-  qwen: { baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "text-embedding-v4", dimensions: 512, sendDimensions: true },
-  managed_local: { baseUrl: "", model: "Qwen/Qwen3-Embedding-0.6B", dimensions: 1024, sendDimensions: false },
-};
-
 const WEB_SEARCH_GUIDES = {
   off: { text: "选择服务并填写 API Key 后，联网搜索才会启用。" },
   tavily: { text: "只需填写 Tavily API Key。适合通用英文与多语种网页搜索。", label: "官方入口", href: "https://app.tavily.com/", link: "Tavily" },
@@ -135,7 +130,6 @@ const WEB_SEARCH_GUIDES = {
 
 const API_KEY_FIELDS = {
   "openai-api-key": { field: "openai_api_key", configured: "openaiKeyConfigured" },
-  "embedding-api-key": { field: "embedding_api_key", configured: "embeddingKeyConfigured" },
   "web-search-api-key": { field: "web_search_api_key", configured: "webSearchKeyConfigured" },
 };
 

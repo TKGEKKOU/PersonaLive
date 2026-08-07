@@ -1,0 +1,77 @@
+<section id="voice-view" class="view is-hidden">
+  <div class="panel voice-flowbar">
+    <b class="voice-flowbar-label">流程</b>
+    <ol id="voice-flow" class="voice-flow" aria-label="声音生成流程">
+      <li data-flow-step="video" class="is-pending" tabindex="0" role="button">
+        <span class="flow-icon"><i data-lucide="clapperboard"></i></span><b>视频</b><em>上传视频</em>
+      </li>
+      <li class="voice-flow-link" aria-hidden="true"><i data-lucide="arrow-right"></i></li>
+      <li data-flow-step="audio" class="is-pending" tabindex="0" role="button">
+        <span class="flow-icon"><i data-lucide="waves"></i></span><b>音频/分离</b><em>上传音频并提取人声</em><span class="flow-status"></span>
+      </li>
+      <li class="voice-flow-link" aria-hidden="true"><i data-lucide="arrow-right"></i></li>
+      <li data-flow-step="segments" class="is-pending" tabindex="0" role="button">
+        <span class="flow-icon"><i data-lucide="scissors"></i></span><b>片段</b><em>试听并勾选干净片段</em>
+      </li><li class="voice-flow-link" aria-hidden="true"><i data-lucide="arrow-right"></i></li><li data-flow-step="train" class="is-pending" tabindex="0" role="button"><span class="flow-icon"><i data-lucide="cpu"></i></span><b>训练</b><em>训练专属音色</em><span class="flow-status"></span></li>
+    </ol>
+    <div class="voice-flowbar-actions">
+      <button id="voice-studio-new" class="button button-secondary" type="button"><i data-lucide="rotate-ccw"></i>重置</button>
+    </div>
+  </div>
+
+  <p id="voice-studio-banner" class="voice-banner is-hidden"></p>
+
+  <div class="voice-step-panels">
+      <section class="panel voice-step" data-step-panel="video">
+        <header class="voice-step-head"><div><b>01 视频</b><p>上传视频，自动提取音轨。支持 mp4 / mkv / webm / mov / m4a / avi，最大 400 MB。</p></div><span id="voice-video-state" class="step-state"></span></header>
+        <div id="voice-video-drop" class="upload-drop" tabindex="0" role="button" aria-label="选择视频">
+          <i data-lucide="clapperboard"></i>
+          <b>拖入视频，或点击选择</b>
+          <span>上传后自动完成：提取音轨 → 分离人声 → 截取干净片段</span>
+          <input id="voice-video" type="file" accept=".mp4,.mkv,.webm,.mov,.m4a,.avi,video/mp4,video/x-matroska,video/webm,video/quicktime,video/x-msvideo">
+        </div>
+        <p id="voice-video-status" class="inline-status"></p>
+      </section>
+
+      <section class="panel voice-step is-hidden" data-step-panel="audio">
+        <header class="voice-step-head"><div><b>02 音频/分离</b><p>可一次上传多个音频（支持 mp3 / wav / m4a / flac 等）；先自动检测格式并转为 WAV，确认后再手动开始人声分离。</p><p id="voice-audio-entry" class="voice-entry-hint"></p></div><span id="voice-audio-state" class="step-state"></span></header>
+        <div id="voice-audio-meta" class="voice-file-meta is-hidden"><i data-lucide="file-audio"></i><div><b id="voice-audio-name"></b><span id="voice-audio-detail"></span></div></div>
+        <div id="voice-audio-drop" class="upload-drop upload-drop-slim" tabindex="0" role="button" aria-label="选择音频（可多选）">
+          <i data-lucide="upload"></i>
+          <b>上传音频（可多选）</b>
+          <span>多个音频会按顺序拼接后统一分离；wav / mp3 / m4a / flac / ogg 等常见格式</span>
+          <input id="voice-audio" type="file" accept=".wav,.mp3,.m4a,.aac,.flac,.ogg,.opus,.wma,.aiff,.aif,audio/*" multiple>
+        </div>
+        <ul id="voice-audio-files" class="voice-audio-file-list"></ul>
+        <div class="voice-step-actions">
+          <p id="voice-audio-status" class="inline-status"></p>
+          <button id="voice-start-separate" class="button button-primary" type="button" disabled><i data-lucide="waves"></i>开始分离</button>
+        </div>
+        <div class="voice-progress-row voice-progress-inline">
+          <progress id="voice-separate-progress" class="is-hidden" max="100"></progress>
+          <span id="voice-separate-phase" class="video-phase"></span>
+        </div>
+      </section>
+
+      <section class="panel voice-step is-hidden" data-step-panel="segments">
+        <header class="voice-step-head"><div><b>03 片段</b><p>自动截取的干净语音片段可试听、下载；也可以自行上传多段干净音频作为候选。勾选片段后进入训练（GPT-SoVITS，建议尽量多选、合计 1~10 分钟）。</p><p id="voice-segments-entry" class="voice-entry-hint"></p></div><span id="voice-segments-state" class="step-state"></span></header>
+        <div class="voice-segments-tools"><button id="voice-segments-select-all" class="button button-secondary" type="button">全选</button><span id="voice-segments-count" class="step-state"></span></div><ul id="voice-segments" class="voice-segment-list"></ul>
+        <div id="voice-segments-upload" class="upload-drop upload-drop-slim voice-segments-upload" tabindex="0" role="button" aria-label="上传干净音频片段（可多选）">
+          <i data-lucide="upload"></i>
+          <b>投放已处理的干净片段（可多选）</b>
+          <span>跳过前面的视频/音频步骤，直接从此处开始；wav / mp3 / m4a / flac 等，单段建议 3~15 秒</span>
+          <input id="voice-segments-upload-input" type="file" accept=".wav,.mp3,.m4a,.aac,.flac,.ogg,.opus,.wma,audio/*" multiple>
+        </div>
+        <div class="voice-step-actions">
+          <p id="voice-segments-status" class="inline-status"></p>
+          <button id="voice-train-enter" class="button button-primary" type="button" disabled>训练专属音色</button>
+        </div>
+      </section><section class="panel voice-step is-hidden" data-step-panel="train"><header class="voice-step-head"><div><b>04 训练</b><p>用已勾选的干净片段训练 GPT-SoVITS 专属模型（后台进行，可先离开页面）。训练完成后，音色会出现在下方「训练音色」列表中，可在角色编辑页绑定。</p><p id="voice-train-entry" class="voice-entry-hint"></p></div><span id="voice-train-state" class="step-state"></span></header><div class="voice-train-options"><label class="field"><span>素材语言</span><select id="voice-train-lang"><option value="zh">中文</option><option value="ja">日文</option><option value="en">英文</option></select></label><label class="field"><span>音色名称</span><input id="voice-train-name" placeholder="例如：秧秧"></label><button id="voice-train-start" class="button button-primary" type="button">开始训练</button></div><p id="voice-train-meta" class="inline-status"></p><progress id="voice-train-progress" class="is-hidden" max="100"></progress><p id="voice-train-status" class="inline-status"></p><div class="voice-step-actions"><span class="inline-status" id="voice-train-hint"></span><button id="voice-train-to-manage" class="button button-secondary is-hidden" type="button">去角色页绑定</button></div></section>
+    </div>
+
+  <section class="panel voice-library-panel">
+    <header class="voice-step-head"><div><b>训练音色（GPT-SoVITS）</b><p>已训练完成的音色会出现在角色编辑页的「声音」选择中。</p></div><span id="voice-library-count" class="status-pill">0 个</span></header>
+    <ul id="voice-library" class="voice-library-list"></ul>
+    <p id="voice-library-status" class="inline-status"></p>
+  </section>
+</section>

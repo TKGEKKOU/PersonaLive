@@ -21,14 +21,45 @@ function friendlyError(reason) {
   return message;
 }
 
+const GPT_SOVITS_PRESETS = [
+  {
+    id: "20250604-nvidia50",
+    label: "v2Pro 20250604（nvidia50）",
+    size: "约 8.8 GB",
+    note: "当前内置版本 · 适配 NVIDIA 50 系，兼容常规 CUDA/CPU",
+    url: "https://modelscope.cn/models/FlowerCry/gpt-sovits-7z-pacakges/resolve/master/GPT-SoVITS-v2pro-20250604-nvidia50.7z",
+  },
+  {
+    id: "20250604",
+    label: "v2Pro 20250604",
+    size: "约 8.2 GB",
+    note: "常规版本",
+    url: "https://modelscope.cn/models/FlowerCry/gpt-sovits-7z-pacakges/resolve/master/GPT-SoVITS-v2pro-20250604.7z",
+  },
+  {
+    id: "20250531",
+    label: "v2Pro 20250531",
+    size: "约 8.1 GB",
+    note: "较早版本",
+    url: "https://modelscope.cn/models/FlowerCry/gpt-sovits-7z-pacakges/resolve/master/GPT-SoVITS-v2pro-20250531.7z",
+  },
+];
+function formatBytes(bytes) {
+  if (!bytes) return "";
+  const mb = bytes / 1024 / 1024;
+  return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
+}
+
 function initSettings() {
+  document.body.classList.add("status-cards-collapsed");
   bindSettingsEvents();
   prepareSettingsSections();
   loadStatus();
   loadSettings();
   loadEmbeddingStatus();
   loadAsrStatus();
-  loadTtsStatus();
+  loadSeparatorStatus();
+  loadGptSoVitsStatus();
 }
 
 function bindSettingsEvents() {
@@ -37,14 +68,11 @@ function bindSettingsEvents() {
   bindIf("settings-form", "submit", requestSettingsSave);
   bindIf("reset-settings", "click", requestSettingsReset);
   bindIf("llm-provider", "change", applyLlmPreset);
-  ["openai-api-key", "embedding-api-key", "web-search-api-key"].forEach((id) => {
+  ["openai-api-key", "web-search-api-key"].forEach((id) => {
     bindIf(`toggle-${id}`, "click", () => toggleApiKeyVisibility(id));
     bindIf(`copy-${id}`, "click", () => copyApiKey(id));
   });
-  bindIf("embedding-provider", "change", applyEmbeddingPreset);
-  bindIf("managed-embedding-preset", "change", applyManagedEmbeddingPreset);
-  bindIf("embedding-model", "input", markEmbeddingSelectionChanged);
-  ["embedding-base-url", "embedding-model", "embedding-api-key", "embedding-dimensions", "chunk-size", "chunk-overlap"].forEach((id) => bindIf(id, "input", renderEmbeddingWarning));
+  ["chunk-size", "chunk-overlap"].forEach((id) => bindIf(id, "input", renderChunkWarning));
   bindIf("web-search-enabled", "change", renderWebSearchSettings);
   bindIf("web-search-provider", "change", renderWebSearchSettings);
   ["web-search-api-key", "web-search-base-url"].forEach((id) => bindIf(id, "input", renderWebSearchSettings));
@@ -63,6 +91,20 @@ function bindSettingsEvents() {
   bindIf("cancel-tts", "click", cancelTts);
   bindIf("remove-tts", "click", removeTts);
   bindIf("open-tts-directory", "click", openTtsDirectory);
+  bindIf("install-separator", "click", installSeparator);
+  bindIf("cancel-separator", "click", cancelSeparator);
+  bindIf("remove-separator", "click", removeSeparator);
+  bindIf("open-separator-directory", "click", openSeparatorDirectory);
+  bindIf("save-gptsovits-config", "click", saveGptSoVitsConfig);
+  bindIf("detect-gptsovits", "click", detectGptSoVits);
+  bindIf("gptsovits-preset", "change", applyGptSoVitsPreset);
+  bindIf("gptsovits-download-url", "input", syncGptSoVitsPreset);
+  bindIf("install-gptsovits", "click", installGptSoVits);
+  bindIf("cancel-gptsovits", "click", cancelGptSoVitsInstall);
+  bindIf("start-gptsovits-service", "click", startGptSoVitsService);
+  bindIf("stop-gptsovits-service", "click", stopGptSoVitsService);
+  bindIf("open-gptsovits-directory", "click", openGptSoVitsDirectory);
+  bindIf("remove-gptsovits", "click", removeGptSoVitsInstall);
   bindIf("preview-tts", "click", previewTts);
   document.querySelectorAll("[data-collapsible]").forEach((section) => section.addEventListener("toggle", () => {
     const label = section.querySelector(".section-toggle-label");
@@ -134,11 +176,7 @@ function buildConfigDetail() {
     `对话 Base URL：${$("openai-base-url").value.trim() || "未填写"}`,
     `对话 API Key：${keyStateLabel(state.openaiKeyConfigured, $("openai-api-key"))}`,
     "",
-    `Embedding：${$("embedding-provider").selectedOptions[0].textContent} · ${$("embedding-model").value.trim() || "未填写模型"}`,
-    `Embedding 来源：${$("embedding-model-source").selectedOptions[0].textContent} · 设备：${$("embedding-device").selectedOptions[0].textContent}`,
-    `Embedding 维度：${$("embedding-dimensions").value || "未填写"}${$("embedding-send-dimensions").checked ? "（发送 dimensions）" : ""}`,
-    `Embedding Base URL：${$("embedding-base-url").value.trim() || "未填写"}`,
-    `Embedding API Key：${keyStateLabel(state.embeddingKeyConfigured, $("embedding-api-key"))}`,
+    `Embedding：本地 Qwen3-Embedding-0.6B · 设备：${$("embedding-device").selectedOptions[0].textContent}`,
     "",
     `文档切分：长度 ${$("chunk-size").value} / 重叠 ${$("chunk-overlap").value}`,
     "",
@@ -172,7 +210,7 @@ function prepareSettingsSections() {
   if (ttsGuide) {
     ttsGuide.open = false;
     ttsGuide.querySelector("summary").textContent = "参数说明与获取途径";
-    ttsGuide.querySelector("p").textContent = "直接点击“自动下载安装”可从国内 ModelScope 获取本地 TTS 模型。安装完成后，在角色资料中上传参考音频即可生成角色语音；GPU 加速可按设备情况启用。";
+    ttsGuide.querySelector("p").textContent = "Lunar 引擎：下载约 2.2 GB 的 Qwen3-TTS GGUF 模型即可使用，适合快速参考音色克隆；GPT-SoVITS 引擎：需要训练式音色时在下方下载整合包，并在声音页“训练”环节训练专属模型。选择引擎后，另一引擎会自动停用。";
   }
 }
 async function loadSettings() {
@@ -180,32 +218,23 @@ async function loadSettings() {
     const config = await api(fetch("/api/settings"));
     const keyPlaceholder = (configured) => configured ? "已保存，可输入新 Key 替换" : "请输入 API Key";
     $("openai-api-key").placeholder = keyPlaceholder(config.openai_api_key_configured);
-    $("embedding-api-key").placeholder = keyPlaceholder(config.embedding_api_key_configured);
     $("web-search-api-key").placeholder = keyPlaceholder(config.web_search_api_key_configured);
     state.openaiKeyConfigured = config.openai_api_key_configured;
-    state.embeddingKeyConfigured = config.embedding_api_key_configured;
     state.webSearchKeyConfigured = config.web_search_api_key_configured;
     $("openai-base-url").value = config.openai_base_url; $("openai-model").value = config.openai_model;
-    $("embedding-base-url").value = config.embedding_base_url; $("embedding-model").value = config.embedding_model;
     $("web-search-base-url").value = config.web_search_base_url;
     $("llm-provider").value = inferProvider(LLM_PRESETS, config.openai_base_url);
-    $("embedding-provider").value = config.embedding_provider;
-    $("embedding-model-source").value = config.embedding_model_source;
     $("embedding-device").value = config.embedding_device;
-    $("embedding-dimensions").value = config.embedding_dimensions;
-    $("embedding-send-dimensions").checked = config.embedding_send_dimensions;
     $("chunk-size").value = config.chunk_size;
     $("chunk-overlap").value = config.chunk_overlap;
     $("web-search-enabled").checked = config.enable_web_fallback;
     $("web-search-provider").value = config.web_search_provider === "off" ? "bocha" : config.web_search_provider;
-    state.savedEmbeddingDimensions = config.embedding_dimensions;
-    syncManagedEmbeddingPreset(); renderEmbeddingSettings(); renderEmbeddingInstallAction(); renderEmbeddingWarning(); renderWebSearchSettings();
+    renderEmbeddingInstallAction(); renderChunkWarning(); renderWebSearchSettings();
   } catch (reason) { setText("settings-status", reason, true); }
 }
 async function loadEmbeddingStatus() {
   try {
     const config = await api(fetch("/api/embedding/status"));
-    const wasReady = state.embeddingConfigured;
     state.embeddingConfigured = config.ready;
     state.embeddingInstalledModel = config.installed ? config.model_id : "";
     state.embeddingResourceStatus = config;
@@ -223,7 +252,6 @@ async function loadEmbeddingStatus() {
     setDisabled("remove-embedding", config.installing || !config.installed);
     setDisabled("open-embedding-directory", config.installing);
     renderServiceStatus("embedding", "Embedding", embeddingState, embeddingState);
-    if (config.ready && !wasReady && Number($("embedding-dimensions").value) !== Number(config.dimensions)) await loadSettings();
     if (config.installing) setTimeout(loadEmbeddingStatus, 2000);
   } catch (reason) {
     state.embeddingConfigured = false;
@@ -231,14 +259,14 @@ async function loadEmbeddingStatus() {
   }
 }
 function embeddingResourcePayload() {
-  return { model_id: $("embedding-model").value.trim(), source: $("embedding-model-source").value, device: $("embedding-device").value };
+  return { model_id: "Qwen/Qwen3-Embedding-0.6B", source: "modelscope", device: $("embedding-device").value };
 }
 async function installEmbedding() {
   if (!validateSettings()) return;
-  if (!confirm("将自动安装独立运行环境并下载所选 Embedding 模型，是否继续？")) return;
+  if (!confirm("将自动下载并安装本地 Embedding 模型（Qwen3-Embedding-0.6B），是否继续？")) return;
   setDisabled("install-embedding", true);
   const installButton = $("install-embedding");
-  if (installButton) installButton.textContent = "安装中";
+  if (installButton) installButton.textContent = "安装中…";
   try {
     await api(fetch("/api/embedding/install", { method: "POST", headers: { "Content-Type": "application/json", "X-YUMENO-Request": "web" }, body: JSON.stringify(embeddingResourcePayload()) }));
     await loadEmbeddingStatus();
@@ -287,7 +315,7 @@ async function loadAsrStatus() {
     setText("asr-progress-detail", config.installing ? `${phaseNames[config.phase] || "处理中"}${config.elapsed_seconds ? ` · 已用时 ${config.elapsed_seconds} 秒` : ""}` : "");
     setDisabled("install-asr", config.installing || config.installed);
     const installAsrLabel = $("install-asr");
-    if (installAsrLabel) installAsrLabel.textContent = config.installing ? "安装中" : config.installed ? "已安装" : "自动下载安装";
+    if (installAsrLabel) installAsrLabel.textContent = config.installing ? "安装中…" : config.installed ? "已安装" : "安装";
     setHidden("cancel-asr", !config.installing);
     setDisabled("cancel-asr", !config.installing || config.cancelling);
     setDisabled("remove-asr", config.installing || !config.managed_installed);
@@ -313,7 +341,7 @@ async function installAsr() {
   if (!confirm("将下载约 5-10 GB 的 CUDA 运行环境和 Qwen3-ASR 模型，是否继续？")) return;
   setDisabled("install-asr", true);
   const installButton = $("install-asr");
-  if (installButton) installButton.textContent = "安装中";
+  if (installButton) installButton.textContent = "安装中…";
   try {
     await saveAsrConfig();
     await api(fetch("/api/asr/install", { method: "POST", headers: { "X-YUMENO-Request": "web" } }));
@@ -354,31 +382,53 @@ async function loadTtsStatus() {
     $("tts-enabled").checked = config.enabled;
     $("tts-use-gpu").checked = config.use_gpu;
     setDisabled("tts-use-gpu", config.installing);
+    document.querySelectorAll('input[name="tts-engine"]').forEach((input) => {
+      input.checked = input.value === config.engine;
+      input.disabled = config.installing;
+    });
+    const gptEngine = config.engine === "gpt_sovits";
+    setDisabled("tts-enabled", gptEngine || config.installing);
+    const lunarState = $("tts-engine-lunar-state");
+    if (lunarState) {
+      lunarState.textContent = gptEngine ? "已停用" : config.installed ? "已就绪" : "未安装";
+      lunarState.classList.toggle("is-error", gptEngine);
+    }
+    setDisabled("install-tts", gptEngine || config.installing || config.variant_installed || !config.runtime_bundled);
+    setDisabled("remove-tts", gptEngine || config.installing || !(config.variants || []).some((v) => v.installed));
+    setDisabled("open-tts-directory", gptEngine || config.installing);
+    setDisabled("preview-tts", gptEngine || !config.ready);
+    if (gptEngine && $("install-tts")) $("install-tts").textContent = "已停用（当前使用 GPT-SoVITS）";
+    else if (config.installing) $("install-tts").textContent = "安装中";
+    else if (config.variant_installed) $("install-tts").textContent = "已安装";
+    else $("install-tts").textContent = "自动下载安装";
+    setText("tts-engine-hint", gptEngine
+      ? "已启用 GPT-SoVITS 训练引擎，Lunar 引擎已停用；未安装时请在下方下载整合包"
+      : "Lunar 引擎用于快速参考音色克隆；GPT-SoVITS 用于训练式专属音色");
+    if (gptEngine && config.ready) {
+      setText("tts-status", "当前使用 GPT-SoVITS 引擎（Lunar 已停用）");
+    }
     const ttsState = config.installing ? "installing" : config.ready ? "ready" : config.enabled ? "not_installed" : "disabled";
     renderServiceStatus("tts", "TTS", ttsState, ttsState);
-    const phaseNames = { preparing: "准备下载", model: "下载语音模型", cancelling: "正在取消", complete: "安装完成", error: "安装失败" };
+    const size = (bytes) => bytes ? `${(bytes / 1024 / 1024).toFixed(bytes > 1024 * 1024 * 100 ? 0 : 1)} MB` : "";
+    const duration = (seconds) => seconds == null ? "正在估算剩余时间" : seconds < 60 ? `预计剩余 ${seconds} 秒` : `预计剩余 ${Math.ceil(seconds / 60)} 分钟`;
+    const phaseNames = { preparing: "准备下载", model: "下载模型", cancelling: "正在取消", complete: "安装完成", error: "安装失败" };
     const ttsStateNode = $("tts-state");
     if (ttsStateNode) ttsStateNode.textContent = config.installing ? (phaseNames[config.phase] || "正在安装") : config.ready ? "已就绪" : config.enabled ? "尚未安装" : "已关闭";
     setText("tts-status", config.error || (!config.runtime_bundled ? "当前开发目录缺少内置 Lunar TTS 运行库；完整 Windows 发布包将自带该文件" : config.ready ? `Qwen3-TTS-0.6B · ${config.model_dir}` : config.download_size));
     const progress = $("tts-progress");
     if (progress) { progress.classList.toggle("is-hidden", !config.installing); if (config.progress_percent == null) progress.removeAttribute("value"); else progress.value = config.progress_percent; }
-    const size = (bytes) => bytes ? `${(bytes / 1024 / 1024).toFixed(bytes > 1024 * 1024 * 100 ? 0 : 1)} MB` : "";
-    const duration = (seconds) => seconds == null ? "正在估算剩余时间" : seconds < 60 ? `预计剩余 ${seconds} 秒` : `预计剩余 ${Math.ceil(seconds / 60)} 分钟`;
     const speed = config.download_speed_bytes ? `${size(config.download_speed_bytes)}/s` : "";
-    setText("tts-progress-detail", config.installing ? [config.current_file, size(config.downloaded_bytes), config.total_bytes ? `/ ${size(config.total_bytes)}` : "", speed, duration(config.eta_seconds)].filter(Boolean).join(" · ") : "");
-    setDisabled("install-tts", config.installing || config.installed || !config.runtime_bundled);
-    const installLabel = $("install-tts");
-    if (installLabel) installLabel.textContent = config.installing ? "安装中" : config.installed ? "已安装" : "自动下载安装";
+    const percent = config.progress_percent != null ? `${config.progress_percent}%` : "";
+    const elapsed = config.elapsed_seconds ? `已用时 ${config.elapsed_seconds} 秒` : "";
+    setText("tts-progress-detail", config.installing ? [percent, config.source ? `源：${config.source}` : "", config.current_file, size(config.downloaded_bytes), config.total_bytes ? `/ ${size(config.total_bytes)}` : "", speed, duration(config.eta_seconds), elapsed].filter(Boolean).join(" · ") : "");
     setHidden("cancel-tts", !config.installing);
     setDisabled("cancel-tts", !config.installing || config.cancelling);
-    setDisabled("remove-tts", config.installing || !config.model_dir);
-    setDisabled("open-tts-directory", config.installing);
-    setDisabled("preview-tts", !config.ready);
+    state.ttsStatus = config;
     if (state.editPersona) {
       const reference = await api(fetch(`/api/tts/personas/${state.editPersona.id}/reference`, { headers: { "X-YUMENO-Request": "web" } }));
       syncEditTtsPreview(reference.configured);
     }
-    if (config.installing) setTimeout(loadTtsStatus, 2000);
+    if (config.installing) setTimeout(loadTtsStatus, 1500);
   } catch (reason) {
     state.ttsConfigured = false;
     updateComposerControls();
@@ -389,15 +439,14 @@ async function loadTtsStatus() {
 }
 async function saveTtsConfig() {
   try {
-    await api(fetch("/api/tts/config", { method: "PATCH", headers: { "Content-Type": "application/json", "X-YUMENO-Request": "web" }, body: JSON.stringify({ enabled: $("tts-enabled").checked, use_gpu: $("tts-use-gpu").checked }) }));
+    const engineInput = document.querySelector('input[name="tts-engine"]:checked');
+    await api(fetch("/api/tts/config", { method: "PATCH", headers: { "Content-Type": "application/json", "X-YUMENO-Request": "web" }, body: JSON.stringify({ enabled: $("tts-enabled").checked, use_gpu: $("tts-use-gpu").checked, engine: engineInput ? engineInput.value : undefined }) }));
     await loadTtsStatus();
   } catch (reason) { setText("tts-status", `保存失败：${friendlyError(reason)}`, true); }
 }
 async function installTts() {
-  if (!confirm("将下载约 3 GB 的 Qwen3-TTS GGUF 模型，Lunar TTS 运行库已随应用内置。是否继续？")) return;
+  if (!confirm("将下载约 2.2 GB 的 Qwen3-TTS GGUF 模型（F16 标准版），Lunar TTS 运行库已随应用内置。是否继续？")) return;
   setDisabled("install-tts", true);
-  const installTtsButton = $("install-tts");
-  if (installTtsButton) installTtsButton.textContent = "安装中";
   try {
     await api(fetch("/api/tts/install", { method: "POST", headers: { "X-YUMENO-Request": "web" } }));
     await loadTtsStatus();
@@ -426,7 +475,332 @@ async function openTtsDirectory() {
   } catch (reason) { setText("tts-status", `打开失败：${friendlyError(reason)}`, true); }
   finally { setDisabled("open-tts-directory", false); }
 }
-async function previewTts() {
+async function loadSeparatorStatus() {
+  try {
+    const config = await api(fetch("/api/tts/separator/status", { headers: { "X-YUMENO-Request": "web" } }));
+    if (!$("separator-state")) return;
+    const phaseNames = { preparing: "准备下载", model: "下载人声分离模型", cancelling: "正在取消", complete: "安装完成", error: "安装失败" };
+    $("separator-state").textContent = config.installing ? (phaseNames[config.phase] || "正在安装") : config.ready ? "已就绪" : "尚未安装";
+    setText("separator-status", config.error || (config.ready ? "HT-Demucs FT · 纯 ONNX 推理，无需 PyTorch" : "从视频提取角色音色需要此模型（约 165 MB）"));
+    const progress = $("separator-progress");
+    if (progress) { progress.classList.toggle("is-hidden", !config.installing); if (config.progress_percent == null) progress.removeAttribute("value"); else progress.value = config.progress_percent; }
+    const size = (bytes) => bytes ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : "";
+    setText("separator-progress-detail", config.installing ? `${size(config.downloaded_bytes)} / ${size(config.total_bytes)}${config.elapsed_seconds ? ` · 已用时 ${config.elapsed_seconds} 秒` : ""}` : "");
+    setDisabled("install-separator", config.installing || config.installed);
+    const installLabel = $("install-separator");
+    if (installLabel) installLabel.textContent = config.installing ? "安装中…" : config.installed ? "已安装" : "安装";
+    setHidden("cancel-separator", !config.installing);
+    setDisabled("cancel-separator", !config.installing || config.cancelling);
+    setDisabled("remove-separator", config.installing || !config.installed);
+    setDisabled("open-separator-directory", config.installing);
+    if (config.installing) setTimeout(loadSeparatorStatus, 1500);
+  } catch (reason) {
+    if (!$("separator-state")) return;
+    setText("separator-status", `人声分离服务不可用：${friendlyError(reason)}`, true);
+  }
+}
+async function installSeparator() {
+  if (!confirm("将下载约 165 MB 的 HT-Demucs 人声分离模型（纯 ONNX，不引入 PyTorch）。是否继续？")) return;
+  setDisabled("install-separator", true);
+  try {
+    await api(fetch("/api/tts/separator/install", { method: "POST", headers: { "X-YUMENO-Request": "web" } }));
+    await loadSeparatorStatus();
+  } catch (reason) { setText("separator-status", `安装失败：${friendlyError(reason)}`, true); setDisabled("install-separator", false); }
+}
+async function cancelSeparator() {
+  setDisabled("cancel-separator", true);
+  try {
+    await api(fetch("/api/tts/separator/install/cancel", { method: "DELETE", headers: { "X-YUMENO-Request": "web" } }));
+    await loadSeparatorStatus();
+  } catch (reason) { setText("separator-status", `取消失败：${friendlyError(reason)}`, true); setDisabled("cancel-separator", false); }
+}
+async function removeSeparator() {
+  if (!confirm("删除已下载的人声分离模型？下次从视频提取音色前需重新安装。")) return;
+  setDisabled("remove-separator", true);
+  try {
+    await api(fetch("/api/tts/separator/install", { method: "DELETE", headers: { "X-YUMENO-Request": "web" } }));
+    await loadSeparatorStatus();
+  } catch (reason) { setText("separator-status", `删除失败：${friendlyError(reason)}`, true); setDisabled("remove-separator", false); }
+}
+  async function openSeparatorDirectory() {
+    setDisabled("open-separator-directory", true);
+    try {
+      const result = await api(fetch("/api/tts/separator/model-directory", { headers: { "X-YUMENO-Request": "web" } }));
+      setText("separator-status", `已打开：${result.opened_directory}`);
+    } catch (reason) { setText("separator-status", `打开失败：${friendlyError(reason)}`, true); }
+    finally { setDisabled("open-separator-directory", false); }
+  }
+  async function loadGptSoVitsStatus() {
+    try {
+      const status = await api(fetch("/api/gpt-sovits/status"));
+      if (!$("gptsovits-state")) return;
+      const install = status.install || {};
+      const size = formatBytes;
+      const phaseNames = {
+        preparing: "准备下载",
+        download: "下载整合包",
+        extracting: "解压整合包",
+        patching: "应用项目补丁",
+        cleaning: "清理冗余文件",
+        verifying: "校验安装",
+        complete: "安装完成",
+        cancelling: "正在取消",
+        error: "安装失败",
+        idle: "",
+      };
+      const phaseLabel = install.installing ? (phaseNames[install.phase] || "处理中") : "";
+      $("gptsovits-state").textContent = install.installing
+        ? phaseLabel
+        : status.ready ? "已就绪"
+        : status.installed ? "已安装"
+        : status.configured ? "未安装" : "未配置";
+      setText("gptsovits-status", install.error || (
+        install.installing
+          ? `${phaseLabel}${install.detail ? ` · ${install.detail}` : ""}`
+          : status.ready
+          ? `GPT-SoVITS API 服务运行中 · ${status.api_script}`
+          : status.installed
+            ? `已安装 · ${status.install_dir}`
+            : status.configured
+              ? "已配置路径，但未找到可用安装"
+              : "未配置 GPT-SoVITS 安装（可自动检测或下载整合包）"
+      ));
+      const progress = $("gptsovits-progress");
+      if (progress) {
+        progress.classList.toggle("is-hidden", !install.installing);
+        if (install.progress_percent == null) progress.removeAttribute("value");
+        else progress.value = install.progress_percent;
+      }
+      const detailParts = [];
+      if (install.installing) {
+        if (install.progress_percent != null) detailParts.push(`${install.progress_percent}%`);
+        if (install.current_file) detailParts.push(install.current_file);
+        if (["download", "extracting"].includes(install.phase)) {
+          if (install.downloaded_bytes) detailParts.push(size(install.downloaded_bytes));
+          if (install.total_bytes) detailParts.push(`/ ${size(install.total_bytes)}`);
+          if (install.download_speed_bytes) detailParts.push(`${size(install.download_speed_bytes)}/s`);
+          if (install.eta_seconds != null) detailParts.push(`剩余 ${install.eta_seconds} 秒`);
+        }
+        if (install.detail) detailParts.push(install.detail);
+        if (install.elapsed_seconds) detailParts.push(`已用 ${install.elapsed_seconds} 秒`);
+      }
+      setText("gptsovits-progress-detail", detailParts.join(" · "));
+      $("gptsovits-install-dir").value = status.install_dir || "";
+      const urlInput = $("gptsovits-download-url");
+      if (urlInput) {
+        const persistedUrl = (install.download_url || "").trim();
+        if (!urlInput.value.trim()) urlInput.value = persistedUrl;
+        if (!urlInput.value.trim()) applyGptSoVitsPreset();
+        else syncGptSoVitsPreset();
+      }
+      const gptState = $("tts-engine-gpt-state");
+      if (gptState) {
+        gptState.textContent = status.ready ? "运行中" : status.installed ? "已就绪" : "未安装";
+        gptState.classList.toggle("is-error", !status.installed && status.configured);
+      }
+      const installLabel = $("install-gptsovits");
+      if (installLabel) {
+        installLabel.textContent = install.installing
+          ? "安装中…"
+          : status.installed ? "已安装" : "安装";
+      }
+      setDisabled("install-gptsovits", install.installing || status.ready);
+      setHidden("cancel-gptsovits", !install.installing);
+      setDisabled("detect-gptsovits", install.installing);
+      setDisabled("open-gptsovits-directory", install.installing || !status.installed);
+      setDisabled("remove-gptsovits", install.installing || !status.installed);
+      setDisabled("start-gptsovits-service", install.installing || status.ready || !status.installed);
+      setDisabled("stop-gptsovits-service", !status.service_running);
+      setText("gptsovits-service-info", status.service_running
+        ? `GPT-SoVITS API 服务运行中 · 端口 ${status.api_port}`
+        : status.installed ? "GPT-SoVITS 服务未运行（合成时自动启动）" : "");
+      if (install.installing) setTimeout(loadGptSoVitsStatus, 1500);
+    } catch (reason) {
+      setText("gptsovits-status", `不可用：${friendlyError(reason)}`, true);
+    }
+  }
+  async function saveGptSoVitsConfig() {
+    try {
+      const dir = $("gptsovits-install-dir").value.trim();
+      const url = $("gptsovits-download-url").value.trim();
+      await api(fetch("/api/gpt-sovits/config", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "X-YUMENO-Request": "web" },
+        body: JSON.stringify({ install_dir: dir || null, download_url: url || null }),
+      }));
+      await loadGptSoVitsStatus();
+      setText("gptsovits-config-status", "已保存");
+    } catch (reason) {
+      setText("gptsovits-config-status", `保存失败：${friendlyError(reason)}`, true);
+    }
+  }
+  function applyGptSoVitsPreset() {
+    const preset = GPT_SOVITS_PRESETS.find((item) => item.id === $("gptsovits-preset").value);
+    const urlInput = $("gptsovits-download-url");
+    const note = $("gptsovits-preset-note");
+    if (!urlInput) return;
+    if (!preset) {
+      if (note) note.textContent = "";
+      return;
+    }
+    urlInput.value = preset.url;
+    if (note) note.textContent = `${preset.label} · ${preset.size} · ${preset.note}`;
+  }
+  function syncGptSoVitsPreset() {
+    const select = $("gptsovits-preset");
+    const urlInput = $("gptsovits-download-url");
+    const note = $("gptsovits-preset-note");
+    if (!select || !urlInput) return;
+    const url = urlInput.value.trim();
+    const preset = GPT_SOVITS_PRESETS.find((item) => item.url === url);
+    select.value = preset ? preset.id : "custom";
+    if (note) note.textContent = preset ? `${preset.label} · ${preset.size} · ${preset.note}` : "";
+  }
+  async function detectGptSoVits() {
+    setDisabled("detect-gptsovits", true);
+    try {
+      const status = await api(fetch("/api/gpt-sovits/detect", { method: "POST", headers: { "X-YUMENO-Request": "web" } }));
+      if (status.install_dir) setText("gptsovits-status", `已检测到：${status.install_dir}`);
+      else setText("gptsovits-status", "未检测到可用安装", true);
+      await loadGptSoVitsStatus();
+    } catch (reason) {
+      setText("gptsovits-status", `检测失败：${friendlyError(reason)}`, true);
+      setDisabled("detect-gptsovits", false);
+    }
+  }
+  async function installGptSoVits() {
+    const url = $("gptsovits-download-url").value.trim();
+    if (!url) return setText("gptsovits-status", "请先填写整合包下载地址（zip）", true);
+    setDisabled("install-gptsovits", true);
+    try {
+      await api(fetch("/api/gpt-sovits/install", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-YUMENO-Request": "web" },
+        body: JSON.stringify({ url }),
+      }));
+      await loadGptSoVitsStatus();
+    } catch (reason) {
+      setText("gptsovits-status", `安装失败：${friendlyError(reason)}`, true);
+      setDisabled("install-gptsovits", false);
+    }
+  }
+  async function cancelGptSoVitsInstall() {
+    try {
+      await api(fetch("/api/gpt-sovits/install/cancel", { method: "DELETE", headers: { "X-YUMENO-Request": "web" } }));
+      await loadGptSoVitsStatus();
+    } catch (reason) {
+      setText("gptsovits-status", `取消失败：${friendlyError(reason)}`, true);
+    }
+  }
+  async function startGptSoVitsService() {
+    setDisabled("start-gptsovits-service", true);
+    try {
+      await api(fetch("/api/gpt-sovits/service/start", { method: "POST", headers: { "X-YUMENO-Request": "web" } }));
+      await loadGptSoVitsStatus();
+    } catch (reason) {
+      setText("gptsovits-status", `启动失败：${friendlyError(reason)}`, true);
+      setDisabled("start-gptsovits-service", false);
+    }
+  }
+  async function stopGptSoVitsService() {
+    setDisabled("stop-gptsovits-service", true);
+    try {
+      await api(fetch("/api/gpt-sovits/service/stop", { method: "POST", headers: { "X-YUMENO-Request": "web" } }));
+      await loadGptSoVitsStatus();
+    } catch (reason) {
+      setText("gptsovits-status", `停止失败：${friendlyError(reason)}`, true);
+      setDisabled("stop-gptsovits-service", false);
+    }
+  }
+  async function openGptSoVitsDirectory() {
+    setDisabled("open-gptsovits-directory", true);
+    try {
+      const result = await api(fetch("/api/gpt-sovits/model-directory", { method: "POST", headers: { "X-YUMENO-Request": "web" } }));
+      setText("gptsovits-status", `已打开：${result.opened_directory}`);
+    } catch (reason) {
+      setText("gptsovits-status", `打开失败：${friendlyError(reason)}`, true);
+    } finally {
+      setDisabled("open-gptsovits-directory", false);
+    }
+  }
+  async function removeGptSoVitsInstall() {
+    if (!confirm("删除项目内的 GPT-SoVITS 引擎（约 12GB）？删除后需要重新下载或复制整合包才能恢复。")) return;
+    setDisabled("remove-gptsovits", true);
+    try {
+      await api(fetch("/api/gpt-sovits/install", { method: "DELETE", headers: { "X-YUMENO-Request": "web" } }));
+      await loadGptSoVitsStatus();
+    } catch (reason) {
+      setText("gptsovits-status", `删除失败：${friendlyError(reason)}`, true);
+      setDisabled("remove-gptsovits", false);
+    }
+  }
+  async function loadGptSoVitsAssets() {
+    try {
+      const data = await api(fetch("/api/voice-assets"));
+      const list = $("gptsovits-assets");
+      if (!list) return;
+      list.replaceChildren();
+      const assets = (data.items || []).filter((item) => item.status === "ready");
+      if (!assets.length) {
+        const empty = document.createElement("li");
+        empty.className = "gptsovits-asset-empty";
+        empty.textContent = "暂无训练音色，请到声音工坊的“训练”环节生成";
+        list.append(empty);
+        return;
+      }
+      assets.forEach((item) => {
+        const li = document.createElement("li");
+        li.className = "gptsovits-asset";
+        const info = document.createElement("span");
+        info.innerHTML = "<b></b><em></em>";
+        info.querySelector("b").textContent = item.name;
+        info.querySelector("em").textContent = "GPT-SoVITS · 可绑定角色";
+        const actions = document.createElement("span");
+        actions.className = "asr-actions";
+        const preview = document.createElement("button");
+        preview.className = "button button-secondary";
+        preview.type = "button";
+        preview.textContent = "试听";
+        preview.onclick = () => previewVoiceAsset(item.id);
+        actions.append(preview);
+        const del = document.createElement("button");
+        del.className = "button button-danger";
+        del.type = "button";
+        del.textContent = "删除";
+        del.onclick = () => deleteVoiceAsset(item.id);
+        actions.append(del);
+        li.append(info, actions);
+        list.append(li);
+      });
+    } catch (reason) {
+      setText("gptsovits-status", `音色加载失败：${friendlyError(reason)}`, true);
+    }
+  }
+  async function previewVoiceAsset(assetId) {
+    try {
+      const response = await fetch(`/api/voice-assets/${assetId}/synthesize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-YUMENO-Request": "web" },
+        body: JSON.stringify({ text: "你好，这是我的声音。很高兴认识你。" }),
+      });
+      if (!response.ok) throw new Error((await response.json().catch(() => null))?.detail || "试听失败");
+      if (window.PL && window.PL.unlockAudio) window.PL.unlockAudio();
+      const audio = new Audio(URL.createObjectURL(await response.blob()));
+      audio.play().catch(() => {});
+    } catch (reason) {
+      setText("gptsovits-status", `试听失败：${friendlyError(reason)}`, true);
+    }
+  }
+  async function deleteVoiceAsset(assetId) {
+    if (!confirm("删除该训练音色？项目内的模型文件将一并移除。")) return;
+    try {
+      await api(fetch(`/api/voice-assets/${assetId}`, { method: "DELETE", headers: { "X-YUMENO-Request": "web" } }));
+      await loadGptSoVitsAssets();
+    } catch (reason) {
+      setText("gptsovits-status", `删除失败：${friendlyError(reason)}`, true);
+    }
+  }
+  async function previewTts() {
   const text = $("tts-preview-text").value.trim();
   if (!text) return setText("tts-preview-status", "请输入试听文本");
   const button = $("preview-tts");
@@ -457,63 +831,22 @@ function applyLlmPreset() {
   const preset = LLM_PRESETS[$("llm-provider").value]; if (!preset) return;
   $("openai-base-url").value = preset.baseUrl; $("openai-model").value = preset.model;
 }
-function applyEmbeddingPreset() {
-  const provider = $("embedding-provider").value;
-  const preset = EMBEDDING_PRESETS[provider];
-  if (preset) {
-    $("embedding-base-url").value = preset.baseUrl; $("embedding-model").value = preset.model;
-    $("embedding-dimensions").value = preset.dimensions; $("embedding-send-dimensions").checked = preset.sendDimensions;
-  }
-  syncManagedEmbeddingPreset(); renderEmbeddingSettings(); markEmbeddingSelectionChanged(); renderEmbeddingWarning();
-}
-function applyManagedEmbeddingPreset() {
-  const selected = $("managed-embedding-preset").value;
-  if (selected !== "custom") $("embedding-model").value = selected;
-  markEmbeddingSelectionChanged();
-}
-function markEmbeddingSelectionChanged() {
-  syncManagedEmbeddingPreset();
-  renderEmbeddingInstallAction();
-  if ($("embedding-provider").value === "managed_local" && $("embedding-model").value.trim() !== state.embeddingInstalledModel) {
-    setText("embedding-status", "选择新模型后，点击“下载并启用”。");
-  }
-}
 function renderEmbeddingInstallAction() {
   const button = $("install-embedding");
   const status = state.embeddingResourceStatus;
-  const managed = $("embedding-provider").value === "managed_local";
-  const selectedModel = $("embedding-model").value.trim();
-  const installed = Boolean(status?.installed && status.model_id === selectedModel);
+  if (!button) return;
   if (status?.installing) {
-    button.textContent = "安装中";
+    button.textContent = "安装中…";
     button.disabled = true;
-  } else if (managed && installed) {
+  } else if (status?.installed) {
     button.textContent = "已安装";
     button.disabled = true;
   } else {
-    button.textContent = "下载并启用";
-    button.disabled = !managed || !selectedModel;
+    button.textContent = "安装";
+    button.disabled = false;
   }
 }
-function syncManagedEmbeddingPreset() {
-  const model = $("embedding-model").value.trim();
-  const options = [...$("managed-embedding-preset").options].map((option) => option.value);
-  $("managed-embedding-preset").value = options.includes(model) ? model : "custom";
-}
-function renderEmbeddingSettings() {
-  const managed = $("embedding-provider").value === "managed_local";
-  $("managed-embedding-fields").classList.toggle("is-hidden", !managed);
-  $("embedding-api-key-field").classList.toggle("is-hidden", managed);
-  $("embedding-base-url-field").classList.toggle("is-hidden", managed);
-  $("embedding-send-dimensions-field").classList.toggle("is-hidden", managed);
-  $("embedding-dimensions").readOnly = managed;
-  if (managed) $("embedding-send-dimensions").checked = false;
-}
-function renderEmbeddingWarning() {
-  const changed = Number($("embedding-dimensions").value) !== Number(state.savedEmbeddingDimensions);
-  const warning = $("embedding-dimension-warning");
-  warning.textContent = changed ? "向量维度已改变。保存后请使用匹配维度的 Milvus Collection，并重新入库已有资料。" : "";
-  warning.classList.toggle("is-hidden", !changed);
+function renderChunkWarning() {
   const chunkSize = Number($("chunk-size").value);
   const chunkOverlap = Number($("chunk-overlap").value);
   const chunkWarning = $("chunk-settings-warning");
@@ -563,19 +896,13 @@ function isHttpUrl(value) {
   catch { return false; }
 }
 function validateSettings() {
-  const managedEmbedding = $("embedding-provider").value === "managed_local";
-  const modelId = $("embedding-model").value.trim();
-  const localModelInvalid = managedEmbedding && (!/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(modelId) || modelId.split("/").includes(".."));
-  const embeddingMissing = !modelId || !Number($("embedding-dimensions").value) || (!managedEmbedding && (!$("embedding-base-url").value.trim() || (!state.embeddingKeyConfigured && !$("embedding-api-key").value.trim())));
   const chunkSize = Number($("chunk-size").value);
   const chunkOverlap = Number($("chunk-overlap").value);
   const chunkInvalid = chunkSize < 200 || chunkSize > 4000 || chunkOverlap < 0 || chunkOverlap > 1000 || chunkOverlap > Math.floor(chunkSize / 4);
   const webEnabled = $("web-search-enabled").checked;
   const webInvalid = webEnabled && ((!state.webSearchKeyConfigured && !$("web-search-api-key").value.trim()) || ($("web-search-provider").value === "custom" && !isHttpUrl($("web-search-base-url").value)));
-  renderEmbeddingWarning(); renderWebSearchSettings();
-  if (localModelInvalid) setText("settings-status", "自定义模型 ID 格式不正确，请参考 Qwen/Qwen3-Embedding-0.6B。");
-  else if (embeddingMissing) setText("settings-status", managedEmbedding ? "请选择或填写本地 Embedding 模型。" : "请完整填写 Embedding 的 Base URL、模型、维度和 API Key。");
-  else if (chunkInvalid) setText("settings-status", "请检查文档切分参数：重叠长度不能超过切分长度的 25%。");
+  renderChunkWarning(); renderWebSearchSettings();
+  if (chunkInvalid) setText("settings-status", "请检查文档切分参数：重叠长度不能超过切分长度的 25%。");
   else if (webInvalid) setText("settings-status", "请补全联网搜索的 API Key 和兼容接口地址。");
   else return true;
   return false;
@@ -591,7 +918,7 @@ async function saveSettings() {
   const value = (id) => $(id).value.trim();
   try {
     const webEnabled = $("web-search-enabled").checked;
-    await api(fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ openai_api_key: value("openai-api-key"), openai_base_url: value("openai-base-url"), openai_model: value("openai-model"), embedding_api_key: value("embedding-api-key"), embedding_provider: $("embedding-provider").value, embedding_model_source: $("embedding-model-source").value, embedding_device: $("embedding-device").value, embedding_base_url: value("embedding-base-url"), embedding_model: value("embedding-model"), embedding_dimensions: Number(value("embedding-dimensions")), embedding_send_dimensions: $("embedding-send-dimensions").checked, chunk_size: Number(value("chunk-size")), chunk_overlap: Number(value("chunk-overlap")), web_search_provider: webEnabled ? $("web-search-provider").value : "off", web_search_api_key: value("web-search-api-key"), web_search_base_url: value("web-search-base-url"), enable_web_fallback: webEnabled }) }));
+    await api(fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ openai_api_key: value("openai-api-key"), openai_base_url: value("openai-base-url"), openai_model: value("openai-model"), embedding_provider: "managed_local", embedding_model: "Qwen/Qwen3-Embedding-0.6B", embedding_model_source: "modelscope", embedding_device: $("embedding-device").value, chunk_size: Number(value("chunk-size")), chunk_overlap: Number(value("chunk-overlap")), web_search_provider: webEnabled ? $("web-search-provider").value : "off", web_search_api_key: value("web-search-api-key"), web_search_base_url: value("web-search-base-url"), enable_web_fallback: webEnabled }) }));
     resetApiKeyInputs();
     setText("settings-status", "已保存，可立即使用"); await loadSettings();
   } catch (reason) { setText("settings-status", reason, true); }

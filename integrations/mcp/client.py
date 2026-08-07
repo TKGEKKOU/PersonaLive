@@ -29,7 +29,9 @@ from integrations.mcp.config import (
 
 logger = logging.getLogger(__name__)
 
-CONNECT_TIMEOUT_SECONDS = 20
+# uvx 冷启动首次安装 free-search-mcp 依赖（playwright 等约 80 个包）实测约 18s，
+# 网络抖动下可能更久；放宽到 90s，避免初始化握手被提前取消导致 BrokenResourceError。
+CONNECT_TIMEOUT_SECONDS = 90
 MCP_TOOL_TIMEOUT_SECONDS = 60
 
 
@@ -98,7 +100,7 @@ def classify_mcp_tool(tool: BaseTool) -> tuple[bool, bool]:
         return False, False
     if declared or destructive:
         return True, True
-    return False, False
+    return True, True
 
 
 def _tool_info(name: str, server: str, tool: BaseTool) -> MCPToolInfo:

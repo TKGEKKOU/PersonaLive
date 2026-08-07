@@ -6,7 +6,7 @@ def test_tts_status_is_local_and_available(client, tmp_path):
     response = client.get("/api/tts/status")
 
     assert response.status_code == 200
-    assert response.json()["download_size"] == "约 3 GB"
+    assert response.json()["download_size"].startswith("约 2.2 GB")
 
 
 def test_tts_config_requires_same_origin_header(client, tmp_path):
@@ -23,11 +23,38 @@ def test_tts_config_requires_same_origin_header(client, tmp_path):
     assert accepted.json()["enabled"] is False
 
 
+def test_tts_config_can_switch_engine(client, tmp_path, monkeypatch):
+    manager = TTSResourceManager(tmp_path)
+    client.app.state.tts_resources = manager
+    stopped = []
+
+    class FakeWorker:
+        use_gpu = True
+
+        def stop_service(self):
+            stopped.append(True)
+
+    client.app.state.tts_worker = FakeWorker()
+
+    response = client.patch(
+        "/api/tts/config",
+        json={"engine": "gpt_sovits"},
+        headers={"X-YUMENO-Request": "web"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["engine"] == "gpt_sovits"
+    assert stopped == [True]
+
+
 def test_tts_install_accepts_request_when_lunar_runtime_is_bundled(client, tmp_path, monkeypatch):
     manager = TTSResourceManager(tmp_path)
     manager.runtime_dir.mkdir(parents=True)
     manager.runtime_path.write_bytes(b"exe")
     manager.runtime_dll_path.write_bytes(b"dll")
+    manager.model_dir.mkdir(parents=True)
+    manager.model_path.write_bytes(b"model")
+    manager.tokenizer_path.write_bytes(b"tokenizer")
     client.app.state.tts_resources = manager
     started = []
     monkeypatch.setattr(manager, "start_install", lambda: started.append(True) or True)

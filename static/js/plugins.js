@@ -47,8 +47,22 @@ async function renderSkillList() {
     list.append(empty("还没有技能。在上方新增一个提示词技能，或把 JSON 放入 data/skills/。"));
     return;
   }
+  const groups = new Map();
   for (const skill of skills) {
-    list.append(renderSkillCard(skill));
+    const category = (skill.metadata && skill.metadata.category) || "其他";
+    if (!groups.has(category)) groups.set(category, []);
+    groups.get(category).push(skill);
+  }
+  for (const [category, items] of [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0], "zh"))) {
+    const heading = document.createElement("div");
+    heading.className = "section-heading";
+    const label = document.createElement("b");
+    label.textContent = category;
+    heading.append(label);
+    list.append(heading);
+    for (const skill of items.sort((a, b) => a.name.localeCompare(b.name))) {
+      list.append(renderSkillCard(skill));
+    }
   }
 }
 
@@ -362,6 +376,21 @@ function renderMCPServerCard(server) {
     error.textContent = `连接失败：${server.status.error}`;
     card.append(error);
   }
+  const grantsRow = document.createElement("div");
+  grantsRow.className = "mcp-grants-row";
+  const grantsLabel = document.createElement("span");
+  grantsLabel.textContent = "授权角色";
+  const grantsInput = document.createElement("input");
+  grantsInput.className = "mcp-grants-input";
+  grantsInput.value = (server.allowed_persona_ids || []).join(",");
+  grantsInput.placeholder = "*（所有角色）或角色ID，逗号分隔";
+  const grantsSave = document.createElement("button");
+  grantsSave.type = "button";
+  grantsSave.className = "button button-secondary";
+  grantsSave.textContent = "保存";
+  grantsSave.addEventListener("click", () => saveMCPGrants(server.name, grantsInput.value));
+  grantsRow.append(grantsLabel, grantsInput, grantsSave);
+  card.append(grantsRow);
   const actions = document.createElement("div");
   actions.className = "asr-actions";
   const test = document.createElement("button");
@@ -377,6 +406,21 @@ function renderMCPServerCard(server) {
   actions.append(test, remove);
   card.append(actions);
   return card;
+}
+
+async function saveMCPGrants(name, value) {
+  const ids = value.split(",").map((item) => item.trim()).filter(Boolean);
+  try {
+    await api(fetch(`/api/mcp/servers/${encodeURIComponent(name)}/grants`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-YUMENO-Request": "web" },
+      body: JSON.stringify({ allowed_persona_ids: ids }),
+    }));
+    await renderMCPServers();
+    setMCPStatus(`已更新 ${name} 的授权`);
+  } catch (reason) {
+    setMCPStatus(`授权保存失败：${reason.message || reason}`, true);
+  }
 }
 
 function mcpStatusPillClass(status) {

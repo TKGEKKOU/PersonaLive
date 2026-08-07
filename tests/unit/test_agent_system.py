@@ -121,6 +121,27 @@ def test_service_builds_one_parent_workflow(monkeypatch):
     assert captured == {"model": model, "checkpointer": checkpointer}
 
 
+def test_service_rebuilds_workflow_after_tool_registry_change(monkeypatch):
+    import agents.service as service_module
+    import agents.registry as registry_module
+
+    built = []
+    monkeypatch.setattr(
+        service_module,
+        "build_persona_workflow",
+        lambda model, checkpointer: built.append(object()) or built[-1],
+    )
+    revision = 10
+    monkeypatch.setattr(registry_module, "tool_registry_revision", lambda: revision)
+    service = PersonaAgentService(checkpointer=object(), model=object())
+
+    first = service._graph()
+    assert service._graph() is first
+    revision = 11
+    assert service._graph() is not first
+    assert len(built) == 2
+
+
 def test_supervisor_handoff_returns_to_persona_response():
     from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
     from langchain_core.messages import AIMessage
@@ -530,3 +551,41 @@ def test_agent_query_returns_friendly_answer_when_llm_service_unavailable(monkey
 
     assert result.status == "completed"
     assert result.answer == LLM_UNAVAILABLE_MESSAGE
+
+
+def test_stage_mapping_from_updates():
+    from agents.service import _stage_from_update
+
+    assert _stage_from_update({"knowledge_worker": {"messages": []}}) == "知识agent · 正在检索角色资料…"
+    assert _stage_from_update({"persona_supervisor": {"messages": []}}) == "正在思考…"
+    assert _stage_from_update({}) is None
+
+
+def test_stream_query_emits_stage_token_and_result():
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from agents.context import PersonaAgentContext
+    from agents.service import PersonaAgentService
+
+    class ToolCallingFake(FakeMessagesListChatModel):
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+    service = PersonaAgentService(
+        MemorySaver(),
+        model=ToolCallingFake(responses=[AIMessage(content="你好")]),
+    )
+    context = PersonaAgentContext(
+        persona_id="persona-a",
+        workspace_id="local-default",
+        knowledge_space_ids=("space-a",),
+        conversation_id="thread-a",
+        persona_name="Alpha",
+        persona_type="character",
+    )
+    kinds = [event["kind"] for event in service.stream_query("你好", context)]
+    assert "stage" in kinds
+    assert "token" in kinds
+    assert "result" in kinds
